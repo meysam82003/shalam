@@ -446,7 +446,7 @@ class MainActivity : Activity() {
         textSize = 16f
         gravity = Gravity.RIGHT or Gravity.CENTER_VERTICAL
         textDirection = View.TEXT_DIRECTION_RTL
-        singleLine = true
+        setSingleLine(true)
         setPadding(dp(12), 0, dp(12), 0)
         background = rounded(Color.argb(210, 7, 23, 40), Color.argb(180, 213, 169, 78), 14)
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52))
