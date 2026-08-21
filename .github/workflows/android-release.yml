@@ -1,7 +1,9 @@
-name: Build and publish Android release
+name: Test, build and publish Android release
 
 on:
   push:
+    branches: [main]
+  pull_request:
     branches: [main]
   workflow_dispatch:
 
@@ -30,26 +32,30 @@ jobs:
         run: gradle --no-daemon testReleaseUnitTest assembleRelease
 
       - name: Prepare release files
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         run: |
-          cp app/build/outputs/apk/release/app-release.apk Divan-Emtiaz-v1.0.0.apk
-          sha256sum Divan-Emtiaz-v1.0.0.apk > SHA256SUMS.txt
+          cp app/build/outputs/apk/release/app-release.apk Divan-Emtiaz-v2.0.0.apk
+          sha256sum Divan-Emtiaz-v2.0.0.apk > SHA256SUMS.txt
 
       - name: Publish GitHub Release
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.0
-          name: دیوان امتیاز v1.0.0
+          tag_name: v2.0.0
+          name: دیوان امتیاز سلطنتی v2.0.0
           body: |
-            نسخه نخست اندروید دیوان امتیاز
+            بازطراحی کامل دیوان امتیاز با هویت بصری سلطنتی سه‌بعدی.
 
-            - شلم، منفی و هزارتایی
-            - امتیازدهی زنده و بازگردانی آخرین دست
-            - تاریخچه آفلاین
-            - رابط فارسی راست‌به‌چپ و تم سلطنتی
-            - سازگار با Android 5.0 و بالاتر
+            - آواتارها و مدل‌های سه‌بعدی ایرانی از اطلس‌های منتخب پروژه
+            - شلم دو مرحله‌ای با پاس، ۱۰۰ تا ۱۶۰، شلم و دبل‌شلم
+            - محاسبه خودکار ۱۶۵ منهای امتیاز حریف و ثبت شکست تعهد
+            - منفی با اعداد ۳ تا ۱۳ و سه حالت نتیجه قبل از تأیید
+            - ویرایش و حذف هر دست، تاریخچه و ادامه بازی
+            - تنظیمات پیشرفتهٔ شلم بر اساس بررسی APK شلم‌شمار
+            - فونت فارسی Vazirmatn و رابط کاملاً راست‌به‌چپ
+            - Android 5.0 و بالاتر، آفلاین و بدون تبلیغ
           files: |
-            Divan-Emtiaz-v1.0.0.apk
+            Divan-Emtiaz-v2.0.0.apk
             SHA256SUMS.txt
           overwrite_files: true
           make_latest: true
-
