@@ -28,28 +28,21 @@ jobs:
         with:
           gradle-version: '8.7'
 
-      - name: Fix launcher dp recursion for release build
+      - name: Apply requested V5 source fixes
+        run: python3 tools/apply_v5_fixes.py
+
+      - name: Verify requested fixes
         shell: bash
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('app/src/main/java/com/meysam/divanemtiaz/DivanFinalActivity.kt')
-          text = p.read_text(encoding='utf-8')
-          replacements = {
-              'private fun dp(value: Int): Int = this.dp(value)': 'private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()',
-              'private fun dp(value: Int): Int = dp(value)': 'private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()',
-          }
-          for old, new in replacements.items():
-              text = text.replace(old, new)
-          p.write_text(text, encoding='utf-8')
-          final = p.read_text(encoding='utf-8')
-          bad = [s for s in replacements if s in final]
-          if bad:
-              raise SystemExit(f'recursive dp() is still present: {bad}')
-          expected = 'private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()'
-          if expected not in final:
-              raise SystemExit('safe dp() implementation was not installed')
-          PY
+          FILE=app/src/main/java/com/meysam/divanemtiaz/DivanFinalActivity.kt
+          grep -q 'ShalamReferenceEngine.readyBids(settings)' "$FILE"
+          grep -q 'handleMenfiAfterMutation' "$FILE"
+          grep -q 'draft.input.parent as? ViewGroup' "$FILE"
+          grep -q 'styleDivanDialog(dialog)' "$FILE"
+          grep -q 'private fun dp(value: Int): Int = (value \* resources.displayMetrics.density).toInt()' "$FILE"
+          ! grep -q 'private fun dp(value: Int): Int = this.dp(value)' "$FILE"
+          ! grep -q 'برد پایه' "$FILE"
+          ! grep -q 'باخت پایه' "$FILE"
 
       - name: Test and build signed APK
         run: gradle --no-daemon testReleaseUnitTest assembleRelease
@@ -57,33 +50,34 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Divan-Emtiaz-APK-Fixed
+          name: Divan-Emtiaz-v3.0.2
           path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
 
       - name: Prepare release files
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         run: |
-          cp app/build/outputs/apk/release/app-release.apk Divan-Emtiaz-v3.0.1.apk
-          sha256sum Divan-Emtiaz-v3.0.1.apk > SHA256SUMS.txt
+          cp app/build/outputs/apk/release/app-release.apk Divan-Emtiaz-v3.0.2.apk
+          sha256sum Divan-Emtiaz-v3.0.2.apk > SHA256SUMS.txt
 
       - name: Publish GitHub Release
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v3.0.1
-          name: دیوان امتیاز سلطنتی v3.0.1
+          tag_name: v3.0.2
+          name: دیوان امتیاز سلطنتی v3.0.2
           body: |
-            نسخه اصلاحی دیوان امتیاز با رفع کرش Launcher در شروع برنامه.
+            نسخه اصلاحی قوانین و رابط کاربری دیوان امتیاز.
 
-            - رفع StackOverflow در تبدیل dp
-            - هزارتایی واقعی برای ۵ بازیکن یا بیشتر، کاملاً انفرادی
-            - شلم با تعهد قابل تنظیم، یاسا، شلم، سرشلم و هدف امتیازی باز
-            - منفی با حکم ثابت و پنهان‌سازی نتیجه
-            - Room محلی، ذخیره خودکار، تاریخچه و Audit Log
+            - رفع کرش ورود به هزارتایی و پشتیبانی ۵ تا ۶۰ نفر
+            - امتیاز منفی بر اساس اعلام همان دست: گرفتن = +اعلام، نگرفتن = -اعلام
+            - نتیجه خودکار منفی پس از تکمیل تعداد دست‌ها؛ تساوی وارد دست اضافه می‌شود
+            - شلم مبتنی بر قواعد بازیابی‌شده شلم‌شمار 6.2.1 با ۱۶۵/۲۰۰ و شلم ۳۳۰/۴۰۰
+            - یکدست شدن دیالوگ نتیجه و ویرایش با UI سرمه‌ای/طلایی
+            - حذف تنظیمات امتیازی قدیمی و نامرتبط منفی
             - Android 5.0 و بالاتر، آفلاین و بدون تبلیغ
           files: |
-            Divan-Emtiaz-v3.0.1.apk
+            Divan-Emtiaz-v3.0.2.apk
             SHA256SUMS.txt
           overwrite_files: true
           make_latest: true
