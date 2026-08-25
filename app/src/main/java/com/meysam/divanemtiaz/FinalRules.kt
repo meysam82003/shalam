@@ -1,5 +1,7 @@
 package com.meysam.divanemtiaz
 
+import kotlin.math.abs
+
 enum class MenfiOutcomeV4(val key: String) {
     BOTH_MADE("both_made"),
     A_FAILED_B_MADE("a_failed_b_made"),
@@ -24,7 +26,23 @@ data class MenfiHandResultV4(
     val teamBMade: Boolean
 )
 
-/** Mathematical rules for one 13-trick fixed-trump negative hand. */
+enum class MenfiMatchDecision {
+    CONTINUE,
+    TIE,
+    TEAM_A_WINS,
+    TEAM_B_WINS
+}
+
+/**
+ * Rules for one 13-trick fixed-trump negative hand.
+ *
+ * Scoring is intentionally tied to the declaration of the SAME hand:
+ * - made declaration => +bid
+ * - failed declaration => -bid
+ *
+ * Example: 8 / 3 becomes +8/+3, -8/+3, +8/-3 depending on the selected
+ * feasible result. The old unrelated +20/-10 table is not used anymore.
+ */
 object MenfiRulesV4 {
     const val TOTAL_TRICKS = 13
 
@@ -57,16 +75,7 @@ object MenfiRulesV4 {
 
     fun scoreForBid(bid: Int, made: Boolean, settings: V3Settings): Int {
         validateBid(bid, settings)
-        if (bid >= 11) {
-            return when (bid) {
-                11 -> if (made) settings.menfiWin11 else settings.menfiLoss11
-                12 -> if (made) settings.menfiWin12 else settings.menfiLoss12
-                else -> if (made) settings.menfiWin13 else settings.menfiLoss13
-            }
-        }
-        val delta = (bid - settings.menfiMinBid).coerceAtLeast(0)
-        return if (made) settings.menfiBaseWin + delta * settings.menfiWinStep
-        else settings.menfiBaseLoss - delta * kotlin.math.abs(settings.menfiLossStep)
+        return if (made) bid else -bid
     }
 
     fun score(
@@ -83,11 +92,89 @@ object MenfiRulesV4 {
             MenfiOutcomeV4.BOTH_FAILED -> false to false
         }
         return MenfiHandResultV4(
-            scoreForBid(bidA, madeA, settings),
-            scoreForBid(bidB, madeB, settings),
-            madeA,
-            madeB
+            teamAScore = scoreForBid(bidA, madeA, settings),
+            teamBScore = scoreForBid(bidB, madeB, settings),
+            teamAMade = madeA,
+            teamBMade = madeB
         )
+    }
+
+    fun matchDecision(rounds: List<V3Round>, targetHands: Int): MenfiMatchDecision {
+        if (rounds.size < targetHands) return MenfiMatchDecision.CONTINUE
+        val a = rounds.sumOf { it.scores.getOrElse(0) { 0 } }
+        val b = rounds.sumOf { it.scores.getOrElse(1) { 0 } }
+        return when {
+            a > b -> MenfiMatchDecision.TEAM_A_WINS
+            b > a -> MenfiMatchDecision.TEAM_B_WINS
+            else -> MenfiMatchDecision.TIE
+        }
+    }
+}
+
+/**
+ * High-confidence Shalam rules reconstructed from ShalamShomar 6.2.1, adapted to
+ * Divan's existing UI. The recovered app uses 165 without Joker and 200 with
+ * Joker; standard Shelem is 2 * maxPointsInHand (330/400).
+ */
+object ShalamReferenceEngine {
+    fun total(settings: V3Settings): Int = if (settings.shalamWithJoker) 200 else 165
+
+    fun defaultLimit(settings: V3Settings): Int = if (settings.shalamWithJoker) 105 else 85
+
+    fun readyBids(settings: V3Settings): List<Int> = buildList {
+        val total = total(settings)
+        var value = settings.shalamMinBid.coerceIn(5, total - 5)
+        // ShalamShomar's normal contracts remain stepped values; the full maximum
+        // is presented as the Shelem action.
+        while (value < total) {
+            add(value)
+            value += 5
+        }
+        add(total)
+    }.distinct()
+
+    fun score(
+        contract: Int,
+        opponentActual: Int,
+        settings: V3Settings,
+        declaredShalam: Boolean = false
+    ): ShalamHandResult {
+        val total = total(settings)
+        require(contract in 1..total)
+        require(opponentActual in 0..total)
+
+        val contractActual = total - opponentActual
+        val succeeded = contractActual >= contract
+        val effectiveYasaLimit = when {
+            settings.shalamWithJoker && settings.shalamYasaThreshold == 85 -> 105
+            else -> settings.shalamYasaThreshold
+        }
+        val yasa = !succeeded && settings.shalamYasaEnabled && contractActual < effectiveYasaLimit
+        val fullSweep = contractActual == total
+        val shelem = fullSweep && (declaredShalam || contract == total)
+
+        val contractScore = when {
+            yasa -> -total
+            !succeeded -> -contract
+            shelem -> total * 2 // exact recovered default: 330 / 400
+            settings.shalamAwardContractOnly -> contract
+            else -> contractActual
+        }
+
+        return ShalamHandResult(
+            contractScore = contractScore,
+            opponentScore = opponentActual,
+            contractActual = contractActual,
+            succeeded = succeeded,
+            yasaApplied = yasa,
+            shalamApplied = shelem
+        )
+    }
+
+    fun shouldEndGame(scoreA: Int, scoreB: Int, settings: V3Settings): Boolean {
+        val target = settings.shalamTarget
+        if (target <= 0 || (scoreA == 0 && scoreB == 0)) return false
+        return scoreA >= target || scoreB >= target
     }
 }
 
