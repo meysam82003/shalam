@@ -28,6 +28,22 @@ jobs:
         with:
           gradle-version: '8.7'
 
+      - name: Fix launcher dp recursion for release build
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/com/meysam/divanemtiaz/DivanFinalActivity.kt')
+          text = p.read_text(encoding='utf-8')
+          old = 'private fun dp(value: Int): Int = dp(value)'
+          new = 'private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()'
+          if old in text:
+              text = text.replace(old, new, 1)
+              p.write_text(text, encoding='utf-8')
+          if old in p.read_text(encoding='utf-8'):
+              raise SystemExit('recursive dp() is still present')
+          PY
+
       - name: Test and build signed APK
         run: gradle --no-daemon testReleaseUnitTest assembleRelease
 
