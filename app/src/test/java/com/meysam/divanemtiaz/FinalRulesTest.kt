@@ -1,8 +1,8 @@
 package com.meysam.divanemtiaz
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
-import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class FinalRulesTest {
@@ -34,12 +34,46 @@ class FinalRulesTest {
     }
 
     @Test
-    fun `outcome scoring uses configured positive and negative values`() {
-        val result = MenfiRulesV4.score(8, 3, MenfiOutcomeV4.A_FAILED_B_MADE, settings)
-        assertFalse(result.teamAMade)
-        assertTrue(result.teamBMade)
-        assertEquals(MenfiRulesV4.scoreForBid(8, false, settings), result.teamAScore)
-        assertEquals(MenfiRulesV4.scoreForBid(3, true, settings), result.teamBScore)
+    fun `8 and 3 scoring belongs to that exact hand`() {
+        val bothMade = MenfiRulesV4.score(8, 3, MenfiOutcomeV4.BOTH_MADE, settings)
+        assertEquals(8, bothMade.teamAScore)
+        assertEquals(3, bothMade.teamBScore)
+
+        val aFailed = MenfiRulesV4.score(8, 3, MenfiOutcomeV4.A_FAILED_B_MADE, settings)
+        assertEquals(-8, aFailed.teamAScore)
+        assertEquals(3, aFailed.teamBScore)
+
+        val bFailed = MenfiRulesV4.score(8, 3, MenfiOutcomeV4.A_MADE_B_FAILED, settings)
+        assertEquals(8, bFailed.teamAScore)
+        assertEquals(-3, bFailed.teamBScore)
+    }
+
+    @Test
+    fun `10 and 5 can both fail and use minus declaration`() {
+        val result = MenfiRulesV4.score(10, 5, MenfiOutcomeV4.BOTH_FAILED, settings)
+        assertEquals(-10, result.teamAScore)
+        assertEquals(-5, result.teamBScore)
+    }
+
+    @Test
+    fun `menfi auto decision after target hands`() {
+        val rounds = MutableList(8) { V3Round(mutableListOf(8, -3)) }
+        assertEquals(MenfiMatchDecision.TEAM_A_WINS, MenfiRulesV4.matchDecision(rounds, 8))
+        assertEquals(MenfiMatchDecision.CONTINUE, MenfiRulesV4.matchDecision(rounds.take(7), 8))
+    }
+
+    @Test
+    fun `recovered shalam totals are 165 and 200`() {
+        assertEquals(165, ShalamReferenceEngine.total(V3Settings(shalamWithJoker = false)))
+        assertEquals(200, ShalamReferenceEngine.total(V3Settings(shalamWithJoker = true)))
+    }
+
+    @Test
+    fun `standard shelem is 330 without joker and 400 with joker`() {
+        val normal = ShalamReferenceEngine.score(165, 0, V3Settings(shalamWithJoker = false), declaredShalam = true)
+        assertEquals(330, normal.contractScore)
+        val joker = ShalamReferenceEngine.score(200, 0, V3Settings(shalamWithJoker = true), declaredShalam = true)
+        assertEquals(400, joker.contractScore)
     }
 
     @Test
