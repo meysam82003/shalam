@@ -8,8 +8,9 @@
         android:roundIcon="@drawable/ic_launcher"
         android:supportsRtl="true"
         android:theme="@style/Theme.Divan">
+
         <activity
-            android:name=".MainActivity"
+            android:name=".DivanFinalActivity"
             android:exported="true"
             android:screenOrientation="portrait">
             <intent-filter>
@@ -17,5 +18,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Kept only for safe rollback/data compatibility; it is not exposed as launcher. -->
+        <activity
+            android:name=".DivanActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
     </application>
 </manifest>
