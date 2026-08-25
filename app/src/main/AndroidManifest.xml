@@ -10,12 +10,7 @@
         android:theme="@style/Theme.Divan">
 
         <activity
-            android:name=".MainActivity"
-            android:exported="false"
-            android:screenOrientation="portrait" />
-
-        <activity
-            android:name=".V3Activity"
+            android:name=".DivanActivity"
             android:exported="true"
             android:screenOrientation="portrait">
             <intent-filter>
