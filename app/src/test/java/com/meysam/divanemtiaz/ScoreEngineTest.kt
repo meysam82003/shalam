@@ -6,45 +6,195 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ScoreEngineTest {
-    @Test fun shalamBidsAreExactlyReadyValues() {
-        assertEquals("پاس", ShalamEngine.readyBids.first().title)
-        assertEquals((100..160 step 5).toList(), ShalamEngine.readyBids.filter { it.kind == ShalamBidKind.CONTRACT }.map { it.value })
-        assertEquals(listOf("شلم", "دبل‌شلم"), ShalamEngine.readyBids.takeLast(2).map { it.title })
+    private val noJoker = ShalamRules()
+    private val joker = ShalamSettings().rules(withJoker = true)
+
+    @Test fun bidOptionsFollowReferencePicker() {
+        assertEquals(80, ShalamEngine.bidOptions(noJoker.mode).first())
+        assertEquals(165, ShalamEngine.bidOptions(noJoker.mode).last())
+        assertEquals(200, ShalamEngine.bidOptions(joker.mode).last())
+        assertEquals(160, ShalamEngine.takenOptions(noJoker.mode).last())
+        assertEquals(135, ShalamEngine.normalizeTypedBid(35, noJoker.mode))
+        assertEquals(80, ShalamEngine.normalizeTypedBid(80, noJoker.mode))
+        assertEquals(180, ShalamEngine.normalizeTypedBid(80, joker.mode))
+        assertFalse(ShalamEngine.isValidBid(45, noJoker.mode))
+        assertFalse(ShalamEngine.isValidBid(170, noJoker.mode))
+        assertFalse(ShalamEngine.isValidTaken(165, noJoker.mode))
     }
 
     @Test fun bid135FailsWhenOpponentTakes35() {
-        val bid = ShalamBid(ShalamBidKind.CONTRACT, 135, "135")
-        val result = ShalamEngine.calculate(bid, opponentPoints = 35)
-        assertEquals(130, result.actualContractPoints)
-        assertEquals(-135, result.contractScore)
-        assertEquals(35, result.opponentScore)
+        val result = ShalamEngine.scoreHand(135, 35, noJoker)
+        assertEquals(130, result.actual)
+        assertEquals(-135, result.contractor)
+        assertEquals(35, result.opponent)
         assertFalse(result.succeeded)
     }
 
     @Test fun bid135Wins150WhenOpponentTakes15() {
-        val bid = ShalamBid(ShalamBidKind.CONTRACT, 135, "135")
-        val result = ShalamEngine.calculate(bid, opponentPoints = 15)
-        assertEquals(150, result.actualContractPoints)
-        assertEquals(150, result.contractScore)
-        assertEquals(15, result.opponentScore)
+        val result = ShalamEngine.scoreHand(135, 15, noJoker)
+        assertEquals(150, result.contractor)
+        assertEquals(15, result.opponent)
         assertTrue(result.succeeded)
     }
 
     @Test fun contractOnlyModeAwardsDeclaredValue() {
-        val bid = ShalamBid(ShalamBidKind.CONTRACT, 135, "135")
-        assertEquals(135, ShalamEngine.calculate(bid, 15, awardContractOnly = true).contractScore)
+        assertEquals(135, ShalamEngine.scoreHand(135, 15, noJoker.copy(contractOnly = true)).contractor)
+    }
+
+    @Test fun collectingAllPointsFollowsSelectedMode() {
+        assertEquals(165, ShalamEngine.scoreHand(120, 0, noJoker).contractor)
+        val double = noJoker.copy(mode = noJoker.mode.copy(collectAll = CollectAll.DOUBLE))
+        assertEquals(240, ShalamEngine.scoreHand(120, 0, double).contractor)
+        val custom = noJoker.copy(mode = noJoker.mode.copy(collectAll = CollectAll.CUSTOM, collectAllCustom = 200))
+        assertEquals(200, ShalamEngine.scoreHand(120, 0, custom).contractor)
+        val shelem = noJoker.copy(mode = noJoker.mode.copy(collectAll = CollectAll.SHELEM))
+        val outcome = ShalamEngine.scoreHand(120, 0, shelem)
+        assertEquals(ShalamResult.SHELEM_WIN, outcome.result)
+        assertEquals(330, outcome.contractor)
+        assertTrue(outcome.collectedAll)
+        assertEquals(165, ShalamEngine.scoreHand(120, 0, noJoker.copy(contractOnly = true)).contractor)
+    }
+
+    @Test fun doubleAppliesOnlyWhenOpponentReachesLimit() {
+        val negative = ShalamEngine.scoreHand(120, 90, noJoker)
+        assertEquals(-240, negative.contractor)
+        assertEquals(90, negative.opponent)
+        val positive = ShalamEngine.scoreHand(120, 90, noJoker.copy(doubleType = DoubleType.POSITIVE))
+        assertEquals(-120, positive.contractor)
+        assertEquals(180, positive.opponent)
+        val disabled = ShalamEngine.scoreHand(120, 90, noJoker.copy(doubleType = DoubleType.DISABLED))
+        assertEquals(-120, disabled.contractor)
+        assertEquals(90, disabled.opponent)
+        val ask = ShalamEngine.scoreHand(120, 90, noJoker.copy(doubleType = DoubleType.ASK))
+        assertTrue(ask.needsDoubleChoice)
+        assertEquals(-240, ShalamEngine.scoreHand(120, 90, noJoker.copy(doubleType = DoubleType.ASK), DoubleChoice.NEGATIVE).contractor)
+        val underLimit = ShalamEngine.scoreHand(160, 80, noJoker)
+        assertEquals(-160, underLimit.contractor)
+        assertFalse(underLimit.isDouble)
+        assertTrue(ShalamEngine.scoreHand(150, 105, joker).isDouble)
+        assertFalse(ShalamEngine.scoreHand(150, 100, joker).isDouble)
+    }
+
+    @Test fun shelemModesMatchReference() {
+        fun rules(mode: Int) = noJoker.copy(mode = noJoker.mode.copy(shelemMode = mode))
+        val contractor = rules(ShelemMode.CONTRACTOR)
+        assertEquals(330 to 0, ShalamEngine.scoreShelem(false, 0, contractor).let { it.contractor to it.opponent })
+        assertEquals(-330 to 0, ShalamEngine.scoreShelem(false, 20, contractor).let { it.contractor to it.opponent })
+        val opponent = rules(ShelemMode.OPPONENT_NEGATIVE)
+        assertEquals(0 to -330, ShalamEngine.scoreShelem(false, 0, opponent).let { it.contractor to it.opponent })
+        assertEquals(0 to 330, ShalamEngine.scoreShelem(false, 20, opponent).let { it.contractor to it.opponent })
+        val both = rules(ShelemMode.CONTRACTOR_AND_OPPONENT)
+        assertEquals(330 to 0, ShalamEngine.scoreShelem(false, 0, both).let { it.contractor to it.opponent })
+        assertEquals(-330 to 25, ShalamEngine.scoreShelem(false, 25, both).let { it.contractor to it.opponent })
+        val custom = rules(ShelemMode.CUSTOM)
+        assertEquals(165 to -165, ShalamEngine.scoreShelem(false, 0, custom).let { it.contractor to it.opponent })
+        assertEquals(-165 to -165, ShalamEngine.scoreShelem(false, 10, custom).let { it.contractor to it.opponent })
+        assertEquals(400, ShalamEngine.scoreShelem(false, 0, joker).contractor)
+    }
+
+    @Test fun doubleShelemDoublesOrUsesCustomPoints() {
+        assertEquals(660, ShalamEngine.scoreShelem(true, 0, noJoker).contractor)
+        assertEquals(-660, ShalamEngine.scoreShelem(true, 5, noJoker).contractor)
+        val custom = noJoker.copy(mode = noJoker.mode.copy(doubleShelemMode = DoubleShelemMode.CUSTOM, doubleShelemWin = 700, doubleShelemLose = -500))
+        assertEquals(700, ShalamEngine.scoreShelem(true, 0, custom).contractor)
+        assertEquals(-500, ShalamEngine.scoreShelem(true, 5, custom).contractor)
+        assertEquals(800, ShalamEngine.scoreShelem(true, 0, joker).contractor)
+    }
+
+    @Test fun teamAboveLimitScoresOnlyWhenContractorFails() {
+        val limited = noJoker.copy(highLimitEnabled = true, highLimit = 1000)
+        assertEquals(0, ShalamEngine.limitedOpponentScore(150, 15, 1000, limited))
+        assertEquals(35, ShalamEngine.limitedOpponentScore(-135, 35, 1000, limited))
+        assertEquals(0, ShalamEngine.limitedOpponentScore(-135, 35, 1000, limited.copy(loserPointsAboveLimit = false)))
+        assertEquals(15, ShalamEngine.limitedOpponentScore(150, 15, 995, limited))
+        assertEquals(15, ShalamEngine.limitedOpponentScore(150, 15, 1200, noJoker))
+    }
+
+    @Test fun shalamEndsAtTargetOrDifference() {
+        assertFalse(ShalamEngine.isComplete(listOf(0, 0), noJoker))
+        assertTrue(ShalamEngine.isComplete(listOf(1170, 300), noJoker))
+        assertFalse(ShalamEngine.isComplete(listOf(1150, 40), noJoker))
+        val byDiff = noJoker.copy(mode = noJoker.mode.copy(endWithDiff = true, endDiff = 1100))
+        assertTrue(ShalamEngine.isComplete(listOf(1150, 40), byDiff))
+        assertFalse(ShalamEngine.isComplete(listOf(500, 300), byDiff))
+    }
+
+    @Test fun recomputeAppliesLimitWithRunningTotals() {
+        val rules = GameRules(shalam = noJoker.copy(highLimitEnabled = true, highLimit = 100))
+        val session = GameSession(1L, GameType.SHALAM, listOf(Side("الف", 0), Side("ب", 1)), rules = rules)
+        session.rounds += Round(RoundKind.SHALAM_HAND, emptyList(), contractTeam = 0, bid = 120, taken = 40)
+        session.rounds += Round(RoundKind.SHALAM_HAND, emptyList(), contractTeam = 1, bid = 100, taken = 30)
+        session.rounds += Round(RoundKind.SHALAM_PASS, emptyList())
+        GameEngine.recompute(session)
+        assertEquals(listOf(125, 40), session.rounds[0].scores)
+        assertEquals(listOf(0, 135), session.rounds[1].scores)
+        assertEquals(listOf(125, 175), GameEngine.totals(session))
+        assertEquals(listOf(1), GameEngine.winners(session))
+        assertEquals(2, GameEngine.shalamStats(session).hands)
     }
 
     @Test fun menfiThreeAndTenExposeRequestedThreeResults() {
         val results = MenfiEngine.outcomes(3, 10).map { it.teamAScore to it.teamBScore }
         assertEquals(listOf(20 to 3, 20 to -3, -10 to 3), results)
+        val custom = MenfiEngine.outcomes(3, 3, MenfiRules(threeSuccess = 25, threeFailure = -15))
+        assertEquals(listOf(25 to 25, 25 to -15, -15 to 25), custom.map { it.teamAScore to it.teamBScore })
+    }
+
+    @Test fun menfiWinnerAndHandLimitFollowSettings() {
+        val session = GameSession(2L, GameType.MENFI, listOf(Side("الف", 0), Side("ب", 1)), rules = GameRules(menfi = MenfiRules(hands = 2)))
+        session.rounds += Round(RoundKind.MENFI_HAND, emptyList(), numbers = listOf(3, 10), outcome = 1)
+        GameEngine.recompute(session)
+        assertFalse(GameEngine.isComplete(session))
+        session.rounds += Round(RoundKind.MENFI_HAND, emptyList(), numbers = listOf(5, 8), outcome = 0)
+        GameEngine.recompute(session)
+        assertEquals(listOf(28, 2), GameEngine.totals(session))
+        assertTrue(GameEngine.isComplete(session))
+        assertEquals(listOf(0), GameEngine.winners(session))
+        session.rules = session.rules.copy(menfi = session.rules.menfi.copy(highWins = false))
+        assertEquals(listOf(1), GameEngine.winners(session))
     }
 
     @Test fun totalsAndWinnerUseEditedRoundValues() {
-        val rounds = mutableListOf(ScoreRound(20, 3), ScoreRound(-10, 3))
-        rounds[1] = rounds[1].copy(teamA = 20, teamB = -3)
-        assertEquals(40, ScoreEngine.total(rounds, true))
-        assertEquals(0, ScoreEngine.total(rounds, false))
-        assertEquals(2, ScoreEngine.winner(GameType.MENFI, 40, 0))
+        val session = GameSession(3L, GameType.MENFI, listOf(Side("الف", 0), Side("ب", 1)), rules = GameRules())
+        session.rounds += Round(RoundKind.MENFI_HAND, emptyList(), numbers = listOf(3, 10), outcome = 0)
+        session.rounds += Round(RoundKind.MENFI_HAND, emptyList(), numbers = listOf(3, 10), outcome = 2)
+        GameEngine.recompute(session)
+        session.rounds[1] = session.rounds[1].copy(outcome = 1)
+        GameEngine.recompute(session)
+        assertEquals(listOf(40, 0), GameEngine.totals(session))
+        assertEquals(listOf(0), GameEngine.winners(session))
+    }
+
+    @Test fun hezartaiiZeroPenaltyRankingAndEnd() {
+        val rules = GameRules(hezar = HezarRules(target = 300, rounds = 3, zeroPenalty = -50))
+        val players = listOf(Side("الف", 0), Side("ب", 1), Side("پ", 2))
+        val session = GameSession(4L, GameType.HEZARTAII, players, rules = rules)
+        session.rounds += Round(RoundKind.HEZAR_ROUND, emptyList(), raw = listOf(0, 120, 60))
+        session.rounds += Round(RoundKind.HEZAR_ROUND, emptyList(), raw = listOf(100, -40, 90))
+        GameEngine.recompute(session)
+        assertEquals(listOf(-50, 120, 60), session.rounds[0].scores)
+        assertEquals(listOf(50, 80, 150), GameEngine.totals(session))
+        assertEquals(listOf(2, 1, 0), GameEngine.ranking(session))
+        assertFalse(GameEngine.isComplete(session))
+        session.rounds += Round(RoundKind.HEZAR_ROUND, emptyList(), raw = listOf(10, 10, 10))
+        GameEngine.recompute(session)
+        assertTrue(GameEngine.isComplete(session))
+    }
+
+    @Test fun penaltiesAndAdjustmentsDoNotCountAsHands() {
+        val session = GameSession(5L, GameType.SHALAM, listOf(Side("الف", 0), Side("ب", 1)), rules = GameRules())
+        session.rounds += Round(RoundKind.PENALTY, emptyList(), raw = listOf(-50, 0))
+        session.rounds += Round(RoundKind.ADJUST, emptyList(), raw = listOf(10, 20))
+        GameEngine.recompute(session)
+        assertEquals(listOf(-40, 20), GameEngine.totals(session))
+        assertEquals(0, GameEngine.playedHands(session))
+    }
+
+    @Test fun persianTextFormatsAndParsesDigits() {
+        assertEquals("۱۶۵", PersianText.digits(165))
+        assertEquals("‎+۲۰‎", PersianText.signed(20))
+        assertEquals("‎−۳‎", PersianText.signed(-3))
+        assertEquals(-135, PersianText.parseInt("−۱۳۵"))
+        assertEquals(42, PersianText.parseInt("٤٢"))
     }
 }

@@ -3,9 +3,9 @@
     <application
         android:allowBackup="true"
         android:fullBackupContent="true"
-        android:icon="@drawable/ic_launcher"
+        android:icon="@drawable/ic_divan"
         android:label="@string/app_name"
-        android:roundIcon="@drawable/ic_launcher"
+        android:roundIcon="@drawable/ic_divan"
         android:supportsRtl="true"
         android:theme="@style/Theme.Divan">
         <activity

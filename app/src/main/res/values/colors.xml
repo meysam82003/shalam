@@ -3,4 +3,9 @@
     <color name="navy">#071728</color>
     <color name="teal">#1FC7B6</color>
     <color name="gold">#D5A94E</color>
+    <color name="divan_night">#050B1A</color>
+    <color name="divan_lapis">#12285A</color>
+    <color name="divan_gold">#E6BE6A</color>
+    <color name="divan_turquoise">#2ED3C6</color>
+    <color name="divan_crimson">#D0414B</color>
 </resources>

@@ -28,34 +28,59 @@ jobs:
         with:
           gradle-version: '8.7'
 
+      - name: Prepare release signing key
+        env:
+          DIVAN_KEYSTORE_BASE64: ${{ secrets.DIVAN_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$DIVAN_KEYSTORE_BASE64" ]; then
+            echo "$DIVAN_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/divan-release.jks"
+            echo "DIVAN_KEYSTORE_FILE=$RUNNER_TEMP/divan-release.jks" >> "$GITHUB_ENV"
+            echo "Release key found; APK is signed with the fixed release key."
+          else
+            echo "No DIVAN_KEYSTORE_BASE64 secret; APK is signed with the runner debug key."
+          fi
+
       - name: Test and build signed APK
+        env:
+          DIVAN_KEYSTORE_PASSWORD: ${{ secrets.DIVAN_KEYSTORE_PASSWORD }}
+          DIVAN_KEY_ALIAS: ${{ secrets.DIVAN_KEY_ALIAS }}
+          DIVAN_KEY_PASSWORD: ${{ secrets.DIVAN_KEY_PASSWORD }}
         run: gradle --no-daemon testReleaseUnitTest assembleRelease
 
       - name: Prepare release files
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         run: |
-          cp app/build/outputs/apk/release/app-release.apk Divan-Emtiaz-v2.0.0.apk
-          sha256sum Divan-Emtiaz-v2.0.0.apk > SHA256SUMS.txt
+          VERSION=$(grep -oP "versionName '\K[^']+" app/build.gradle)
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          cp app/build/outputs/apk/release/app-release.apk "Divan-Emtiaz-v$VERSION.apk"
+          sha256sum "Divan-Emtiaz-v$VERSION.apk" > SHA256SUMS.txt
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Divan-Emtiaz-v${{ env.VERSION }}
+          path: |
+            Divan-Emtiaz-v${{ env.VERSION }}.apk
+            SHA256SUMS.txt
 
       - name: Publish GitHub Release
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.0.0
-          name: دیوان امتیاز سلطنتی v2.0.0
+          tag_name: v${{ env.VERSION }}
+          name: دیوان امتیاز سلطنتی v${{ env.VERSION }}
           body: |
-            بازطراحی کامل دیوان امتیاز با هویت بصری سلطنتی سه‌بعدی.
+            رابط کاربری کاملاً تازه و قوانین کامل هر سه بازی.
 
-            - آواتارها و مدل‌های سه‌بعدی ایرانی از اطلس‌های منتخب پروژه
-            - شلم دو مرحله‌ای با پاس، ۱۰۰ تا ۱۶۰، شلم و دبل‌شلم
-            - محاسبه خودکار ۱۶۵ منهای امتیاز حریف و ثبت شکست تعهد
-            - منفی با اعداد ۳ تا ۱۳ و سه حالت نتیجه قبل از تأیید
-            - ویرایش و حذف هر دست، تاریخچه و ادامه بازی
-            - تنظیمات پیشرفتهٔ شلم بر اساس بررسی APK شلم‌شمار
-            - فونت فارسی Vazirmatn و رابط کاملاً راست‌به‌چپ
+            - طراحی سلطنتی ایرانی که تماماً با کد کشیده شده است: قاب‌های طلایی، طاق ایوانی، نقش خاتم و ۱۶ نشان مدالیونی
+            - قوانین و تنظیمات کامل شلم مطابق «شلم‌شمار»: حالت با جوکر و بدون جوکر، حد دوبل، دوبل مثبت/منفی/پرسش در بازی، چهار روش محاسبهٔ شلم، شلم دوبل، گرفتن همهٔ امتیازها، محدودیت امتیاز بالا، پایان با اختلاف و امتیاز پایان ۴۰۰ تا ۲۸۰۰
+            - همهٔ تنظیمات واقعی و قابل تغییر؛ قوانین هر بازی جداگانه هم قابل ویرایش است و همهٔ دست‌ها دوباره محاسبه می‌شوند
+            - منفی با عدد پنهان ۳ تا ۱۳، سه حالت نتیجه، پایان خودکار پس از تعداد دست و انتخاب برنده
+            - هزارتایی برای ۲ تا ۶ بازیکن با رتبه‌بندی، امتیاز هدف، محدودیت دور و جریمهٔ صفر
+            - ثبت تقلب/جریمه، ویرایش جمع، آمار بازی، زمان بازی، فهرست تیم‌ها و بازیکنان و صفحهٔ قوانین
+            - انتقال کامل داده‌های نسخهٔ ۱ و ۲ بدون تغییر امتیازها
             - Android 5.0 و بالاتر، آفلاین و بدون تبلیغ
           files: |
-            Divan-Emtiaz-v2.0.0.apk
+            Divan-Emtiaz-v${{ env.VERSION }}.apk
             SHA256SUMS.txt
           overwrite_files: true
           make_latest: true
