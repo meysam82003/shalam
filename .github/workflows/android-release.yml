@@ -9,6 +9,8 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 jobs:
   build-release:
@@ -52,7 +54,8 @@ jobs:
           VERSION=$(grep -oP "versionName '\K[^']+" app/build.gradle)
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           cp app/build/outputs/apk/release/app-release.apk "Divan-Emtiaz-v$VERSION.apk"
-          sha256sum "Divan-Emtiaz-v$VERSION.apk" > SHA256SUMS.txt
+          cp web/index.html "Divan-Emtiaz-Web-v$VERSION.html"
+          sha256sum "Divan-Emtiaz-v$VERSION.apk" "Divan-Emtiaz-Web-v$VERSION.html" > SHA256SUMS.txt
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -60,27 +63,70 @@ jobs:
           name: Divan-Emtiaz-v${{ env.VERSION }}
           path: |
             Divan-Emtiaz-v${{ env.VERSION }}.apk
+            Divan-Emtiaz-Web-v${{ env.VERSION }}.html
             SHA256SUMS.txt
 
       - name: Publish GitHub Release
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.VERSION }}
+          target_commitish: ${{ github.sha }}
           name: دیوان امتیاز سلطنتی v${{ env.VERSION }}
           body: |
-            رابط کاربری کاملاً تازه و قوانین کامل هر سه بازی.
+            نسخهٔ ${{ env.VERSION }} — اپ اندروید و نسخهٔ تحت وب
 
-            - طراحی سلطنتی ایرانی که تماماً با کد کشیده شده است: قاب‌های طلایی، طاق ایوانی، نقش خاتم و ۱۶ نشان مدالیونی
-            - قوانین و تنظیمات کامل شلم مطابق «شلم‌شمار»: حالت با جوکر و بدون جوکر، حد دوبل، دوبل مثبت/منفی/پرسش در بازی، چهار روش محاسبهٔ شلم، شلم دوبل، گرفتن همهٔ امتیازها، محدودیت امتیاز بالا، پایان با اختلاف و امتیاز پایان ۴۰۰ تا ۲۸۰۰
-            - همهٔ تنظیمات واقعی و قابل تغییر؛ قوانین هر بازی جداگانه هم قابل ویرایش است و همهٔ دست‌ها دوباره محاسبه می‌شوند
-            - منفی با عدد پنهان ۳ تا ۱۳، سه حالت نتیجه، پایان خودکار پس از تعداد دست و انتخاب برنده
-            - هزارتایی برای ۲ تا ۶ بازیکن با رتبه‌بندی، امتیاز هدف، محدودیت دور و جریمهٔ صفر
-            - ثبت تقلب/جریمه، ویرایش جمع، آمار بازی، زمان بازی، فهرست تیم‌ها و بازیکنان و صفحهٔ قوانین
-            - انتقال کامل داده‌های نسخهٔ ۱ و ۲ بدون تغییر امتیازها
-            - Android 5.0 و بالاتر، آفلاین و بدون تبلیغ
+            دانلود:
+            - اپ اندروید: فایل `Divan-Emtiaz-v${{ env.VERSION }}.apk` (روی نسخهٔ قبلی نصب می‌شود و داده‌ها حفظ می‌شوند)
+            - نسخهٔ تحت وب: https://meysam82003.github.io/shalam/ یا فایل `Divan-Emtiaz-Web-v${{ env.VERSION }}.html` (بدون نصب، در هر مرورگری باز می‌شود)
+
+            تازه‌های نسخهٔ ۴.۱:
+            - ماشین‌حساب هزارتایی: فقط تعداد نفرات و ورق‌ها را بدهید؛ برنامه خودش ورق هر نفر و پخش دور اول، دوم و سوم را تعیین می‌کند (مثلاً ۶/۴/۴)
+            - امکان وارد کردن تعداد کل ورق‌ها (مثلاً ۸۰ برگ) به جای تعداد دسته و جوکر
+            - تساوی در منفی (عادی و لیگ): داور ۲، ۳ یا هر تعداد دست اضافه انتخاب می‌کند؛ پیش‌فرض در تنظیمات
+            - پشتیبان‌گیری کامل (Import / Export): بازی‌ها، تاریخچه، تیم‌ها، بازیکنان، لیگ‌ها و تنظیمات؛ ادغام یا جایگزینی
+            - اشتراک تصویر هر دست، وضعیت بازی، نتیجه، لیگ و پروفایل
+            - نمودار روند امتیاز، پروفایل تیم و بازیکن (برد/مساوی/باخت، رودررو، قدرت حریف، بهترین برد و بدترین باخت)
+            - رنک‌بندی تیم‌ها و بازیکنان با درجه‌های طلایی، نقره‌ای و برنزی
+
+            از نسخهٔ ۴:
+            - اندازهٔ درست صفحه و عدم همپوشانی با نوار سیستم
+            - قوانین جدید منفی (جمع ۱۳، ۱۴ و ۱۵ به بالا) و جدول امتیاز قابل تنظیم
+            - ثبت دستی امتیاز توسط داور در همهٔ بازی‌ها
+            - هزارتایی با تعداد نامحدود بازیکن
+            - لیگ حذفی «دو برده» و دوره‌ای
+            - بازی جدید «دو لو گشنیز» و ماشین‌حساب ورق
+
+            Android 5.0 و بالاتر، کاملاً آفلاین و بدون تبلیغ
           files: |
             Divan-Emtiaz-v${{ env.VERSION }}.apk
+            Divan-Emtiaz-Web-v${{ env.VERSION }}.html
             SHA256SUMS.txt
           overwrite_files: true
           make_latest: true
+
+  publish-web:
+    needs: build-release
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Enable GitHub Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Upload web version
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+
+      - name: Deploy web version
+        id: deploy
+        uses: actions/deploy-pages@v4
