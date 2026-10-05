@@ -17,7 +17,7 @@ class SettingsScreen(host: MainActivity, private var tab: Int = TAB_GENERAL) : S
             TAB_MENFI -> {
                 addView(kit.section("قوانین منفی", RoyalIcon.EYE_OFF))
                 editMenfi(this, settings.menfi.rules(), false) { r ->
-                    host.updateSettings { it.copy(menfi = MenfiSettings(r.hands, r.hidden, r.highWins, r.success, r.failure)) }
+                    host.updateSettings { it.copy(menfi = MenfiSettings(r.hands, r.hidden, r.highWins, r.success, r.failure, r.tieBreak, r.tieExtraHands)) }
                 }
                 resetButton(this, "منفی") { it.copy(menfi = MenfiSettings()) }
             }
@@ -89,6 +89,8 @@ class SettingsScreen(host: MainActivity, private var tab: Int = TAB_GENERAL) : S
         parent.addView(kit.settingRow("تیم دوم", null, kit.text(g.defaultTeam2, TextStyle.BODY_BOLD, Royal.goldLight)) {
             kit.textPrompt("نام پیش‌فرض تیم دوم", g.defaultTeam2) { v -> host.updateSettings { it.copy(general = it.general.copy(defaultTeam2 = v)) }; host.refresh() }
         })
+        parent.addView(kit.section("پشتیبان‌گیری", RoyalIcon.SAVE))
+        parent.addView(kit.button("پشتیبان‌گیری و بازگردانی همهٔ داده‌ها", ButtonKind.SECONDARY, RoyalIcon.SAVE, 44) { host.push(BackupScreen(host)) })
         resetButton(parent, "عمومی") { it.copy(general = GeneralSettings()) }
     }
 
@@ -268,6 +270,15 @@ fun Screen.editMenfi(parent: LinearLayout, rules: MenfiRules, showScoring: Boole
     parent.addView(kit.choiceRow("برندهٔ بازی", null, listOf(1 to "بیشترین جمع امتیاز", 0 to "کمترین جمع امتیاز"), if (current.highWins) 1 else 0) {
         set(current.copy(highWins = it == 1))
     })
+    parent.addView(kit.switchRow("دست اضافه در تساوی", "اگر پس از آخرین دست جمع دو تیم برابر باشد، داور دست اضافه انتخاب می‌کند (مثلاً ۸ دست ← ۱۰ دست)", current.tieBreak) {
+        set(current.copy(tieBreak = it), redraw = true)
+    })
+    if (current.tieBreak) {
+        parent.addView(kit.stepperRow("تعداد پیش‌فرض دست اضافه", "هنگام تساوی قابل تغییر است", current.tieExtraHands, 1, 20, 1) { set(current.copy(tieExtraHands = it)) })
+    }
+    if (current.extraHands > 0) {
+        parent.addView(kit.stepperRow("دست‌های اضافهٔ این بازی", "به‌خاطر تساوی اضافه شده است", current.extraHands, 0, 40, 1) { set(current.copy(extraHands = it)) })
+    }
     if (showScoring) {
         parent.addView(kit.choiceRow("روش امتیاز این بازی", "این بازی با نسخهٔ قبلی شروع شده؛ با انتخاب جدول، همهٔ دست‌ها دوباره محاسبه می‌شوند", listOf(
             MenfiScoring.TABLE to "جدول امتیاز (± عدد، ده = +۲۰ / −۱۰)",

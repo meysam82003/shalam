@@ -226,7 +226,12 @@ object MenfiEngine {
         return listOf(o.teamAScore, o.teamBScore)
     }
 
-    fun isComplete(handsPlayed: Int, rules: MenfiRules): Boolean = rules.hands in 1..handsPlayed
+    /** The last hand is played but both totals are equal: the referee adds extra hands. */
+    fun tiedAtEnd(handsPlayed: Int, totals: List<Int>, rules: MenfiRules): Boolean =
+        rules.tieBreak && rules.totalHands in 1..handsPlayed && totals.size >= 2 && totals[0] == totals[1]
+
+    fun isComplete(handsPlayed: Int, totals: List<Int>, rules: MenfiRules): Boolean =
+        rules.totalHands in 1..handsPlayed && !tiedAtEnd(handsPlayed, totals, rules)
 }
 
 object HezarEngine {
@@ -266,6 +271,24 @@ data class HezarDeal(
     val fits: Boolean get() = short == 0
     val fixableFromBottom: Boolean get() = short in 1..takeFromBottom
 }
+
+/** How the deal works out: everything fits, a few cards come from the bottom, or hands are reduced. */
+enum class DealMode { FITS, BOTTOM, REDUCED }
+
+data class AutoDeal(
+    val totalCards: Int,
+    val players: Int,
+    val preferredHand: Int,
+    val handSize: Int,
+    val packets: List<Int>,
+    val dealt: Int,
+    val stock: Int,
+    val short: Int,
+    val mode: DealMode,
+    val takeFromBottom: Int,
+    val cardsNeeded: Int,
+    val decksNeeded: Int
+)
 
 data class DoloDeal(
     val totalCards: Int,
@@ -318,6 +341,51 @@ object DeckCalc {
         )
     }
 
+    /** Deal in about three rounds; the first round takes the remainder (14 → 6 + 4 + 4). */
+    fun splitPackets(hand: Int): List<Int> {
+        if (hand <= 0) return emptyList()
+        val rounds = when {
+            hand >= 9 -> 3
+            hand >= 4 -> 2
+            else -> 1
+        }
+        val base = hand / rounds
+        val rem = hand % rounds
+        return List(rounds) { if (it == 0) base + rem else base }
+    }
+
+    /** Works out the hand size and dealing plan from players and the cards available. */
+    fun hezarAuto(players: Int, deck: DeckSettings): AutoDeal {
+        val p = players.coerceAtLeast(1)
+        val total = deck.totalCards()
+        val preferred = deck.handSize.coerceAtLeast(1)
+        val need = p * preferred
+        val allowance = deck.shortAllowance.coerceAtLeast(0)
+        val (hand, mode) = when {
+            need <= total -> preferred to DealMode.FITS
+            need - total <= allowance -> preferred to DealMode.BOTTOM
+            else -> (total / p).coerceAtLeast(1) to DealMode.REDUCED
+        }
+        val dealt = p * hand
+        val jokersPerDeck = if (deck.decks > 0) deck.jokers.toDouble() / deck.decks else 0.0
+        var decksNeeded = deck.decks.coerceAtLeast(1)
+        while (decksNeeded * 52 + Math.round(decksNeeded * jokersPerDeck).toInt() < need && decksNeeded < 999) decksNeeded++
+        return AutoDeal(
+            totalCards = total,
+            players = p,
+            preferredHand = preferred,
+            handSize = hand,
+            packets = splitPackets(hand),
+            dealt = dealt,
+            stock = (total - dealt).coerceAtLeast(0),
+            short = if (mode == DealMode.BOTTOM) need - total else 0,
+            mode = mode,
+            takeFromBottom = allowance,
+            cardsNeeded = need,
+            decksNeeded = decksNeeded
+        )
+    }
+
     fun dolo(players: Int, totalCards: Int, rules: DoloRules): DoloDeal {
         val p = players.coerceAtLeast(1)
         val total = totalCards.coerceAtLeast(0)
@@ -355,13 +423,11 @@ object DoloEngine {
         val rules = session.rules.dolo
         val n = session.sides.size
         val eliminatedAt = linkedMapOf<Int, Int>()
-        var stageStartActive = n
         var handsInStage = 0
-        var handsDue = 0
         var extension = false
         val stageTotals = MutableList(n) { 0 }
         fun regularDue(active: Int) = (if (rules.handsPerRound > 0) rules.handsPerRound else active) * rules.eliminateEvery.coerceAtLeast(1)
-        handsDue = regularDue(stageStartActive)
+        var handsDue = regularDue(n)
         for (index in 0 until upTo.coerceAtMost(session.rounds.size)) {
             val round = session.rounds[index]
             when (round.kind) {
@@ -374,7 +440,6 @@ object DoloEngine {
                         handsDue = round.bid
                     } else {
                         extension = false
-                        stageStartActive = activeCount
                         handsDue = regularDue(activeCount)
                         if (rules.resetAfterElimination) stageTotals.indices.forEach { stageTotals[it] = 0 }
                     }
@@ -457,7 +522,7 @@ object GameEngine {
         val totals = totals(session)
         return when (session.game) {
             GameType.SHALAM -> ShalamEngine.isComplete(totals, session.rules.shalam)
-            GameType.MENFI -> MenfiEngine.isComplete(playedHands(session), session.rules.menfi)
+            GameType.MENFI -> MenfiEngine.isComplete(playedHands(session), totals, session.rules.menfi)
             GameType.HEZARTAII -> HezarEngine.isComplete(totals, playedHands(session), session.rules.hezar)
             GameType.DOLO -> DoloEngine.isComplete(session)
         }

@@ -16,7 +16,7 @@ object RulesText {
     }
 
     fun menfiSummary(r: MenfiRules, kit: RoyalKit): List<String> = listOf(
-        "${kit.n(r.hands)} دست • اعداد ${kit.n(3)} تا ${kit.n(13)}",
+        "${kit.n(r.totalHands)} دست • اعداد ${kit.n(3)} تا ${kit.n(13)}" + if (r.tieBreak) " • در تساوی ${kit.n(r.tieExtraHands)} دست اضافه" else "",
         if (r.scoring == MenfiScoring.LEGACY) "روش امتیاز قدیمی نسخهٔ ۳"
         else "گرفتن +عدد و نگرفتن −عدد • عدد ۱۰: ${kit.signed(MenfiEngine.successScore(10, r))} / ${kit.signed(MenfiEngine.failureScore(10, r))}",
         "جمع ۱۴ یعنی حتماً یک تیم منفی است؛ جمع ۱۵ و بیشتر یعنی ممکن است هر دو منفی شوند",
@@ -159,8 +159,9 @@ object RulesText {
                 "داور همیشه می‌تواند امتیاز دست را دستی با علامت + یا − ثبت کند.",
                 "تا پیش از تأیید هیچ امتیازی ثبت نمی‌شود و هر دست قابل ویرایش و حذف است."
             ),
-            "پایان و برنده" to listOf(
-                "بازی پس از ${kit.n(r.hands)} دست تمام می‌شود.",
+            "پایان و برنده" to listOfNotNull(
+                "بازی پس از ${kit.n(r.hands)} دست تمام می‌شود" + (if (r.extraHands > 0) "؛ این بازی به‌خاطر تساوی ${kit.n(r.extraHands)} دست اضافه دارد." else "."),
+                if (r.tieBreak) "اگر پس از آخرین دست جمع دو تیم مساوی باشد، داور چند دست اضافه (پیش‌فرض ${kit.n(r.tieExtraHands)}) تعیین می‌کند؛ مثلاً ${kit.n(8)} دست به ${kit.n(8 + r.tieExtraHands)} دست می‌رسد. در لیگ هم همین قانون اجرا می‌شود." else null,
                 "برنده تیمی است که " + (if (r.highWins) "بیشترین" else "کمترین") + " جمع امتیاز را دارد.",
                 if (r.hidden) "جمع امتیازها تا پایان بازی پنهان است و فقط با تأیید داور نمایش داده می‌شود." else "جمع امتیازها در طول بازی دیده می‌شود."
             )

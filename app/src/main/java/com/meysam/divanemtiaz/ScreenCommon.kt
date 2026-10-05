@@ -200,9 +200,10 @@ fun Screen.emptyState(icon: RoyalIcon, title: String, message: String): View = k
 }
 
 /** Action sheet for one hand: edit, delete, cancel. */
-fun Screen.roundActions(title: String, onEdit: (() -> Unit)?, onDelete: () -> Unit) {
+fun Screen.roundActions(title: String, onEdit: (() -> Unit)?, share: (() -> Unit)? = null, onDelete: () -> Unit) {
     val actions = mutableListOf<DialogAction>()
     if (onEdit != null) actions += DialogAction("ویرایش", ButtonKind.PRIMARY, onClick = onEdit)
+    if (share != null) actions += DialogAction("اشتراک تصویر این دست", ButtonKind.SECONDARY, onClick = share)
     actions += DialogAction("حذف", ButtonKind.DANGER) {
         kit.confirm("حذف دست", "این دست حذف و جمع امتیازها دوباره محاسبه شود؟", "حذف", true, onDelete)
     }
@@ -217,7 +218,7 @@ fun Screen.sessionSubtitle(session: GameSession): String {
             parts += if (session.rules.shalam.joker) "با جوکر" else "بدون جوکر"
             parts += "تا ${kit.n(session.rules.shalam.endPoint)}"
         }
-        GameType.MENFI -> parts += "${kit.n(session.rules.menfi.hands)} دست"
+        GameType.MENFI -> parts += "${menfiHandsText(session.rules.menfi)} دست"
         GameType.HEZARTAII -> {
             parts += "${kit.n(session.sides.size)} بازیکن"
             parts += "تا ${kit.n(session.rules.hezar.target)}"

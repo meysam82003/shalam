@@ -347,7 +347,14 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             content.addView(gap(12))
         }
-        if (actions.isNotEmpty()) {
+        if (actions.size > 2) {
+            actions.forEachIndexed { i, action ->
+                content.addView(button(action.label, action.kind, height = 44) {
+                    if (action.dismiss) dialog.dismiss()
+                    action.onClick()
+                }, if (i < actions.lastIndex) spaced(6) else fill())
+            }
+        } else if (actions.isNotEmpty()) {
             val row = horizontal()
             actions.forEachIndexed { i, action ->
                 if (i > 0) row.addView(hgap(8))

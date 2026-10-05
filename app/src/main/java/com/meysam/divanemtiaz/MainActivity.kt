@@ -1,6 +1,10 @@
 package com.meysam.divanemtiaz
 
 import android.app.Activity
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -239,6 +243,101 @@ class MainActivity : Activity() {
         handler.removeCallbacksAndMessages(null)
     }
 
+    private var pendingResult: ((Uri?) -> Unit)? = null
+
+    /** Opens the system file picker; [onResult] gets the chosen document (null when cancelled). */
+    fun pickDocument(create: Boolean, fileName: String, onResult: (Uri?) -> Unit) {
+        val intent = if (create) {
+            Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "application/json"
+                putExtra(Intent.EXTRA_TITLE, fileName)
+            }
+        } else {
+            Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "*/*"
+                putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/json", "text/plain", "application/octet-stream"))
+            }
+        }
+        pendingResult = onResult
+        try {
+            @Suppress("DEPRECATION")
+            startActivityForResult(intent, REQUEST_DOCUMENT)
+        } catch (e: Exception) {
+            pendingResult = null
+            kit.toast("انتخاب فایل در این گوشی در دسترس نیست")
+        }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        @Suppress("DEPRECATION")
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQUEST_DOCUMENT) return
+        val callback = pendingResult ?: return
+        pendingResult = null
+        callback(if (resultCode == RESULT_OK) data?.data else null)
+    }
+
+    /**
+     * Draws [view] at the given width into a PNG and opens the share sheet. The view is laid out
+     * off screen, so it never disturbs the current page.
+     */
+    fun shareImage(view: View, title: String, widthPx: Int = kit.dp(420)) {
+        try {
+            view.layoutDirection = View.LAYOUT_DIRECTION_RTL
+            view.measure(View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+            view.layout(0, 0, view.measuredWidth, view.measuredHeight)
+            val bitmap = Bitmap.createBitmap(view.measuredWidth.coerceAtLeast(1), view.measuredHeight.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            BackdropDrawable(resources.displayMetrics.density).apply { setBounds(0, 0, bitmap.width, bitmap.height) }.draw(canvas)
+            view.draw(canvas)
+            val dir = java.io.File(cacheDir, ShareProvider.DIR).apply { mkdirs() }
+            dir.listFiles()?.forEach { it.delete() }
+            val file = java.io.File(dir, "divan-${System.currentTimeMillis()}.png")
+            file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            bitmap.recycle()
+            val uri = Uri.parse("content://${ShareProvider.authority(packageName)}/${file.name}")
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = "image/png"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_TEXT, title)
+                clipData = android.content.ClipData.newRawUri(title, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(send, "اشتراک تصویر").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+        } catch (e: Exception) {
+            kit.toast("ساخت تصویر ممکن نشد")
+        }
+    }
+
+    /** Sends a text file (a backup) to any app the user picks, e.g. a messenger or cloud drive. */
+    fun shareFile(name: String, text: String, mime: String) {
+        try {
+            val dir = java.io.File(cacheDir, ShareProvider.DIR).apply { mkdirs() }
+            dir.listFiles()?.forEach { it.delete() }
+            val file = java.io.File(dir, name)
+            file.writeText(text, Charsets.UTF_8)
+            val uri = Uri.parse("content://${ShareProvider.authority(packageName)}/${file.name}")
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = mime
+                putExtra(Intent.EXTRA_STREAM, uri)
+                clipData = android.content.ClipData.newRawUri(name, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(send, "ارسال فایل پشتیبان").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+        } catch (e: Exception) {
+            kit.toast("ارسال فایل ممکن نشد")
+        }
+    }
+
+    /** Reads settings again after a backup replaced them. */
+    fun reloadSettings() {
+        settings = repo.settings()
+        applyWindowSettings()
+    }
+
     fun boardFor(session: GameSession): Screen = when (session.game) {
         GameType.SHALAM -> ShalamBoardScreen(this, session)
         GameType.MENFI -> MenfiBoardScreen(this, session)
@@ -274,5 +373,6 @@ class MainActivity : Activity() {
 
     companion object {
         private const val STATE_SESSION = "session_id"
+        private const val REQUEST_DOCUMENT = 4101
     }
 }

@@ -19,7 +19,7 @@ import kotlin.math.sin
 enum class RoyalIcon {
     BACK, NEXT, HOME, SETTINGS, HISTORY, RULES, PLAYERS, PLUS, MINUS, CHECK, CLOSE, EDIT, TRASH,
     EYE, EYE_OFF, CROWN, TROPHY, TIMER, CHART, STAR, PLAY, UNDO, FLAG, WARNING, SLIDERS, MENU,
-    SPADE, HEART, DIAMOND, CLUB, SWAP, USER
+    SPADE, HEART, DIAMOND, CLUB, SWAP, USER, SHARE, CARDS, SAVE, LEAGUE
 }
 
 /** Vector icons drawn on a 24-unit grid, so no image resource is needed. */
@@ -148,6 +148,28 @@ object RoyalIcons {
             RoyalIcon.SWAP -> {
                 p.moveTo(4f, 8f); p.lineTo(19f, 8f); p.moveTo(15f, 4f); p.lineTo(19f, 8f); p.lineTo(15f, 12f)
                 p.moveTo(20f, 16f); p.lineTo(5f, 16f); p.moveTo(9f, 12f); p.lineTo(5f, 16f); p.lineTo(9f, 20f)
+            }
+            RoyalIcon.SHARE -> {
+                p.addCircle(17.5f, 5.5f, 2.6f, Path.Direction.CW)
+                p.addCircle(6.5f, 12f, 2.6f, Path.Direction.CW)
+                p.addCircle(17.5f, 18.5f, 2.6f, Path.Direction.CW)
+                p.moveTo(8.8f, 10.7f); p.lineTo(15.2f, 6.8f)
+                p.moveTo(8.8f, 13.3f); p.lineTo(15.2f, 17.2f)
+            }
+            RoyalIcon.CARDS -> {
+                p.addRoundRect(RectF(3.5f, 6.5f, 13.5f, 20.5f), 2f, 2f, Path.Direction.CW)
+                p.moveTo(8f, 3.5f); p.lineTo(18.5f, 3.5f); p.quadTo(20.5f, 3.5f, 20.5f, 5.5f); p.lineTo(20.5f, 17.5f)
+            }
+            RoyalIcon.SAVE -> {
+                p.moveTo(12f, 4f); p.lineTo(12f, 15f); p.moveTo(7.5f, 10.5f); p.lineTo(12f, 15f); p.lineTo(16.5f, 10.5f)
+                p.moveTo(4.5f, 16f); p.lineTo(4.5f, 20f); p.lineTo(19.5f, 20f); p.lineTo(19.5f, 16f)
+            }
+            RoyalIcon.LEAGUE -> {
+                p.addRect(3f, 4.5f, 8f, 8.5f, Path.Direction.CW)
+                p.addRect(3f, 15.5f, 8f, 19.5f, Path.Direction.CW)
+                p.moveTo(8f, 6.5f); p.lineTo(11f, 6.5f); p.lineTo(11f, 17.5f); p.lineTo(8f, 17.5f)
+                p.moveTo(11f, 12f); p.lineTo(14f, 12f)
+                p.addRect(14f, 10f, 20f, 14f, Path.Direction.CW)
             }
             RoyalIcon.SPADE -> { p.set(SuitShapes.spade(24f)); filled = true }
             RoyalIcon.HEART -> { p.set(SuitShapes.heart(24f)); filled = true }

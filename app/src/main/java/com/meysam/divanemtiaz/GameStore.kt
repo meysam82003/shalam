@@ -168,6 +168,92 @@ class GameRepository(private val kv: KeyValueStore, private val legacy: () -> Le
         kv.write(mapOf(leagueKey(id) to null, KEY_LEAGUES to JSONArray(leagueIndex().filterNot { it == id }).toString()))
     }
 
+    /** Everything the user has: settings, teams and players, every game and every league. */
+    fun exportBackup(app: String = "android"): JSONObject {
+        migrateIfNeeded()
+        return JSONObject().apply {
+            put("format", BACKUP_FORMAT)
+            put("version", 1)
+            put("app", app)
+            put("exportedAt", System.currentTimeMillis())
+            put("settings", GameCodec.encodeSettings(settings()))
+            put("roster", GameCodec.encodeRoster(roster()))
+            put("sessions", JSONArray().apply { sessions().forEach { put(GameCodec.encodeSession(it)) } })
+            put("leagues", JSONArray().apply { leagues().forEach { put(GameCodec.encodeLeague(it)) } })
+        }
+    }
+
+    data class BackupSummary(val sessions: Int, val leagues: Int, val roster: Int, val exportedAt: Long)
+
+    fun inspectBackup(o: JSONObject): BackupSummary {
+        require(o.optString("format") == BACKUP_FORMAT) { "not a backup" }
+        return BackupSummary(
+            o.optJSONArray("sessions")?.length() ?: 0,
+            o.optJSONArray("leagues")?.length() ?: 0,
+            o.optJSONArray("roster")?.length() ?: 0,
+            o.optLong("exportedAt", 0L)
+        )
+    }
+
+    data class ImportResult(val sessionsAdded: Int, val sessionsUpdated: Int, val leaguesAdded: Int, val rosterAdded: Int)
+
+    /**
+     * Merge (default): new games and leagues are added, a newer copy replaces an older one, teams
+     * are united by name and settings stay. Replace: games, leagues and teams are cleared first and
+     * the backup's settings are applied too.
+     */
+    fun importBackup(o: JSONObject, replace: Boolean): ImportResult {
+        inspectBackup(o)
+        migrateIfNeeded()
+        val incomingSessions = o.optJSONArray("sessions")?.let { a -> List(a.length()) { a.optJSONObject(it) }.filterNotNull() } ?: emptyList()
+        val incomingLeagues = o.optJSONArray("leagues")?.let { a -> List(a.length()) { a.optJSONObject(it) }.filterNotNull() } ?: emptyList()
+        val sessions = incomingSessions.mapNotNull { runCatching { GameCodec.decodeSession(it) }.getOrNull() }
+        val leagues = incomingLeagues.mapNotNull { runCatching { GameCodec.decodeLeague(it) }.getOrNull() }
+        val roster = o.optJSONArray("roster")?.let { runCatching { GameCodec.decodeRoster(it) }.getOrNull() } ?: emptyList()
+        val changes = linkedMapOf<String, String?>()
+        if (replace) {
+            index().forEach { changes[gameKey(it)] = null }
+            leagueIndex().forEach { changes[leagueKey(it)] = null }
+        }
+        val gameIds = if (replace) mutableListOf() else index().toMutableList()
+        var added = 0
+        var updated = 0
+        sessions.forEach { s ->
+            val existing = if (replace) null else session(s.id)
+            when {
+                existing == null -> { added++; gameIds += s.id; changes[gameKey(s.id)] = GameCodec.encodeSession(s).toString() }
+                s.updatedAt > existing.updatedAt -> { updated++; changes[gameKey(s.id)] = GameCodec.encodeSession(s).toString() }
+            }
+        }
+        val leagueIds = if (replace) mutableListOf() else leagueIndex().toMutableList()
+        var leaguesAdded = 0
+        leagues.forEach { l ->
+            val existing = if (replace) null else league(l.id)
+            if (existing == null) { leaguesAdded++; leagueIds += l.id }
+            if (existing == null || l.updatedAt > existing.updatedAt) changes[leagueKey(l.id)] = GameCodec.encodeLeague(l).toString()
+        }
+        val mergedRoster = if (replace) mutableListOf() else roster().toMutableList()
+        var rosterAdded = 0
+        roster.forEach { e ->
+            if (mergedRoster.none { it.name == e.name && it.isTeam == e.isTeam }) {
+                mergedRoster += e.copy(id = if (mergedRoster.any { it.id == e.id }) System.currentTimeMillis() + mergedRoster.size else e.id)
+                rosterAdded++
+            }
+        }
+        val allGames = (gameIds.distinct()).mapNotNull { id ->
+            val raw = changes[gameKey(id)] ?: kv.get(gameKey(id)) ?: return@mapNotNull null
+            id to runCatching { JSONObject(raw).optLong("updatedAt", id) }.getOrDefault(id)
+        }.sortedByDescending { it.second }.map { it.first }
+        changes[KEY_INDEX] = JSONArray(allGames).toString()
+        changes[KEY_LEAGUES] = JSONArray(leagueIds.distinct()).toString()
+        changes[KEY_ROSTER] = GameCodec.encodeRoster(mergedRoster).toString()
+        if (replace) o.optJSONObject("settings")?.let { st ->
+            runCatching { GameCodec.decodeSettings(st) }.getOrNull()?.let { changes[KEY_SETTINGS] = GameCodec.encodeSettings(it).toString() }
+        }
+        kv.write(changes)
+        return ImportResult(added, updated, leaguesAdded, rosterAdded)
+    }
+
     fun roster(): List<RosterEntry> = kv.get(KEY_ROSTER)?.let { raw ->
         runCatching { GameCodec.decodeRoster(JSONArray(raw)) }.getOrNull()
     } ?: emptyList()
@@ -183,6 +269,7 @@ class GameRepository(private val kv: KeyValueStore, private val legacy: () -> Le
         const val KEY_SETTINGS = "settings"
         const val KEY_ROSTER = "roster"
         const val KEY_LEAGUES = "leagues"
+        const val BACKUP_FORMAT = "divan-emtiaz-backup"
         fun gameKey(id: Long) = "game_$id"
         fun leagueKey(id: Long) = "league_$id"
     }
@@ -321,6 +408,9 @@ object GameCodec {
             put("scoring", rules.menfi.scoring)
             put("success", ints(rules.menfi.success))
             put("failure", ints(rules.menfi.failure))
+            put("tieBreak", rules.menfi.tieBreak)
+            put("tieExtraHands", rules.menfi.tieExtraHands)
+            put("extraHands", rules.menfi.extraHands)
         })
         put("hezar", JSONObject().apply {
             put("target", rules.hezar.target)
@@ -389,7 +479,10 @@ object GameCodec {
                 // Games saved before the scoring table existed keep their original scoring.
                 scoring = m.optInt("scoring", MenfiScoring.LEGACY),
                 success = MenfiScoring.normalize(m.optJSONArray("success")?.let(::intList), MenfiScoring.defaultSuccess),
-                failure = MenfiScoring.normalize(m.optJSONArray("failure")?.let(::intList), MenfiScoring.defaultFailure)
+                failure = MenfiScoring.normalize(m.optJSONArray("failure")?.let(::intList), MenfiScoring.defaultFailure),
+                tieBreak = m.optBoolean("tieBreak", d.menfi.tieBreak),
+                tieExtraHands = m.optInt("tieExtraHands", d.menfi.tieExtraHands),
+                extraHands = m.optInt("extraHands", 0)
             ),
             hezar = HezarRules(
                 target = h.optInt("target", d.hezar.target),
@@ -463,6 +556,8 @@ object GameCodec {
             put("highWins", s.menfi.highWins)
             put("success", ints(s.menfi.success))
             put("failure", ints(s.menfi.failure))
+            put("tieBreak", s.menfi.tieBreak)
+            put("tieExtraHands", s.menfi.tieExtraHands)
         })
         put("hezar", JSONObject().apply {
             put("target", s.hezar.target)
@@ -483,6 +578,9 @@ object GameCodec {
             put("nextPacket", s.deck.nextPacket)
             put("shortAllowance", s.deck.shortAllowance)
             put("doloCards", s.deck.doloCards)
+            put("autoHand", s.deck.autoHand)
+            put("customTotalEnabled", s.deck.customTotalEnabled)
+            put("customTotal", s.deck.customTotal)
         })
         put("league", encodeLeagueConfig(s.league))
     }
@@ -606,7 +704,9 @@ object GameCodec {
                 hidden = m.optBoolean("hidden", d.menfi.hidden),
                 highWins = m.optBoolean("highWins", d.menfi.highWins),
                 success = MenfiScoring.normalize(m.optJSONArray("success")?.let(::intList), MenfiScoring.defaultSuccess),
-                failure = MenfiScoring.normalize(m.optJSONArray("failure")?.let(::intList), MenfiScoring.defaultFailure)
+                failure = MenfiScoring.normalize(m.optJSONArray("failure")?.let(::intList), MenfiScoring.defaultFailure),
+                tieBreak = m.optBoolean("tieBreak", d.menfi.tieBreak),
+                tieExtraHands = m.optInt("tieExtraHands", d.menfi.tieExtraHands)
             ),
             hezar = HezarSettings(
                 target = h.optInt("target", d.hezar.target),
@@ -629,7 +729,10 @@ object GameCodec {
                     firstPacket = k.optInt("firstPacket", d.deck.firstPacket),
                     nextPacket = k.optInt("nextPacket", d.deck.nextPacket),
                     shortAllowance = k.optInt("shortAllowance", d.deck.shortAllowance),
-                    doloCards = k.optInt("doloCards", d.deck.doloCards)
+                    doloCards = k.optInt("doloCards", d.deck.doloCards),
+                    autoHand = k.optBoolean("autoHand", d.deck.autoHand),
+                    customTotalEnabled = k.optBoolean("customTotalEnabled", d.deck.customTotalEnabled),
+                    customTotal = k.optInt("customTotal", d.deck.customTotal)
                 )
             },
             league = decodeLeagueConfig(o.optJSONObject("league"))

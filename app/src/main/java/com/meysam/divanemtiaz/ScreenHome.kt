@@ -7,7 +7,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 
-const val APP_VERSION_LABEL = "نسخهٔ ۴.۰.۰"
+const val APP_VERSION_LABEL = "نسخهٔ ۴.۱.۰"
 
 class SplashScreen(host: MainActivity) : Screen(host) {
     override fun build(): View = FrameLayout(host).apply {
@@ -66,7 +66,13 @@ class HomeScreen(host: MainActivity) : Screen(host) {
             tile(RoyalIcon.PLAYERS, "بازیکنان", "تیم‌ها و نشان‌ها") { host.push(PlayersScreen(host)) },
             tile(RoyalIcon.CHART, "ماشین‌حساب ورق", "پخش و ورق اضافه") { host.push(DeckCalcScreen(host)) },
             tile(RoyalIcon.RULES, "قوانین", "شرح هر بازی") { host.push(RulesScreen(host, null)) },
-            tile(RoyalIcon.SETTINGS, "تنظیمات", "همهٔ قوانین") { host.push(SettingsScreen(host)) }
+            tile(RoyalIcon.SETTINGS, "تنظیمات", "همهٔ قوانین") { host.push(SettingsScreen(host)) },
+            tile(RoyalIcon.CROWN, "رنک‌بندی", "رتبه، کارنامه و رکورد") { host.push(RankingScreen(host)) },
+            tile(RoyalIcon.SAVE, "پشتیبان", "ذخیره و بازگردانی") { host.push(BackupScreen(host)) },
+            tile(RoyalIcon.SHARE, "اشتراک", "تصویر آخرین بازی") {
+                val last = host.repo.sessions().firstOrNull()
+                if (last == null) kit.toast("هنوز بازی‌ای ثبت نشده است") else shareSession(last)
+            }
         ), 8))
         column.addView(kit.gap(16))
         column.addView(kit.text("$APP_VERSION_LABEL  •  آفلاین  •  بدون تبلیغ", TextStyle.CAPTION, Royal.dim, Gravity.CENTER))

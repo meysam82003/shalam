@@ -42,7 +42,10 @@ class ResultScreen(host: MainActivity, private val session: GameSession) : Scree
                     layoutParams = kit.spaced(10)
                     session.sides.forEachIndexed { i, side ->
                         if (i > 0) addView(kit.hgap(10))
-                        addView(kit.weight(sideScoreCard(side, kit.signed(totals[i]), null, winners.singleOrNull() == i, null)))
+                        addView(kit.weight(sideScoreCard(side, kit.signed(totals[i]), null, winners.singleOrNull() == i, null).apply {
+                            isClickable = true
+                            setOnClickListener { kit.tap(it); host.push(ProfileScreen(host, side.name, true)) }
+                        }))
                     }
                 })
             } else {
@@ -57,6 +60,8 @@ class ResultScreen(host: MainActivity, private val session: GameSession) : Scree
                         addView(kit.hgap(8))
                         addView(kit.weight(kit.text(session.sides[i].name, TextStyle.BODY_BOLD, maxLines = 1)))
                         addView(kit.text(kit.signed(totals[i]), TextStyle.HEADING, Royal.goldLight))
+                        isClickable = true
+                        setOnClickListener { kit.tap(it); host.push(ProfileScreen(host, session.sides[i].name, false)) }
                     })
                 }
             }
@@ -74,8 +79,19 @@ class ResultScreen(host: MainActivity, private val session: GameSession) : Scree
                     })
                 }
             })
+            if (session.rounds.any { it.kind != RoundKind.DOLO_ELIM }) {
+                addView(kit.section("نمودار بازی", RoyalIcon.CHART))
+                addView(kit.panel(PanelStyle.FLAT, 10).apply {
+                    layoutParams = kit.spaced(8)
+                    addView(gameChart(session), kit.fill())
+                })
+            }
+            addView(kit.grid(2, listOf(
+                kit.button("اشتراک تصویر نتیجه", ButtonKind.GHOST, RoyalIcon.SHARE, 42) { shareSession(session) },
+                kit.button("کارنامه و رتبه‌ها", ButtonKind.GHOST, RoyalIcon.TROPHY, 42) { host.push(RankingScreen(host)) }
+            ), 8), kit.spaced(8))
             if (session.game == GameType.SHALAM) {
-                addView(kit.button("آمار کامل بازی", ButtonKind.GHOST, RoyalIcon.CHART, 46) { shalamStatsDialog(session) }, kit.spaced(10))
+                addView(kit.button("آمار کامل بازی", ButtonKind.GHOST, RoyalIcon.CHART, 42) { shalamStatsDialog(session) }, kit.spaced(10))
             }
             addView(kit.section("دست‌ها", RoyalIcon.HISTORY))
             session.rounds.forEachIndexed { index, round ->
@@ -96,7 +112,11 @@ class ResultScreen(host: MainActivity, private val session: GameSession) : Scree
         GameType.MENFI -> {
             val r = session.rules.menfi
             val basis = if (r.highWins) "بیشترین جمع" else "کمترین جمع"
-            if (GameEngine.playedHands(session) >= r.hands) "پایان ${kit.n(r.hands)} دست • برنده با $basis" else "پایان با تأیید داور • برنده با $basis"
+            when {
+                GameEngine.winners(session).isEmpty() -> "مساوی با تأیید داور"
+                GameEngine.playedHands(session) >= r.totalHands -> "پایان ${menfiHandsText(r)} دست • برنده با $basis"
+                else -> "پایان با تأیید داور • برنده با $basis"
+            }
         }
         GameType.HEZARTAII -> {
             val r = session.rules.hezar

@@ -72,6 +72,8 @@ abstract class BoardScreen(host: MainActivity, val session: GameSession) : Scree
         }
 
     protected fun commonMenu(): List<Pair<String, () -> Unit>> = listOf(
+        "نمودار بازی" to { gameChartDialog(session) },
+        "اشتراک تصویر وضعیت بازی" to { shareSession(session) },
         "ثبت تقلب / جریمه" to { penaltyDialog(session) { afterChange() } },
         "ویرایش جمع امتیازها" to { adjustTotalsDialog(session) { afterChange() } },
         "ویرایش نام و نشان‌ها" to { editSidesDialog(session) { host.refresh() } },
@@ -150,7 +152,7 @@ class ShalamBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(
             session.rounds.indices.reversed().forEach { index ->
                 val round = session.rounds[index]
                 addView(roundRow(index, session.sides.indices.map { kit.signed(round.score(it)) }, session.sides.indices.map { scoreColor(round.score(it)) }, describe(round)) {
-                    roundActions("دست ${kit.n(index + 1)}", editAction(index)) {
+                    roundActions("دست ${kit.n(index + 1)}", editAction(index), share = { shareRound(session, index) }) {
                         session.rounds.removeAt(index)
                         afterChange()
                     }

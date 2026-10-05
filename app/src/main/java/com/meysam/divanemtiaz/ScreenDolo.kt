@@ -130,7 +130,7 @@ class DoloBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(ho
                             { host.push(DoloHandScreen(host, session, index)) }
                         } else {
                             { editScoresDialog(index) }
-                        }) {
+                        }, share = { shareRound(session, index) }) {
                             session.rounds.removeAt(index)
                             afterChange()
                         }

@@ -205,8 +205,14 @@ data class MenfiRules(
     val highWins: Boolean = true,
     val scoring: Int = MenfiScoring.TABLE,
     val success: List<Int> = MenfiScoring.defaultSuccess,
-    val failure: List<Int> = MenfiScoring.defaultFailure
-)
+    val failure: List<Int> = MenfiScoring.defaultFailure,
+    val tieBreak: Boolean = true,
+    val tieExtraHands: Int = 2,
+    val extraHands: Int = 0
+) {
+    /** Hands of this game including extra hands added after a tie. */
+    val totalHands: Int get() = hands + extraHands
+}
 
 object MenfiScoring {
     const val LEGACY = 1
@@ -270,8 +276,13 @@ data class DeckSettings(
     val firstPacket: Int = 6,
     val nextPacket: Int = 4,
     val shortAllowance: Int = 6,
-    val doloCards: Int = 52
-)
+    val doloCards: Int = 52,
+    val autoHand: Boolean = true,
+    val customTotalEnabled: Boolean = false,
+    val customTotal: Int = 80
+) {
+    fun totalCards(): Int = if (customTotalEnabled) customTotal.coerceAtLeast(0) else decks.coerceAtLeast(0) * 52 + jokers.coerceAtLeast(0)
+}
 
 object LeagueFormat {
     const val KNOCKOUT = 1
@@ -338,9 +349,14 @@ data class MenfiSettings(
     val hidden: Boolean = true,
     val highWins: Boolean = true,
     val success: List<Int> = MenfiScoring.defaultSuccess,
-    val failure: List<Int> = MenfiScoring.defaultFailure
+    val failure: List<Int> = MenfiScoring.defaultFailure,
+    val tieBreak: Boolean = true,
+    val tieExtraHands: Int = 2
 ) {
-    fun rules(): MenfiRules = MenfiRules(hands = hands, hidden = hidden, highWins = highWins, scoring = MenfiScoring.TABLE, success = success, failure = failure)
+    fun rules(): MenfiRules = MenfiRules(
+        hands = hands, hidden = hidden, highWins = highWins, scoring = MenfiScoring.TABLE,
+        success = success, failure = failure, tieBreak = tieBreak, tieExtraHands = tieExtraHands
+    )
 }
 
 data class HezarSettings(

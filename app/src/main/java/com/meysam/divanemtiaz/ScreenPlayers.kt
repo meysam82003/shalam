@@ -38,6 +38,10 @@ class PlayersScreen(host: MainActivity) : Screen(host) {
                         addView(kit.text(entry.name, TextStyle.BODY_BOLD, Royal.goldLight, maxLines = 1))
                         addView(kit.text("${kit.n(related.size)} بازی  •  ${kit.n(wins)} برد", TextStyle.CAPTION, Royal.muted))
                     }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                    isClickable = true
+                    setOnClickListener { kit.tap(it); host.push(ProfileScreen(host, entry.name, entry.isTeam)) }
+                    addView(kit.iconButton(RoyalIcon.CHART, "کارنامهٔ ${entry.name}", ButtonKind.CHIP, 38) { host.push(ProfileScreen(host, entry.name, entry.isTeam)) })
+                    addView(kit.hgap(6))
                     addView(kit.iconButton(RoyalIcon.EDIT, "ویرایش ${entry.name}", ButtonKind.CHIP, 38) { edit(entry) })
                     addView(kit.hgap(6))
                     addView(kit.iconButton(RoyalIcon.TRASH, "حذف ${entry.name}", ButtonKind.CHIP, 38) {

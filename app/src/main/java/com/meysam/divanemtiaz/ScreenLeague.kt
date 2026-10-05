@@ -264,9 +264,13 @@ class LeagueScreen(host: MainActivity, private val leagueId: Long) : Screen(host
                 return@apply
             }
             addView(kit.horizontal(Gravity.CENTER).apply {
-                addView(kit.weight(kit.text(teamName(league, st.teamA, match.feederA), TextStyle.BODY_BOLD, if (st.winner != null && st.winner == st.teamA) Royal.goldLight else Royal.ivory, Gravity.CENTER, 2)))
+                addView(kit.weight(kit.text(teamName(league, st.teamA, match.feederA), TextStyle.BODY_BOLD, if (st.winner != null && st.winner == st.teamA) Royal.goldLight else Royal.ivory, Gravity.CENTER, 2).apply {
+                    st.teamA?.let { t -> setOnClickListener { kit.tap(it); host.push(ProfileScreen(host, league.teams[t].name, true)) } }
+                }))
                 addView(kit.text("${kit.n(st.winsA)}  –  ${kit.n(st.winsB)}", TextStyle.HEADING, Royal.goldLight, Gravity.CENTER))
-                addView(kit.weight(kit.text(teamName(league, st.teamB, match.feederB), TextStyle.BODY_BOLD, if (st.winner != null && st.winner == st.teamB) Royal.goldLight else Royal.ivory, Gravity.CENTER, 2)))
+                addView(kit.weight(kit.text(teamName(league, st.teamB, match.feederB), TextStyle.BODY_BOLD, if (st.winner != null && st.winner == st.teamB) Royal.goldLight else Royal.ivory, Gravity.CENTER, 2).apply {
+                    st.teamB?.let { t -> setOnClickListener { kit.tap(it); host.push(ProfileScreen(host, league.teams[t].name, true)) } }
+                }))
             })
             if (st.draws > 0) addView(kit.text("${kit.n(st.draws)} بازی مساوی" + if (league.format == LeagueFormat.KNOCKOUT || match.isFinal) " (حساب نمی‌شود و تکرار می‌شود)" else "", TextStyle.CAPTION, Royal.muted, Gravity.CENTER))
             val games = match.games.mapNotNull { id -> lookup(id) }
@@ -313,6 +317,36 @@ class LeagueScreen(host: MainActivity, private val leagueId: Long) : Screen(host
         host.push(host.boardFor(session))
     }
 
+    private fun shareLeague(league: League) {
+        val champion = LeagueEngine.champion(league, lookup)
+        val card = kit.vertical().apply {
+            setPadding(kit.dp(16), kit.dp(16), kit.dp(16), kit.dp(14))
+            addView(kit.horizontal().apply {
+                addView(GameSealView(host, league.game), LinearLayout.LayoutParams(kit.dp(52), kit.dp(52)))
+                addView(kit.hgap(10))
+                addView(kit.vertical().apply {
+                    addView(kit.text(league.name, TextStyle.TITLE, Royal.goldLight))
+                    addView(kit.text("${league.game.title} • ${formatTitle(league.format)} • ${kit.n(league.teams.size)} تیم", TextStyle.CAPTION, Royal.muted))
+                }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            })
+            addView(kit.divider())
+            if (champion != null) addView(kit.text("قهرمان: ${league.teams[champion].name}", TextStyle.HEADING, Royal.turquoiseLight, Gravity.CENTER), kit.spaced(8))
+            if (league.format == LeagueFormat.ROUND_ROBIN) table(this, league)
+            LeagueEngine.stages(league).reversed().forEach { stage ->
+                addView(kit.text(LeagueEngine.stageTitle(league, stage), TextStyle.BODY_BOLD, Royal.gold), kit.spaced(4))
+                league.matches.filter { it.stage == stage }.forEach { m ->
+                    val st = LeagueEngine.state(league, m, lookup)
+                    val text = if (m.isBye) "${teamName(league, st.teamA, m.feederA)}: استراحت"
+                    else "${teamName(league, st.teamA, m.feederA)}  ${kit.n(st.winsA)} – ${kit.n(st.winsB)}  ${teamName(league, st.teamB, m.feederB)}"
+                    addView(kit.text(text, TextStyle.LABEL, if (st.decided) Royal.ivory else Royal.muted, Gravity.CENTER))
+                }
+            }
+            addView(kit.gap(8))
+            addView(kit.text("دیوان امتیاز", TextStyle.CAPTION, Royal.dim, Gravity.CENTER))
+        }
+        host.shareImage(card, "لیگ ${league.name} در دیوان امتیاز")
+    }
+
     private fun menu(league: League) {
         lateinit var dialog: android.app.Dialog
         val list = kit.vertical().apply {
@@ -327,6 +361,14 @@ class LeagueScreen(host: MainActivity, private val leagueId: Long) : Screen(host
             addView(kit.button("قوانین بازی‌های این لیگ", ButtonKind.SECONDARY, height = 44) {
                 dialog.dismiss()
                 host.push(RulesScreen(host, GameSession(0L, league.game, league.teams.take(2), rules = league.rules)))
+            }, kit.spaced(8))
+            addView(kit.button("اشتراک تصویر لیگ", ButtonKind.SECONDARY, height = 44) {
+                dialog.dismiss()
+                shareLeague(league)
+            }, kit.spaced(8))
+            addView(kit.button("رنک‌بندی و کارنامهٔ تیم‌ها", ButtonKind.SECONDARY, height = 44) {
+                dialog.dismiss()
+                host.push(RankingScreen(host))
             }, kit.spaced(8))
             addView(kit.button("حذف لیگ", ButtonKind.DANGER, height = 44) {
                 dialog.dismiss()

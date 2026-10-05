@@ -33,8 +33,9 @@ class MenfiBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(h
             subtitle = sessionSubtitle(session),
             actions = actions,
             bottom = kit.horizontal().apply {
-                addView(kit.weight(kit.button("ثبت دست ${kit.n(played + 1)}", ButtonKind.PRIMARY, RoyalIcon.PLUS) {
-                    host.push(MenfiHandScreen(host, session, null))
+                val tied = MenfiEngine.tiedAtEnd(played, totals, rules)
+                addView(kit.weight(kit.button(if (tied) "تساوی: انتخاب دست اضافه" else "ثبت دست ${kit.n(played + 1)}", ButtonKind.PRIMARY, RoyalIcon.PLUS) {
+                    if (tied) menfiTieDialog(session) { afterChange() } else host.push(MenfiHandScreen(host, session, null))
                 }))
                 addView(kit.hgap(8))
                 addView(kit.iconButton(RoyalIcon.UNDO, "حذف دست آخر", ButtonKind.SECONDARY, 52) {
@@ -54,8 +55,18 @@ class MenfiBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(h
                     addView(kit.weight(sideScoreCard(side, total, if (hiddenNow) "جمع پنهان است" else null, leader == i, null)))
                 }
             })
-            addView(statusRow("دست ${kit.n(played)} از ${kit.n(rules.hands)}"))
-            addView(kit.progress(played.toFloat() / rules.hands.coerceAtLeast(1), Royal.turquoise, 8).apply {
+            addView(statusRow("دست ${kit.n(played)} از ${menfiHandsText(rules)}"))
+            if (MenfiEngine.tiedAtEnd(played, totals, rules)) {
+                addView(kit.panel(PanelStyle.RAISED, 12).apply {
+                    layoutParams = kit.spaced(8)
+                    gravity = Gravity.CENTER_HORIZONTAL
+                    addView(kit.text("بازی مساوی شد", TextStyle.HEADING, Royal.goldLight, Gravity.CENTER))
+                    addView(kit.text("جمع دو تیم برابر است؛ داور تعداد دست اضافه را انتخاب کند.", TextStyle.LABEL, Royal.ivory, Gravity.CENTER))
+                    addView(kit.gap(6))
+                    addView(kit.button("انتخاب دست اضافه", ButtonKind.PRIMARY, RoyalIcon.PLUS, 40) { menfiTieDialog(session) { afterChange() } })
+                })
+            }
+            addView(kit.progress(played.toFloat() / rules.totalHands.coerceAtLeast(1), Royal.turquoise, 8).apply {
                 layoutParams = kit.spaced(10).apply { height = kit.dp(8) }
             })
             addView(kit.text(if (rules.highWins) "برنده: بیشترین جمع امتیاز" else "برنده: کمترین جمع امتیاز", TextStyle.CAPTION, Royal.muted, Gravity.CENTER))
@@ -68,7 +79,7 @@ class MenfiBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(h
                 val scores = if (hiddenNow) session.sides.map { "•••" } else session.sides.indices.map { kit.signed(round.score(it)) }
                 val colors = if (hiddenNow) session.sides.map { Royal.dim } else session.sides.indices.map { scoreColor(round.score(it)) }
                 addView(roundRow(index, scores, colors, describe(round)) {
-                    roundActions("دست ${kit.n(index + 1)}", editAction(index)) {
+                    roundActions("دست ${kit.n(index + 1)}", editAction(index), share = { shareRound(session, index) }) {
                         session.rounds.removeAt(index)
                         afterChange()
                     }
@@ -121,7 +132,7 @@ class MenfiHandScreen(host: MainActivity, private val session: GameSession, priv
     override fun build(): View {
         val ready = numbers.all { it != null }
         return scaffold(
-            title = if (editing != null) "ویرایش دست ${kit.n(editIndex!! + 1)}" else "دست ${kit.n(GameEngine.playedHands(session) + 1)} از ${kit.n(rules.hands)}",
+            title = if (editing != null) "ویرایش دست ${kit.n(editIndex!! + 1)}" else "دست ${kit.n(GameEngine.playedHands(session) + 1)} از ${menfiHandsText(rules)}",
             subtitle = if (rules.hidden) "عددها پنهانی ثبت می‌شوند" else "ثبت عدد هر دو تیم",
             bottom = kit.button(if (editing != null) "ذخیرهٔ تغییرات" else "ثبت این دست", ButtonKind.PRIMARY, RoyalIcon.CHECK) { save() }
         ) {
@@ -232,7 +243,41 @@ class MenfiHandScreen(host: MainActivity, private val session: GameSession, priv
         val ended = SessionOps.commitAndCheck(host, session)
         host.pop()
         if (ended) host.replace(ResultScreen(host, session))
+        else if (MenfiEngine.tiedAtEnd(GameEngine.playedHands(session), GameEngine.totals(session), rules)) {
+            host.current?.let { board -> board.menfiTieDialog(session) { host.refresh() } }
+        }
     }
+}
+
+fun Screen.menfiHandsText(rules: MenfiRules): String =
+    if (rules.extraHands > 0) "${kit.n(rules.hands)} + ${kit.n(rules.extraHands)}" else kit.n(rules.hands)
+
+/**
+ * Last hand played and the totals are equal: the referee picks how many extra hands to play
+ * (the default comes from the rules), or ends the game as a draw.
+ */
+fun Screen.menfiTieDialog(session: GameSession, onDone: () -> Unit) {
+    val rules = session.rules.menfi
+    fun extend(n: Int) {
+        session.rules = session.rules.copy(menfi = rules.copy(extraHands = rules.extraHands + n.coerceIn(1, 40)))
+        SessionOps.commit(host, session)
+        kit.toast("${kit.n(n)} دست اضافه شد؛ بازی ${kit.n(session.rules.menfi.totalHands)} دستی شد")
+        onDone()
+    }
+    val options = (listOf(rules.tieExtraHands.coerceIn(1, 40)) + listOf(2, 3)).distinct()
+    val actions = options.map { n -> DialogAction("${kit.n(n)} دست اضافه", if (n == rules.tieExtraHands) ButtonKind.PRIMARY else ButtonKind.SECONDARY) { extend(n) } } +
+        listOf(
+            DialogAction("تعداد دیگر…") {
+                kit.numberPrompt("تعداد دست اضافه", rules.tieExtraHands, false, "از ${kit.n(1)} تا ${kit.n(40)}") { extend(it) }
+            },
+            DialogAction("پایان بازی با تساوی", ButtonKind.GHOST) {
+                session.finished = true
+                session.endedAt = System.currentTimeMillis()
+                SessionOps.commit(host, session)
+                host.replace(ResultScreen(host, session))
+            }
+        )
+    kit.dialog("بازی مساوی شد", "پس از ${kit.n(GameEngine.playedHands(session))} دست جمع دو تیم برابر است. چند دست دیگر بازی شود؟", null, actions).show()
 }
 
 class HezarBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(host, session) {
@@ -295,7 +340,7 @@ class HezarBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(h
                             { host.push(HezarRoundScreen(host, session, index)) }
                         } else {
                             { editScoresDialog(index) }
-                        }) {
+                        }, share = { shareRound(session, index) }) {
                             session.rounds.removeAt(index)
                             afterChange()
                         }
