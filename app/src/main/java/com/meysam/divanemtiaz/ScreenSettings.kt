@@ -39,7 +39,7 @@ class SettingsScreen(host: MainActivity, private var tab: Int = TAB_GENERAL) : S
                 val d = settings.deck
                 addView(kit.stepperRow("تعداد دستهٔ ورق", null, d.decks, 1, 40, 1) { v -> host.updateSettings { it.copy(deck = it.deck.copy(decks = v)) } })
                 addView(kit.stepperRow("تعداد کل جوکرها", null, d.jokers, 0, 80, 1) { v -> host.updateSettings { it.copy(deck = it.deck.copy(jokers = v)) } })
-                addView(kit.stepperRow("ورق هر نفر", null, d.handSize, 1, 60, 1) { v -> host.updateSettings { it.copy(deck = it.deck.copy(handSize = v)) } })
+                addView(kit.stepperRow("حداکثر ورق هر نفر", "دست کامل هزارتایی؛ در ماشین‌حساب اگر ورق کم باشد، برنامه خودش کمتر تعیین می‌کند", d.handSize, 1, 60, 1) { v -> host.updateSettings { it.copy(deck = it.deck.copy(handSize = v)) } })
                 addView(kit.stepperRow("بستهٔ اول پخش", null, d.firstPacket, 1, 20, 1) { v -> host.updateSettings { it.copy(deck = it.deck.copy(firstPacket = v)) } })
                 addView(kit.stepperRow("بسته‌های بعدی", null, d.nextPacket, 1, 20, 1) { v -> host.updateSettings { it.copy(deck = it.deck.copy(nextPacket = v)) } })
                 addView(kit.stepperRow("کمبود مجاز (برداشتن از زیر دسته)", "اگر تا این تعداد کم بیاید، همین تعداد کارت از زیر برداشته و بُر زده می‌شود", d.shortAllowance, 0, 30, 1) { v -> host.updateSettings { it.copy(deck = it.deck.copy(shortAllowance = v)) } })

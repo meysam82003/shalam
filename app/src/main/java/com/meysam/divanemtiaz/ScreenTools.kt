@@ -30,11 +30,10 @@ class DeckCalcScreen(host: MainActivity, initialGame: GameType = GameType.HEZART
             parent.addView(kit.stepperRow("تعداد دستهٔ ورق", "هر دسته ${kit.n(52)} برگ", deck.decks, 1, 40, 1) { v -> save { it.copy(decks = v) } })
             parent.addView(kit.stepperRow("تعداد کل جوکرها", null, deck.jokers, 0, 80, 1) { v -> save { it.copy(jokers = v) } })
         }
-        parent.addView(kit.switchRow("ورق هر نفر و پخش را خودم تعیین می‌کنم", "اگر خاموش باشد، برنامه تعداد ورق هر نفر و دورهای پخش را حساب می‌کند", !deck.autoHand) { v ->
+        parent.addView(kit.switchRow("ورق هر نفر و پخش را خودم تعیین می‌کنم", "اگر خاموش باشد، برنامه خودش از روی تعداد نفرات و کل ورق‌ها، ورق هر نفر و دورهای پخش را تعیین می‌کند", !deck.autoHand) { v ->
             save { it.copy(autoHand = !v) }
         })
         if (deck.autoHand) {
-            parent.addView(kit.stepperRow("ورق دلخواه هر نفر", "اگر ورق کافی نباشد، کمتر پیشنهاد می‌شود", deck.handSize, 1, 60, 1) { v -> save { it.copy(handSize = v) } })
             autoResult(parent, DeckCalc.hezarAuto(hezarPlayers, deck))
         } else {
             parent.addView(kit.stepperRow("ورق هر نفر", null, deck.handSize, 1, 60, 1) { v -> save { it.copy(handSize = v) } })
@@ -81,9 +80,9 @@ class DeckCalcScreen(host: MainActivity, initialGame: GameType = GameType.HEZART
             val message = when (d.mode) {
                 DealMode.FITS -> "ورق کافی است. " + d.packets.mapIndexed { i, p -> "دور ${ordinal(i)} ${kit.n(p)} برگ" }.joinToString("، ") + " به هر نفر بدهید."
                 DealMode.BOTTOM -> "${kit.n(d.short)} برگ کم می‌آید: ${kit.n(d.takeFromBottom)} کارت از زیر دسته بردارید، خوب بُر بزنید و پخش را کامل کنید."
-                DealMode.REDUCED -> "برای ${kit.n(d.preferredHand)} برگ به هر نفر ورق کافی نیست؛ به هر نفر ${kit.n(d.handSize)} برگ بدهید. " +
-                    if (settings.deck.customTotalEnabled) "برای ${kit.n(d.preferredHand)} برگ دست‌کم ${kit.n(d.cardsNeeded)} برگ لازم است."
-                    else "برای ${kit.n(d.preferredHand)} برگ به هر نفر ${kit.n(d.decksNeeded)} دسته ورق لازم است."
+                DealMode.REDUCED -> "با این تعداد ورق به هر نفر ${kit.n(d.handSize)} برگ بدهید. " +
+                    if (settings.deck.customTotalEnabled) "برای دست کامل ${kit.n(d.preferredHand)} برگی دست‌کم ${kit.n(d.cardsNeeded)} برگ لازم است."
+                    else "برای دست کامل ${kit.n(d.preferredHand)} برگی ${kit.n(d.decksNeeded)} دسته ورق لازم است."
             }
             addView(kit.text(message, TextStyle.BODY_BOLD, if (d.mode == DealMode.FITS) Royal.turquoiseLight else Royal.ivory, Gravity.CENTER))
         })
