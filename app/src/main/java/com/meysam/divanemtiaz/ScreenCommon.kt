@@ -133,23 +133,23 @@ fun Screen.sideScoreCard(
     accent: Int = Royal.gold,
     onAvatar: (() -> Unit)? = null
 ): View = kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
-    background = PanelDrawable(kit.density, if (leader) PanelStyle.RAISED else PanelStyle.NORMAL, 20f)
-    setPadding(kit.dp(10), kit.dp(12), kit.dp(10), kit.dp(14))
+    background = PanelDrawable(kit.density, if (leader) PanelStyle.RAISED else PanelStyle.NORMAL, 18f)
+    setPadding(kit.dp(8), kit.dp(8), kit.dp(8), kit.dp(11))
     addView(FrameLayout(host).apply {
-        addView(kit.avatar(side.avatar, 64).apply {
-            layoutParams = FrameLayout.LayoutParams(kit.dp(64), kit.dp(64), Gravity.CENTER)
+        addView(kit.avatar(side.avatar, 50).apply {
+            layoutParams = FrameLayout.LayoutParams(kit.dp(50), kit.dp(50), Gravity.CENTER)
             if (onAvatar != null) setOnClickListener { kit.tap(it); onAvatar() }
         })
         if (leader) {
-            addView(IconView(host, RoyalIcon.CROWN, Royal.goldLight), FrameLayout.LayoutParams(kit.dp(22), kit.dp(22), Gravity.TOP or Gravity.CENTER_HORIZONTAL))
+            addView(IconView(host, RoyalIcon.CROWN, Royal.goldLight), FrameLayout.LayoutParams(kit.dp(18), kit.dp(18), Gravity.TOP or Gravity.CENTER_HORIZONTAL))
         }
-    }, LinearLayout.LayoutParams(kit.dp(76), kit.dp(76)))
+    }, LinearLayout.LayoutParams(kit.dp(60), kit.dp(60)))
     addView(kit.text(side.name, TextStyle.BODY_BOLD, Royal.ivory, Gravity.CENTER, 1))
     addView(kit.text(total, TextStyle.NUMBER_XL, accent, Gravity.CENTER, 1))
     if (caption != null) addView(kit.text(caption, TextStyle.CAPTION, Royal.muted, Gravity.CENTER, 2))
     if (progress != null) {
-        addView(kit.gap(6))
-        addView(kit.progress(progress, if (leader) Royal.turquoise else Royal.gold, 7))
+        addView(kit.gap(4))
+        addView(kit.progress(progress, if (leader) Royal.turquoise else Royal.gold, 6))
     }
 }
 
@@ -162,13 +162,13 @@ fun Screen.roundRow(
     onClick: (() -> Unit)?
 ): View = kit.horizontal().apply {
     background = PanelDrawable(kit.density, PanelStyle.FLAT, 14f)
-    setPadding(kit.dp(10), kit.dp(9), kit.dp(10), kit.dp(12))
-    layoutParams = kit.spaced(6)
+    setPadding(kit.dp(9), kit.dp(7), kit.dp(9), kit.dp(10))
+    layoutParams = kit.spaced(5)
     addView(kit.text(kit.n(index + 1), TextStyle.LABEL_BOLD, Royal.night, Gravity.CENTER, 1).apply {
         background = ButtonDrawable(kit.density, ButtonKind.CHIP_GOLD, 10f)
         setPadding(0, 0, 0, kit.dp(2))
-    }, LinearLayout.LayoutParams(kit.dp(30), kit.dp(30)))
-    addView(kit.hgap(10))
+    }, LinearLayout.LayoutParams(kit.dp(28), kit.dp(28)))
+    addView(kit.hgap(8))
     addView(kit.vertical().apply {
         addView(kit.horizontal().apply {
             scores.forEachIndexed { i, s ->
@@ -219,8 +219,13 @@ fun Screen.sessionSubtitle(session: GameSession): String {
         }
         GameType.MENFI -> parts += "${kit.n(session.rules.menfi.hands)} دست"
         GameType.HEZARTAII -> {
+            parts += "${kit.n(session.sides.size)} بازیکن"
             parts += "تا ${kit.n(session.rules.hezar.target)}"
             if (session.rules.hezar.rounds > 0) parts += "${kit.n(session.rules.hezar.rounds)} دور"
+        }
+        GameType.DOLO -> {
+            val st = DoloEngine.state(session)
+            parts += "${kit.n(st.active.size)} از ${kit.n(session.sides.size)} بازیکن"
         }
     }
     if (session.label.isNotBlank()) parts += session.label
@@ -345,3 +350,60 @@ fun Screen.adjustTotalsDialog(session: GameSession, onSaved: () -> Unit) {
 
 fun Screen.timerText(session: GameSession, extraMs: Long = 0L): String =
     PersianText.duration(session.elapsedMs + extraMs, settings.general.persianDigits)
+
+/**
+ * Referee's manual entry: every side gets a value and an explicit + / − sign.
+ * Used beside the outcome buttons of every game.
+ */
+fun Screen.manualScoresDialog(
+    title: String,
+    names: List<String>,
+    initial: List<Int>,
+    note: String? = null,
+    onSave: (List<Int>) -> Unit
+) {
+    val signs = initial.map { it >= 0 }.toMutableList()
+    val fields = initial.mapIndexed { i, v -> kit.field(names[i], if (v == 0) "" else kotlin.math.abs(v).toString(), numeric = true) }
+    val signViews = mutableListOf<LinearLayout>()
+    fun drawSign(i: Int) {
+        val box = signViews[i]
+        box.removeAllViews()
+        box.addView(kit.chip("+", signs[i], ButtonKind.CHIP_SELECTED) { signs[i] = true; drawSign(i) }, LinearLayout.LayoutParams(kit.dp(40), kit.dp(40)))
+        box.addView(kit.hgap(4))
+        box.addView(kit.chip("−", !signs[i], ButtonKind.DANGER) { signs[i] = false; drawSign(i) }, LinearLayout.LayoutParams(kit.dp(40), kit.dp(40)))
+    }
+    val body = kit.vertical().apply {
+        if (note != null) addView(kit.text(note, TextStyle.CAPTION, Royal.muted, Gravity.CENTER), kit.spaced(6))
+        names.forEachIndexed { i, name ->
+            addView(kit.horizontal().apply {
+                layoutParams = kit.spaced(6)
+                addView(kit.weight(kit.text(name, TextStyle.LABEL_BOLD, Royal.goldLight, maxLines = 1)))
+                val sign = kit.horizontal()
+                signViews += sign
+                addView(sign)
+                addView(kit.hgap(6))
+                addView(fields[i], LinearLayout.LayoutParams(kit.dp(92), ViewGroup.LayoutParams.WRAP_CONTENT))
+            })
+            drawSign(i)
+        }
+    }
+    kit.dialog(title, null, body, listOf(
+        DialogAction("ثبت", ButtonKind.PRIMARY) {
+            val values = fields.mapIndexed { i, f ->
+                val v = kotlin.math.abs(PersianText.parseInt(f.text.toString()) ?: 0)
+                if (signs[i]) v else -v
+            }
+            onSave(values)
+        },
+        DialogAction("انصراف")
+    )).show()
+}
+
+/** Adds a player to a running individual game; earlier rounds count as zero for them. */
+fun Screen.addPlayerDialog(session: GameSession, onSaved: () -> Unit) {
+    kit.textPrompt("افزودن بازیکن", "بازیکن ${kit.n(session.sides.size + 1)}") { name ->
+        session.sides += Side(name, (session.sides.size * 5) % Emblems.COUNT)
+        SessionOps.rosterAdd(host, listOf(session.sides.last()), false)
+        onSaved()
+    }
+}

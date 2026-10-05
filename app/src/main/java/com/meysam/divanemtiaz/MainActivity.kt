@@ -1,12 +1,14 @@
 package com.meysam.divanemtiaz
 
 import android.app.Activity
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowInsets
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -36,12 +38,12 @@ abstract class Screen(val host: MainActivity) {
     ): View {
         val root = kit.vertical().apply { layoutDirection = View.LAYOUT_DIRECTION_RTL }
         val bar = kit.horizontal().apply {
-            setPadding(kit.dp(12), kit.dp(10), kit.dp(12), kit.dp(6))
-            minimumHeight = kit.dp(62)
+            setPadding(kit.dp(12), kit.dp(6), kit.dp(12), kit.dp(5))
+            minimumHeight = kit.dp(50)
         }
         if (showBack) {
-            bar.addView(kit.iconButton(RoyalIcon.BACK, "بازگشت", ButtonKind.SECONDARY, 42) { host.onBackPressedCompat() })
-            bar.addView(kit.hgap(10))
+            bar.addView(kit.iconButton(RoyalIcon.BACK, "بازگشت", ButtonKind.SECONDARY, 38) { host.onBackPressedCompat() })
+            bar.addView(kit.hgap(8))
         }
         bar.addView(kit.vertical().apply {
             addView(kit.text(title, TextStyle.TITLE, Royal.goldLight, maxLines = 1))
@@ -59,7 +61,7 @@ abstract class Screen(val host: MainActivity) {
             )
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(1)))
         val column = kit.vertical().apply {
-            setPadding(kit.dp(16), kit.dp(12), kit.dp(16), kit.dp(28))
+            setPadding(kit.dp(14), kit.dp(10), kit.dp(14), kit.dp(20))
             layoutDirection = View.LAYOUT_DIRECTION_RTL
             content()
         }
@@ -74,7 +76,7 @@ abstract class Screen(val host: MainActivity) {
                     android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
                     intArrayOf(Royal.alpha(Royal.night, 0.2f), Royal.alpha(Royal.night, 0.92f))
                 )
-                setPadding(kit.dp(16), kit.dp(10), kit.dp(16), kit.dp(14))
+                setPadding(kit.dp(14), kit.dp(8), kit.dp(14), kit.dp(10))
                 addView(bottom, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
             })
         }
@@ -101,8 +103,6 @@ class MainActivity : Activity() {
         repo = GameStore.open(this)
         settings = repo.settings()
         kit = RoyalKit(this) { settings }
-        window.statusBarColor = Royal.night
-        window.navigationBarColor = Royal.night
         val root = FrameLayout(this).apply {
             background = BackdropDrawable(resources.displayMetrics.density)
             layoutDirection = View.LAYOUT_DIRECTION_RTL
@@ -110,6 +110,7 @@ class MainActivity : Activity() {
         container = FrameLayout(this)
         root.addView(container, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         setContentView(root)
+        fitSystemBars(root)
         applyWindowSettings()
         val restored = savedInstanceState?.getLong(STATE_SESSION, 0L)?.takeIf { it != 0L }?.let { repo.session(it) }
         if (restored != null) {
@@ -140,6 +141,34 @@ class MainActivity : Activity() {
         current?.onHide()
         resumed = false
         super.onPause()
+    }
+
+    /**
+     * Draws behind the status and navigation bars on every Android version (Android 15 forces this)
+     * and pads the content by the bars, display cutout and keyboard so nothing is hidden under them.
+     */
+    @Suppress("DEPRECATION")
+    private fun fitSystemBars(root: FrameLayout) {
+        window.statusBarColor = Royal.alpha(Royal.night, 0.55f)
+        window.navigationBarColor = Royal.alpha(Royal.night, 0.75f)
+        if (Build.VERSION.SDK_INT >= 30) {
+            window.setDecorFitsSystemWindows(false)
+        } else {
+            root.systemUiVisibility = View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+        }
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        root.setOnApplyWindowInsetsListener { _, insets ->
+            if (Build.VERSION.SDK_INT >= 30) {
+                val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+                val ime = insets.getInsets(WindowInsets.Type.ime())
+                container.setPadding(bars.left, bars.top, bars.right, maxOf(bars.bottom, ime.bottom))
+            } else {
+                container.setPadding(insets.systemWindowInsetLeft, insets.systemWindowInsetTop, insets.systemWindowInsetRight, insets.systemWindowInsetBottom)
+            }
+            insets
+        }
+        root.requestApplyInsets()
     }
 
     fun applyWindowSettings() {
@@ -214,6 +243,7 @@ class MainActivity : Activity() {
         GameType.SHALAM -> ShalamBoardScreen(this, session)
         GameType.MENFI -> MenfiBoardScreen(this, session)
         GameType.HEZARTAII -> HezarBoardScreen(this, session)
+        GameType.DOLO -> DoloBoardScreen(this, session)
     }
 
     /** Opens a stored game: unfinished games go to their board, finished ones to the result page. */

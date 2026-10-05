@@ -133,11 +133,39 @@ class ScoreEngineTest {
         assertEquals(2, GameEngine.shalamStats(session).hands)
     }
 
-    @Test fun menfiThreeAndTenExposeRequestedThreeResults() {
-        val results = MenfiEngine.outcomes(3, 10).map { it.teamAScore to it.teamBScore }
+    @Test fun menfiLegacyScoringIsKeptForOldGames() {
+        val legacy = MenfiRules(scoring = MenfiScoring.LEGACY)
+        val results = MenfiEngine.outcomes(3, 10, legacy).map { it.teamAScore to it.teamBScore }
         assertEquals(listOf(20 to 3, 20 to -3, -10 to 3), results)
-        val custom = MenfiEngine.outcomes(3, 3, MenfiRules(threeSuccess = 25, threeFailure = -15))
+        val custom = MenfiEngine.outcomes(3, 3, legacy.copy(threeSuccess = 25, threeFailure = -15))
         assertEquals(listOf(25 to 25, 25 to -15, -15 to 25), custom.map { it.teamAScore to it.teamBScore })
+    }
+
+    @Test fun menfiSixAndEightSumFourteenExactlyOneTeamMakesIt() {
+        val results = MenfiEngine.outcomes(6, 8)
+        assertEquals(listOf(MenfiEngine.A_ONLY, MenfiEngine.B_ONLY), results.map { it.index })
+        assertEquals(listOf(6 to -8, -6 to 8), results.map { it.teamAScore to it.teamBScore })
+    }
+
+    @Test fun menfiFiveAndTenSumFifteenCanBothFail() {
+        val results = MenfiEngine.outcomes(5, 10)
+        assertEquals(listOf(MenfiEngine.A_ONLY, MenfiEngine.B_ONLY, MenfiEngine.NONE), results.map { it.index })
+        assertEquals(listOf(5 to -10, -5 to 20, -5 to -10), results.map { it.teamAScore to it.teamBScore })
+    }
+
+    @Test fun menfiSumUpToThirteenAllowsBothToMakeIt() {
+        val results = MenfiEngine.outcomes(3, 10)
+        assertEquals(listOf(MenfiEngine.BOTH, MenfiEngine.A_ONLY, MenfiEngine.B_ONLY), results.map { it.index })
+        assertEquals(listOf(3 to 20, 3 to -10, -3 to 20), results.map { it.teamAScore to it.teamBScore })
+    }
+
+    @Test fun menfiScoreTableIsConfigurableAndManualEntryWins() {
+        val table = MenfiRules(success = MenfiScoring.defaultSuccess.toMutableList().also { it[11 - 3] = 30 }, failure = MenfiScoring.defaultFailure.toMutableList().also { it[11 - 3] = -15 })
+        assertEquals(30, MenfiEngine.successScore(11, table))
+        assertEquals(-15, MenfiEngine.failureScore(11, table))
+        assertEquals(12, MenfiEngine.successScore(12, table))
+        val manual = Round(RoundKind.MENFI_HAND, emptyList(), numbers = listOf(4, 9), outcome = MenfiEngine.MANUAL, raw = listOf(-7, 25))
+        assertEquals(listOf(-7, 25), MenfiEngine.scoreRound(manual, table))
     }
 
     @Test fun menfiWinnerAndHandLimitFollowSettings() {
@@ -147,7 +175,7 @@ class ScoreEngineTest {
         assertFalse(GameEngine.isComplete(session))
         session.rounds += Round(RoundKind.MENFI_HAND, emptyList(), numbers = listOf(5, 8), outcome = 0)
         GameEngine.recompute(session)
-        assertEquals(listOf(28, 2), GameEngine.totals(session))
+        assertEquals(listOf(8, -2), GameEngine.totals(session))
         assertTrue(GameEngine.isComplete(session))
         assertEquals(listOf(0), GameEngine.winners(session))
         session.rules = session.rules.copy(menfi = session.rules.menfi.copy(highWins = false))
@@ -161,8 +189,8 @@ class ScoreEngineTest {
         GameEngine.recompute(session)
         session.rounds[1] = session.rounds[1].copy(outcome = 1)
         GameEngine.recompute(session)
-        assertEquals(listOf(40, 0), GameEngine.totals(session))
-        assertEquals(listOf(0), GameEngine.winners(session))
+        assertEquals(listOf(6, 10), GameEngine.totals(session))
+        assertEquals(listOf(1), GameEngine.winners(session))
     }
 
     @Test fun hezartaiiZeroPenaltyRankingAndEnd() {

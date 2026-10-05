@@ -17,7 +17,11 @@ class ResultScreen(host: MainActivity, private val session: GameSession) : Scree
             title = "نتیجهٔ بازی ${session.game.title}",
             subtitle = sessionSubtitle(session),
             bottom = kit.vertical().apply {
-                addView(kit.button("بازی دوباره با همین ترکیب", ButtonKind.PRIMARY, RoyalIcon.PLAY) { rematch() }, kit.spaced(8))
+                if (session.leagueId != 0L && host.repo.league(session.leagueId) != null) {
+                    addView(kit.button("بازگشت به لیگ", ButtonKind.PRIMARY, RoyalIcon.TROPHY) { backToLeague() }, kit.spaced(8))
+                } else {
+                    addView(kit.button("بازی دوباره با همین ترکیب", ButtonKind.PRIMARY, RoyalIcon.PLAY) { rematch() }, kit.spaced(8))
+                }
                 addView(kit.horizontal().apply {
                     addView(kit.weight(kit.button("ادامهٔ بازی", ButtonKind.SECONDARY, RoyalIcon.UNDO, 48) { reopen() }))
                     addView(kit.hgap(8))
@@ -29,7 +33,7 @@ class ResultScreen(host: MainActivity, private val session: GameSession) : Scree
                 background = PanelDrawable(kit.density, PanelStyle.RAISED, 22f)
                 setPadding(kit.dp(14), kit.dp(16), kit.dp(14), kit.dp(18))
                 layoutParams = kit.spaced(10)
-                addView(TrophyView(host), LinearLayout.LayoutParams(kit.dp(124), kit.dp(124)))
+                addView(TrophyView(host), LinearLayout.LayoutParams(kit.dp(96), kit.dp(96)))
                 addView(kit.text(winnerText, TextStyle.TITLE, Royal.goldLight, Gravity.CENTER))
                 addView(kit.text(reason(totals), TextStyle.LABEL, Royal.muted, Gravity.CENTER))
             })
@@ -44,15 +48,15 @@ class ResultScreen(host: MainActivity, private val session: GameSession) : Scree
             } else {
                 GameEngine.ranking(session).forEachIndexed { place, i ->
                     addView(kit.horizontal().apply {
-                        background = PanelDrawable(kit.density, if (place == 0 && winners.isNotEmpty()) PanelStyle.RAISED else PanelStyle.NORMAL, 18f)
-                        setPadding(kit.dp(12), kit.dp(10), kit.dp(12), kit.dp(13))
-                        layoutParams = kit.spaced(8)
-                        addView(kit.text("${kit.n(place + 1)}.", TextStyle.HEADING, Royal.gold))
+                        background = PanelDrawable(kit.density, if (place == 0 && winners.isNotEmpty()) PanelStyle.RAISED else PanelStyle.NORMAL, 16f)
+                        setPadding(kit.dp(10), kit.dp(6), kit.dp(10), kit.dp(9))
+                        layoutParams = kit.spaced(5)
+                        addView(kit.text("${kit.n(place + 1)}.", TextStyle.BODY_BOLD, Royal.gold))
                         addView(kit.hgap(8))
-                        addView(kit.avatar(session.sides[i].avatar, 42))
-                        addView(kit.hgap(10))
-                        addView(kit.weight(kit.text(session.sides[i].name, TextStyle.BODY_BOLD)))
-                        addView(kit.text(kit.signed(totals[i]), TextStyle.NUMBER_L, Royal.goldLight))
+                        addView(kit.avatar(session.sides[i].avatar, 34))
+                        addView(kit.hgap(8))
+                        addView(kit.weight(kit.text(session.sides[i].name, TextStyle.BODY_BOLD, maxLines = 1)))
+                        addView(kit.text(kit.signed(totals[i]), TextStyle.HEADING, Royal.goldLight))
                     })
                 }
             }
@@ -102,6 +106,7 @@ class ResultScreen(host: MainActivity, private val session: GameSession) : Scree
                 else -> "پایان با تأیید داور"
             }
         }
+        GameType.DOLO -> if (DoloEngine.state(session).active.size == 1) "آخرین بازیکن باقی‌مانده" else "پایان با تأیید داور"
     }
 
     private fun reopen() {
@@ -109,6 +114,11 @@ class ResultScreen(host: MainActivity, private val session: GameSession) : Scree
         session.endedAt = null
         SessionOps.commit(host, session)
         host.replace(host.boardFor(session))
+    }
+
+    private fun backToLeague() {
+        val league = host.repo.league(session.leagueId) ?: return
+        host.resetTo(HomeScreen(host), LeagueListScreen(host), LeagueScreen(host, league.id))
     }
 
     private fun rematch() {
@@ -128,8 +138,26 @@ fun Screen.describeRound(session: GameSession, round: Round): String {
         RoundKind.SHALAM_SHELEM -> "حاکم: $team • شلم • ${if (round.taken == 0) "برد" else "باخت"}"
         RoundKind.SHALAM_DOUBLE_SHELEM -> "حاکم: $team • شلم دوبل • ${if (round.taken == 0) "برد" else "باخت"}"
         RoundKind.SHALAM_PASS -> "پاس"
-        RoundKind.MENFI_HAND -> "اعداد ${kit.n(round.numbers.getOrElse(0) { 0 })} و ${kit.n(round.numbers.getOrElse(1) { 0 })}"
+        RoundKind.MENFI_HAND -> listOfNotNull(
+            if (round.numbers.size == 2) "اعداد ${kit.n(round.numbers[0])} و ${kit.n(round.numbers[1])}" else null,
+            menfiOutcomeTitle(session, round.outcome).ifBlank { null }
+        ).joinToString(" • ")
         RoundKind.HEZAR_ROUND -> round.raw.mapIndexed { i, v -> "${session.sides.getOrNull(i)?.name ?: ""} ${kit.n(v)}" }.joinToString(" • ")
+        RoundKind.DOLO_HAND -> {
+            val parts = mutableListOf("حداقل ${kit.n(round.bid)}")
+            session.sides.getOrNull(round.contractTeam)?.let { parts += "حکم: ${it.name}" + if (round.suit != Suit.NONE) " (${Suit.title(round.suit)})" else "" }
+            if (round.outcome == MenfiEngine.MANUAL) parts += "ثبت دستی"
+            else {
+                val missed = session.sides.indices.filter { round.numbers.getOrElse(it) { -1 } >= 0 && round.raw.getOrElse(it) { 0 } != 1 }
+                parts += if (missed.isEmpty()) "همه گرفتند" else "نگرفتند: ${missed.joinToString("، ") { session.sides[it].name }}"
+            }
+            parts.joinToString(" • ")
+        }
+        RoundKind.DOLO_ELIM -> {
+            val out = round.raw.indices.filter { round.raw[it] == 1 }
+            if (out.isNotEmpty()) "حذف: ${out.joinToString("، ") { session.sides.getOrNull(it)?.name ?: "" }}"
+            else "${round.note.ifBlank { "ادامه" }} • ${kit.n(round.bid)} دست اضافه"
+        }
         else -> round.note
     }
 }
@@ -154,11 +182,11 @@ class HistoryScreen(host: MainActivity) : Screen(host) {
                 kit.chip("در جریان", status == 1) { status = 1; host.refresh() },
                 kit.chip("پایان‌یافته", status == 2) { status = 2; host.refresh() }
             ), 6), kit.spaced(6))
-            addView(kit.grid(4, listOf(
+            addView(kit.flow(listOf(
                 kit.chip("همهٔ بازی‌ها", gameFilter == null, ButtonKind.CHIP_GOLD) { gameFilter = null; host.refresh() }
             ) + GameType.values().map { g ->
                 kit.chip(g.title, gameFilter == g, ButtonKind.CHIP_GOLD) { gameFilter = g; host.refresh() }
-            }, 6), kit.spaced(10))
+            }.map { it.apply { setPadding(kit.dp(10), kit.dp(4), kit.dp(10), kit.dp(6)) } }, 6), kit.spaced(10))
             if (shown.isEmpty()) {
                 addView(emptyState(RoyalIcon.HISTORY, "بازی‌ای پیدا نشد", "پس از ثبت اولین دست، بازی اینجا ذخیره می‌شود."))
             }
@@ -180,11 +208,11 @@ class HistoryScreen(host: MainActivity) : Screen(host) {
         val hidden = session.game == GameType.MENFI && session.rules.menfi.hidden && !session.finished
         val winners = if (session.finished) GameEngine.winners(session) else emptyList()
         return kit.vertical().apply {
-            background = PanelDrawable(kit.density, PanelStyle.NORMAL, 18f)
-            setPadding(kit.dp(12), kit.dp(12), kit.dp(12), kit.dp(15))
-            layoutParams = kit.spaced(10)
+            background = PanelDrawable(kit.density, PanelStyle.NORMAL, 16f)
+            setPadding(kit.dp(10), kit.dp(9), kit.dp(10), kit.dp(12))
+            layoutParams = kit.spaced(8)
             addView(kit.horizontal().apply {
-                addView(GameSealView(host, session.game), LinearLayout.LayoutParams(kit.dp(42), kit.dp(42)))
+                addView(GameSealView(host, session.game), LinearLayout.LayoutParams(kit.dp(36), kit.dp(36)))
                 addView(kit.hgap(10))
                 addView(kit.vertical().apply {
                     addView(kit.horizontal().apply {
@@ -202,14 +230,17 @@ class HistoryScreen(host: MainActivity) : Screen(host) {
                 })
             })
             addView(kit.gap(8))
-            session.sides.forEachIndexed { i, side ->
+            val shownSides = if (session.game.isTeamGame) session.sides.indices.toList() else GameEngine.ranking(session).take(4)
+            shownSides.forEach { i ->
+                val side = session.sides[i]
                 addView(kit.horizontal().apply {
-                    addView(kit.avatar(side.avatar, 26))
+                    addView(kit.avatar(side.avatar, 24))
                     addView(kit.hgap(8))
                     addView(kit.weight(kit.text(side.name + if (i in winners) "  ♛" else "", TextStyle.LABEL_BOLD, if (i in winners) Royal.goldLight else Royal.ivory, maxLines = 1)))
                     addView(kit.text(if (hidden) "•••" else kit.signed(totals[i]), TextStyle.BODY_BOLD, if (hidden) Royal.dim else scoreColor(totals[i])))
                 })
             }
+            if (shownSides.size < session.sides.size) addView(kit.text("و ${kit.n(session.sides.size - shownSides.size)} بازیکن دیگر", TextStyle.CAPTION, Royal.dim))
             addView(kit.gap(4))
             addView(kit.text("${kit.n(GameEngine.playedHands(session))} دست  •  ${timerText(session)}  •  ${sessionSubtitle(session)}", TextStyle.CAPTION, Royal.dim, maxLines = 2))
             isClickable = true

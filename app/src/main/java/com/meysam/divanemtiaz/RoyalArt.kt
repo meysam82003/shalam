@@ -480,6 +480,7 @@ class GameSealView(context: Context, private val game: GameType?) : View(context
             GameType.SHALAM -> 0xFF1C4AA0.toInt()
             GameType.MENFI -> 0xFF9E2633.toInt()
             GameType.HEZARTAII -> 0xFF0F7F73.toInt()
+            GameType.DOLO -> 0xFF5B2C8C.toInt()
             null -> 0xFF23367A.toInt()
         }
         Emblems.drawMedallion(canvas, cx, cy, r, base, paint)
@@ -508,18 +509,24 @@ class GameSealView(context: Context, private val game: GameType?) : View(context
                 }
                 addPath(RoyalShapes.starPath(50f, 17f, 7f, 5, 0.45f))
             }
+            GameType.DOLO -> Path().apply {
+                addPath(SuitShapes.club(100f), Matrix().apply { setScale(0.5f, 0.5f); postTranslate(13f, 25f) })
+            }
             null -> RoyalShapes.star8Path(50f, 50f, 34f)
         }
         Emblems.drawRelief(canvas, path, cx, cy, r, paint)
-        if (game == GameType.HEZARTAII) {
+        if (game == GameType.HEZARTAII || game == GameType.DOLO) {
+            val label = if (game == GameType.DOLO) "۲" else "۱۰۰۰"
+            val x = if (game == GameType.DOLO) cx + r * 0.36f else cx
+            val y = if (game == GameType.DOLO) cy + r * 0.12f else cy + r * 0.16f
             paint.style = Paint.Style.FILL
             paint.textAlign = Paint.Align.CENTER
             paint.typeface = RoyalFonts.get(context, true)
-            paint.textSize = r * 0.42f
+            paint.textSize = r * if (game == GameType.DOLO) 0.62f else 0.42f
             paint.color = 0x99000000.toInt()
-            canvas.drawText("۱۰۰۰", cx, cy + r * 0.16f + r * 0.03f, paint)
+            canvas.drawText(label, x, y + r * 0.03f, paint)
             paint.shader = LinearGradient(0f, cy - r * 0.2f, 0f, cy + r * 0.25f, Royal.goldLight, Royal.goldDeep, Shader.TileMode.CLAMP)
-            canvas.drawText("۱۰۰۰", cx, cy + r * 0.16f, paint)
+            canvas.drawText(label, x, y, paint)
             paint.shader = null
         }
         Emblems.drawGloss(canvas, cx, cy, r * 0.83f, paint)

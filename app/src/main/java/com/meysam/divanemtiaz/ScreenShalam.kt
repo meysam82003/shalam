@@ -89,23 +89,13 @@ abstract class BoardScreen(host: MainActivity, val session: GameSession) : Scree
 
     protected fun editScoresDialog(index: Int) {
         val round = session.rounds[index]
-        val fields = session.sides.mapIndexed { i, s -> kit.field(s.name, round.score(i).toString(), numeric = true, signed = true) }
-        kit.dialog("ویرایش دست ${kit.n(index + 1)}", null, kit.vertical().apply {
-            session.sides.forEachIndexed { i, s ->
-                addView(kit.text(s.name, TextStyle.LABEL_BOLD, Royal.goldLight))
-                addView(fields[i], kit.spaced(8))
+        manualScoresDialog("ویرایش دست ${kit.n(index + 1)}", session.sides.map { it.name }, session.sides.indices.map { round.score(it) }) { values ->
+            session.rounds[index] = when (round.kind) {
+                RoundKind.PENALTY, RoundKind.ADJUST -> round.copy(raw = values, scores = values)
+                else -> round.copy(kind = RoundKind.FIXED, scores = values, note = round.note.ifBlank { "ویرایش‌شده" })
             }
-        }, listOf(
-            DialogAction("ذخیره", ButtonKind.PRIMARY) {
-                val values = fields.mapIndexed { i, f -> PersianText.parseInt(f.text.toString()) ?: round.score(i) }
-                session.rounds[index] = when (round.kind) {
-                    RoundKind.PENALTY, RoundKind.ADJUST -> round.copy(raw = values, scores = values)
-                    else -> round.copy(kind = RoundKind.FIXED, scores = values, note = round.note.ifBlank { "ویرایش‌شده" })
-                }
-                afterChange()
-            },
-            DialogAction("انصراف")
-        )).show()
+            afterChange()
+        }
     }
 }
 
@@ -137,11 +127,11 @@ class ShalamBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(
                 layoutParams = kit.spaced(8)
                 session.sides.forEachIndexed { i, side ->
                     if (i > 0) addView(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
-                        setPadding(0, kit.dp(34), 0, 0)
+                        setPadding(0, kit.dp(24), 0, 0)
                         addView(kit.text("اختلاف", TextStyle.CAPTION, Royal.dim, Gravity.CENTER, 1))
                         addView(kit.text(kit.n(abs(totals[0] - totals[1])), TextStyle.HEADING, Royal.goldLight, Gravity.CENTER, 1))
                         addView(kit.icon(RoyalIcon.STAR, Royal.alpha(Royal.gold, 0.7f), 14))
-                    }, LinearLayout.LayoutParams(kit.dp(64), ViewGroup.LayoutParams.WRAP_CONTENT))
+                    }, LinearLayout.LayoutParams(kit.dp(56), ViewGroup.LayoutParams.WRAP_CONTENT))
                     val fraction = if (rules.endPoint > 0) totals[i].toFloat() / rules.endPoint else null
                     addView(kit.weight(sideScoreCard(side, kit.signed(totals[i]), "پایان: ${kit.n(rules.endPoint)}", leader == i, fraction)))
                 }
@@ -290,8 +280,8 @@ class ShalamHandScreen(host: MainActivity, private val session: GameSession, pri
                 if (i > 0) addView(kit.hgap(10))
                 addView(kit.weight(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
                     background = PanelDrawable(kit.density, if (team == i) PanelStyle.SELECTED else PanelStyle.NORMAL, 18f)
-                    setPadding(kit.dp(8), kit.dp(12), kit.dp(8), kit.dp(15))
-                    addView(kit.avatar(side.avatar, 54))
+                    setPadding(kit.dp(8), kit.dp(8), kit.dp(8), kit.dp(11))
+                    addView(kit.avatar(side.avatar, 44))
                     addView(kit.text(side.name, TextStyle.BODY_BOLD, if (team == i) Royal.turquoiseLight else Royal.ivory, Gravity.CENTER, 1))
                     if (team == i) addView(kit.badge("حاکم", Royal.turquoise, true))
                     isClickable = true
@@ -322,10 +312,11 @@ class ShalamHandScreen(host: MainActivity, private val session: GameSession, pri
             }, 6), kit.spaced(8))
         }
         addView(kit.gap(6))
-        addView(kit.grid(3, listOf(
+        addView(kit.grid(4, listOf(
             kit.chip("شلم", kind == RoundKind.SHALAM_SHELEM, ButtonKind.CHIP_SELECTED) { kind = RoundKind.SHALAM_SHELEM; host.refresh() },
             kit.chip("شلم دوبل", kind == RoundKind.SHALAM_DOUBLE_SHELEM, ButtonKind.CHIP_SELECTED) { kind = RoundKind.SHALAM_DOUBLE_SHELEM; host.refresh() },
-            kit.chip("پاس", false) { recordPass() }
+            kit.chip("پاس", false) { recordPass() },
+            kit.chip("ثبت دستی", false) { recordManual() }
         ), 6))
         addView(kit.section("خال حکم (اختیاری)", RoyalIcon.SPADE))
         addView(kit.grid(5, (listOf(Suit.NONE) + Suit.all).map { s ->
@@ -358,6 +349,16 @@ class ShalamHandScreen(host: MainActivity, private val session: GameSession, pri
         }
         step = 2
         host.refresh()
+    }
+
+    /** Referee types both teams' points with + / − instead of the contract calculation. */
+    private fun recordManual() {
+        val initial = editing?.takeIf { it.kind == RoundKind.FIXED }?.let { r -> session.sides.indices.map { r.score(it) } } ?: listOf(0, 0)
+        manualScoresDialog("ثبت دستی امتیاز دست", session.sides.map { it.name }, initial, "امتیاز هر تیم را با علامت + یا − وارد کنید.") { values ->
+            val round = Round(RoundKind.FIXED, values, note = "ثبت دستی داور", contractTeam = team, suit = suit)
+            if (editIndex != null) session.rounds[editIndex] = round else session.rounds += round
+            finishEntry()
+        }
     }
 
     private fun recordPass() {

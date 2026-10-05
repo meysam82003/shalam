@@ -20,7 +20,7 @@ class PlayersScreen(host: MainActivity) : Screen(host) {
         ) {
             addView(kit.grid(2, listOf(
                 kit.chip("تیم‌ها (شلم و منفی)", teams, ButtonKind.CHIP_GOLD) { teams = true; host.refresh() },
-                kit.chip("بازیکنان (هزارتایی)", !teams, ButtonKind.CHIP_GOLD) { teams = false; host.refresh() }
+                kit.chip("بازیکنان (هزارتایی، دو لو)", !teams, ButtonKind.CHIP_GOLD) { teams = false; host.refresh() }
             ), 6), kit.spaced(10))
             if (shown.isEmpty()) {
                 addView(emptyState(RoyalIcon.PLAYERS, if (teams) "هنوز تیمی ثبت نشده" else "هنوز بازیکنی ثبت نشده", "نام‌هایی که در شروع بازی وارد می‌کنید خودکار اینجا ذخیره می‌شوند."))
@@ -29,10 +29,10 @@ class PlayersScreen(host: MainActivity) : Screen(host) {
                 val related = sessions.filter { s -> s.game.isTeamGame == entry.isTeam && s.sides.any { it.name == entry.name } }
                 val wins = related.count { s -> s.finished && GameEngine.winners(s).any { s.sides[it].name == entry.name } }
                 addView(kit.horizontal().apply {
-                    background = PanelDrawable(kit.density, PanelStyle.NORMAL, 18f)
-                    setPadding(kit.dp(12), kit.dp(10), kit.dp(12), kit.dp(13))
-                    layoutParams = kit.spaced(8)
-                    addView(kit.avatar(entry.avatar, 52))
+                    background = PanelDrawable(kit.density, PanelStyle.NORMAL, 16f)
+                    setPadding(kit.dp(10), kit.dp(7), kit.dp(10), kit.dp(10))
+                    layoutParams = kit.spaced(6)
+                    addView(kit.avatar(entry.avatar, 40))
                     addView(kit.hgap(10))
                     addView(kit.vertical().apply {
                         addView(kit.text(entry.name, TextStyle.BODY_BOLD, Royal.goldLight, maxLines = 1))

@@ -24,24 +24,41 @@ import kotlin.math.max
 import kotlin.math.min
 
 enum class TextStyle(val sp: Float, val bold: Boolean) {
-    DISPLAY(30f, true),
-    TITLE(22f, true),
-    HEADING(18f, true),
-    BODY(15f, false),
-    BODY_BOLD(15f, true),
-    LABEL(13f, false),
-    LABEL_BOLD(13f, true),
-    CAPTION(11.5f, false),
-    NUMBER_L(26f, true),
-    NUMBER_XL(34f, true)
+    DISPLAY(26f, true),
+    TITLE(19f, true),
+    HEADING(16f, true),
+    BODY(14f, false),
+    BODY_BOLD(14f, true),
+    LABEL(12.5f, false),
+    LABEL_BOLD(12.5f, true),
+    CAPTION(11f, false),
+    NUMBER_L(21f, true),
+    NUMBER_XL(27f, true)
 }
 
 data class DialogAction(val label: String, val kind: ButtonKind = ButtonKind.SECONDARY, val dismiss: Boolean = true, val onClick: () -> Unit = {})
 
 /** Builders for every widget of the design system; all screens are composed from these. */
 class RoyalKit(val context: Context, private val settingsProvider: () -> AppSettings) {
-    val density: Float = context.resources.displayMetrics.density
     val settings: AppSettings get() = settingsProvider()
+    private val metrics get() = context.resources.displayMetrics
+
+    /** Interface scale: the «اندازهٔ نمایش» setting, slightly reduced on narrow phones. */
+    val scale: Float
+        get() {
+            val widthDp = metrics.widthPixels / metrics.density
+            val narrow = when {
+                widthDp < 340f -> 0.88f
+                widthDp < 380f -> 0.94f
+                else -> 1f
+            }
+            return settings.general.uiScale.coerceIn(70, 140) / 100f * narrow
+        }
+
+    /** Density used by every widget and drawable, so the whole interface follows [scale]. */
+    val density: Float get() = metrics.density * scale
+
+    fun textSize(sp: Float): Float = (sp + if (settings.general.largeText) 2f else 0f) * scale
 
     fun dp(value: Int): Int = (value * density).toInt()
     fun dpf(value: Float): Float = value * density
@@ -62,7 +79,7 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
     ): TextView = TextView(context).apply {
         text = value
         setTextColor(color)
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, style.sp + if (settings.general.largeText) 2f else 0f)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, textSize(style.sp))
         typeface = RoyalFonts.get(context, style.bold)
         this.gravity = gravity
         textDirection = View.TEXT_DIRECTION_RTL
@@ -131,7 +148,7 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
         label: String,
         kind: ButtonKind = ButtonKind.PRIMARY,
         icon: RoyalIcon? = null,
-        height: Int = 52,
+        height: Int = 46,
         onClick: () -> Unit
     ): LinearLayout = horizontal(Gravity.CENTER).apply {
         background = ButtonDrawable(density, kind)
@@ -140,8 +157,8 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
         isFocusable = true
         val color = ButtonDrawable.textColor(kind)
         if (icon != null) {
-            addView(icon(icon, color, 20))
-            addView(hgap(8))
+            addView(icon(icon, color, 18))
+            addView(hgap(6))
         }
         addView(text(label, TextStyle.BODY_BOLD, color, Gravity.CENTER, 2))
         contentDescription = label
@@ -163,8 +180,8 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
     fun chip(label: String, selected: Boolean, selectedKind: ButtonKind = ButtonKind.CHIP_SELECTED, onClick: () -> Unit): TextView =
         text(label, TextStyle.LABEL_BOLD, ButtonDrawable.textColor(if (selected) selectedKind else ButtonKind.CHIP), Gravity.CENTER, 2).apply {
             background = ButtonDrawable(density, if (selected) selectedKind else ButtonKind.CHIP, 12f)
-            minHeight = dp(44)
-            minWidth = dp(44)
+            minHeight = dp(40)
+            minWidth = dp(40)
             isClickable = true
             contentDescription = label
             setOnClickListener { tap(it); onClick() }
@@ -193,11 +210,11 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
         setText(value)
         setTextColor(Royal.ivory)
         setHintTextColor(Royal.dim)
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f + if (settings.general.largeText) 2f else 0f)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, textSize(15f))
         typeface = RoyalFonts.get(context, true)
         background = PanelDrawable(density, PanelStyle.FLAT, 14f)
-        setPadding(dp(14), dp(10), dp(14), dp(13))
-        minHeight = dp(54)
+        setPadding(dp(12), dp(8), dp(12), dp(11))
+        minHeight = dp(46)
         setSingleLine(true)
         imeOptions = EditorInfo.IME_ACTION_DONE
         if (numeric) {
@@ -220,8 +237,8 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
     fun settingRow(title: String, subtitle: String?, control: View, onClick: (() -> Unit)? = null): LinearLayout =
         horizontal().apply {
             background = PanelDrawable(density, PanelStyle.FLAT, 16f)
-            setPadding(dp(14), dp(12), dp(14), dp(15))
-            layoutParams = spaced(8)
+            setPadding(dp(12), dp(9), dp(12), dp(12))
+            layoutParams = spaced(6)
             addView(vertical().apply {
                 addView(text(title, TextStyle.BODY_BOLD, Royal.ivory))
                 if (!subtitle.isNullOrBlank()) addView(text(subtitle, TextStyle.CAPTION, Royal.muted))
@@ -262,17 +279,17 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
             onChange(current)
         }
         val control = horizontal().apply {
-            addView(iconButton(RoyalIcon.PLUS, "افزایش $title", ButtonKind.CHIP, 38) { set(current + step) })
-            addView(label, LinearLayout.LayoutParams(dp(76), dp(40)))
-            addView(iconButton(RoyalIcon.MINUS, "کاهش $title", ButtonKind.CHIP, 38) { set(current - step) })
+            addView(iconButton(RoyalIcon.PLUS, "افزایش $title", ButtonKind.CHIP, 34) { set(current + step) })
+            addView(label, LinearLayout.LayoutParams(dp(68), dp(36)))
+            addView(iconButton(RoyalIcon.MINUS, "کاهش $title", ButtonKind.CHIP, 34) { set(current - step) })
         }
         label.setOnClickListener {
             numberPrompt(title, current, min < 0, "از ${n(min)} تا ${n(max)}") { set(it) }
         }
         return vertical().apply {
             background = PanelDrawable(density, PanelStyle.FLAT, 16f)
-            setPadding(dp(14), dp(12), dp(14), dp(15))
-            layoutParams = spaced(8)
+            setPadding(dp(12), dp(9), dp(12), dp(12))
+            layoutParams = spaced(6)
             addView(horizontal().apply {
                 addView(vertical().apply {
                     addView(text(title, TextStyle.BODY_BOLD, Royal.ivory))
@@ -287,12 +304,12 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
     fun choiceRow(title: String, subtitle: String?, options: List<Pair<Int, String>>, selected: Int, onSelect: (Int) -> Unit): View {
         val box = vertical().apply {
             background = PanelDrawable(density, PanelStyle.FLAT, 16f)
-            setPadding(dp(14), dp(12), dp(14), dp(15))
-            layoutParams = spaced(8)
+            setPadding(dp(12), dp(9), dp(12), dp(12))
+            layoutParams = spaced(6)
         }
         box.addView(text(title, TextStyle.BODY_BOLD, Royal.ivory))
         if (!subtitle.isNullOrBlank()) box.addView(text(subtitle, TextStyle.CAPTION, Royal.muted))
-        box.addView(gap(8))
+        box.addView(gap(6))
         val chips = mutableListOf<TextView>()
         var current = selected
         fun restyle() {
@@ -307,7 +324,7 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
                 current = key
                 restyle()
                 onSelect(key)
-            }.apply { setPadding(dp(12), dp(6), dp(12), dp(8)) }
+            }.apply { setPadding(dp(10), dp(4), dp(10), dp(6)) }
         }
         box.addView(flow(chips))
         return box
@@ -316,7 +333,7 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
     fun dialog(title: String, message: String? = null, body: View? = null, actions: List<DialogAction>): Dialog {
         val dialog = Dialog(context)
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
-        val content = panel(PanelStyle.RAISED, 18).apply { layoutDirection = View.LAYOUT_DIRECTION_RTL }
+        val content = panel(PanelStyle.RAISED, 16).apply { layoutDirection = View.LAYOUT_DIRECTION_RTL }
         content.addView(text(title, TextStyle.HEADING, Royal.goldLight, Gravity.CENTER))
         content.addView(divider())
         if (message != null) {
@@ -334,7 +351,7 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
             val row = horizontal()
             actions.forEachIndexed { i, action ->
                 if (i > 0) row.addView(hgap(8))
-                row.addView(weight(button(action.label, action.kind, height = 48) {
+                row.addView(weight(button(action.label, action.kind, height = 44) {
                     if (action.dismiss) dialog.dismiss()
                     action.onClick()
                 }))
@@ -346,10 +363,22 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
             window.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
             val width = min(context.resources.displayMetrics.widthPixels - dp(32), dp(440))
             window.setLayout(width, ViewGroup.LayoutParams.WRAP_CONTENT)
+            // Keep tall dialogs inside the screen; the body scrolls instead.
+            body?.let { content.post { limitDialogHeight(content) } }
             window.setDimAmount(0.72f)
             window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
         }
         return dialog
+    }
+
+    private fun limitDialogHeight(content: LinearLayout) {
+        val max = (context.resources.displayMetrics.heightPixels * 0.86f).toInt()
+        if (content.height <= max) return
+        val scroll = (0 until content.childCount).map { content.getChildAt(it) }.firstOrNull { it is ScrollView } ?: return
+        val lp = scroll.layoutParams as LinearLayout.LayoutParams
+        lp.height = (scroll.height - (content.height - max)).coerceAtLeast(dp(120))
+        lp.weight = 0f
+        scroll.layoutParams = lp
     }
 
     fun confirm(title: String, message: String, confirmLabel: String = "تأیید", danger: Boolean = false, onConfirm: () -> Unit) {

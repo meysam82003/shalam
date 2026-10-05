@@ -157,37 +157,73 @@ data class MenfiOutcome(
     val teamBScore: Int,
     val title: String,
     val teamASucceeded: Boolean,
-    val teamBSucceeded: Boolean
+    val teamBSucceeded: Boolean,
+    val index: Int = -1
 )
 
+/**
+ * A Menfi hand has 13 tricks; each team must take at least its number. Which results can happen
+ * follows from the sum of the two numbers:
+ * sum ≤ 13 → both made / only A / only B; sum = 14 → exactly one makes it;
+ * sum ≥ 15 → only A / only B / both failed.
+ */
 object MenfiEngine {
-    val readyNumbers: List<Int> = (3..13).toList()
+    const val BOTH = 0
+    const val A_ONLY = 1
+    const val B_ONLY = 2
+    const val NONE = 3
+    const val MANUAL = 9
+
+    val readyNumbers: List<Int> = MenfiScoring.numbers
 
     fun successScore(number: Int, rules: MenfiRules = MenfiRules()): Int =
-        if (number == 3) rules.threeSuccess else 13 - number
+        if (rules.scoring == MenfiScoring.LEGACY) {
+            if (number == 3) rules.threeSuccess else 13 - number
+        } else rules.success.getOrNull(number - 3) ?: if (number == 10) 20 else number
 
     fun failureScore(number: Int, rules: MenfiRules = MenfiRules()): Int =
-        if (number == 3) rules.threeFailure else -(13 - number)
+        if (rules.scoring == MenfiScoring.LEGACY) {
+            if (number == 3) rules.threeFailure else -(13 - number)
+        } else rules.failure.getOrNull(number - 3) ?: -number
+
+    /** Result indices that are possible for these two numbers. */
+    fun possible(teamANumber: Int, teamBNumber: Int, rules: MenfiRules = MenfiRules()): List<Int> {
+        if (rules.scoring == MenfiScoring.LEGACY) return listOf(BOTH, A_ONLY, B_ONLY)
+        val sum = teamANumber + teamBNumber
+        return when {
+            sum <= MenfiScoring.TRICKS -> listOf(BOTH, A_ONLY, B_ONLY)
+            sum == MenfiScoring.TRICKS + 1 -> listOf(A_ONLY, B_ONLY)
+            else -> listOf(A_ONLY, B_ONLY, NONE)
+        }
+    }
+
+    fun outcome(teamANumber: Int, teamBNumber: Int, index: Int, rules: MenfiRules = MenfiRules()): MenfiOutcome {
+        val aMade = index == BOTH || index == A_ONLY
+        val bMade = index == BOTH || index == B_ONLY
+        val a = if (aMade) successScore(teamANumber, rules) else failureScore(teamANumber, rules)
+        val b = if (bMade) successScore(teamBNumber, rules) else failureScore(teamBNumber, rules)
+        val title = when (index) {
+            BOTH -> "هر دو تیم گرفتند"
+            A_ONLY -> "تیم اول گرفت؛ تیم دوم نگرفت"
+            B_ONLY -> "تیم اول نگرفت؛ تیم دوم گرفت"
+            else -> "هیچ‌کدام نگرفتند"
+        }
+        return MenfiOutcome(a, b, title, aMade, bMade, index)
+    }
 
     fun outcomes(teamANumber: Int, teamBNumber: Int, rules: MenfiRules = MenfiRules()): List<MenfiOutcome> {
         require(teamANumber in readyNumbers && teamBNumber in readyNumbers)
-        val aPlus = successScore(teamANumber, rules)
-        val bPlus = successScore(teamBNumber, rules)
-        val aMinus = failureScore(teamANumber, rules)
-        val bMinus = failureScore(teamBNumber, rules)
-        return listOf(
-            MenfiOutcome(aPlus, bPlus, "هر دو تیم گرفتند", true, true),
-            MenfiOutcome(aPlus, bMinus, "تیم اول گرفت؛ تیم دوم نگرفت", true, false),
-            MenfiOutcome(aMinus, bPlus, "تیم اول نگرفت؛ تیم دوم گرفت", false, true)
-        )
+        return possible(teamANumber, teamBNumber, rules).map { outcome(teamANumber, teamBNumber, it, rules) }
     }
 
     fun scoreRound(round: Round, rules: MenfiRules): List<Int> {
+        if (round.outcome == MANUAL) return round.raw
         val a = round.numbers.getOrNull(0)
         val b = round.numbers.getOrNull(1)
         if (a == null || b == null || a !in readyNumbers || b !in readyNumbers) return round.scores
-        val outcome = outcomes(a, b, rules).getOrNull(round.outcome) ?: return round.scores
-        return listOf(outcome.teamAScore, outcome.teamBScore)
+        if (round.outcome !in listOf(BOTH, A_ONLY, B_ONLY, NONE)) return round.scores
+        val o = outcome(a, b, round.outcome, rules)
+        return listOf(o.teamAScore, o.teamBScore)
     }
 
     fun isComplete(handsPlayed: Int, rules: MenfiRules): Boolean = rules.hands in 1..handsPlayed
@@ -201,6 +237,171 @@ object HezarEngine {
     fun isComplete(totals: List<Int>, roundsPlayed: Int, rules: HezarRules): Boolean =
         (rules.target > 0 && totals.any { it >= rules.target }) ||
             (rules.rounds > 0 && roundsPlayed >= rules.rounds)
+}
+
+/** Counted cards of one player in «هزارتایی». */
+data class CardCount(val low: Int = 0, val high: Int = 0, val aces: Int = 0, val jokers: Int = 0)
+
+object CardCalc {
+    fun points(count: CardCount, values: CardValues): Int =
+        count.low * values.low + count.high * values.high + count.aces * values.ace + count.jokers * values.joker
+
+    /** Points of one standard deck (2–9: 32 cards, 10–K: 16 cards, 4 aces) plus jokers. */
+    fun deckPoints(decks: Int, jokers: Int, values: CardValues): Int =
+        decks * (32 * values.low + 16 * values.high + 4 * values.ace) + jokers * values.joker
+}
+
+data class HezarDeal(
+    val totalCards: Int,
+    val handSize: Int,
+    val packets: List<Int>,
+    val dealt: Int,
+    val stock: Int,
+    val short: Int,
+    val takeFromBottom: Int,
+    val decksNeeded: Int,
+    val maxHandSize: Int,
+    val totalPoints: Int
+) {
+    val fits: Boolean get() = short == 0
+    val fixableFromBottom: Boolean get() = short in 1..takeFromBottom
+}
+
+data class DoloDeal(
+    val totalCards: Int,
+    val players: Int,
+    val perPlayer: Int,
+    val removeCards: Int,
+    val minimum: Int
+)
+
+/** Deck arithmetic: every result is a whole number of cards. */
+object DeckCalc {
+    /** Packets of a deal: the first packet, then equal packets, the last one holding the rest. */
+    fun packets(handSize: Int, first: Int, next: Int): List<Int> {
+        if (handSize <= 0) return emptyList()
+        val out = mutableListOf<Int>()
+        var left = handSize
+        val firstSize = first.coerceAtLeast(1).coerceAtMost(left)
+        out += firstSize
+        left -= firstSize
+        val step = next.coerceAtLeast(1)
+        while (left > 0) {
+            val p = minOf(step, left)
+            out += p
+            left -= p
+        }
+        return out
+    }
+
+    fun hezar(players: Int, decks: Int, jokers: Int, deck: DeckSettings, values: CardValues): HezarDeal {
+        val p = players.coerceAtLeast(1)
+        val total = decks.coerceAtLeast(0) * 52 + jokers.coerceAtLeast(0)
+        val hand = deck.handSize.coerceAtLeast(1)
+        val dealt = p * hand
+        val stock = total - dealt
+        val short = if (stock < 0) -stock else 0
+        val jokersPerDeck = if (decks > 0) jokers.toDouble() / decks else 0.0
+        var need = decks.coerceAtLeast(1)
+        while (need * 52 + (need * jokersPerDeck).toInt() < dealt && need < 999) need++
+        return HezarDeal(
+            totalCards = total,
+            handSize = hand,
+            packets = packets(hand, deck.firstPacket, deck.nextPacket),
+            dealt = dealt,
+            stock = stock.coerceAtLeast(0),
+            short = short,
+            takeFromBottom = deck.shortAllowance.coerceAtLeast(0),
+            decksNeeded = need,
+            maxHandSize = total / p,
+            totalPoints = CardCalc.deckPoints(decks, jokers, values)
+        )
+    }
+
+    fun dolo(players: Int, totalCards: Int, rules: DoloRules): DoloDeal {
+        val p = players.coerceAtLeast(1)
+        val total = totalCards.coerceAtLeast(0)
+        return DoloDeal(total, p, total / p, total % p, rules.minimumFor(p))
+    }
+}
+
+/** Elimination state of a «دو لو گشنیز» game at its current end. */
+data class DoloState(
+    val active: List<Int>,
+    val eliminatedAt: Map<Int, Int>,
+    val handsInStage: Int,
+    val handsDue: Int,
+    val stageTotals: List<Int>,
+    val extension: Boolean
+) {
+    val eliminationDue: Boolean get() = active.size > 1 && handsDue > 0 && handsInStage >= handsDue
+}
+
+object DoloEngine {
+    fun minimum(players: Int, rules: DoloRules): Int = rules.minimumFor(players)
+
+    /** Declared numbers in [Round.numbers] (−1 = not playing); [Round.raw] = 1 made / 0 missed. */
+    fun scoreRound(round: Round, sideCount: Int, rules: DoloRules): List<Int> {
+        if (round.outcome == MenfiEngine.MANUAL) return round.raw
+        return List(sideCount) { i ->
+            val declared = round.numbers.getOrElse(i) { -1 }
+            if (declared < 0) 0
+            else if (round.raw.getOrElse(i) { 0 } == 1) declared * rules.madeMultiplier
+            else -declared * rules.failMultiplier
+        }
+    }
+
+    fun state(session: GameSession, upTo: Int = session.rounds.size): DoloState {
+        val rules = session.rules.dolo
+        val n = session.sides.size
+        val eliminatedAt = linkedMapOf<Int, Int>()
+        var stageStartActive = n
+        var handsInStage = 0
+        var handsDue = 0
+        var extension = false
+        val stageTotals = MutableList(n) { 0 }
+        fun regularDue(active: Int) = (if (rules.handsPerRound > 0) rules.handsPerRound else active) * rules.eliminateEvery.coerceAtLeast(1)
+        handsDue = regularDue(stageStartActive)
+        for (index in 0 until upTo.coerceAtMost(session.rounds.size)) {
+            val round = session.rounds[index]
+            when (round.kind) {
+                RoundKind.DOLO_ELIM -> {
+                    round.raw.forEachIndexed { side, flag -> if (flag == 1 && side !in eliminatedAt) eliminatedAt[side] = index }
+                    val activeCount = n - eliminatedAt.size
+                    handsInStage = 0
+                    if (round.bid > 0) {
+                        extension = true
+                        handsDue = round.bid
+                    } else {
+                        extension = false
+                        stageStartActive = activeCount
+                        handsDue = regularDue(activeCount)
+                        if (rules.resetAfterElimination) stageTotals.indices.forEach { stageTotals[it] = 0 }
+                    }
+                }
+                RoundKind.PENALTY, RoundKind.ADJUST -> round.scores.forEachIndexed { i, v -> if (i < n) stageTotals[i] += v }
+                else -> {
+                    handsInStage++
+                    round.scores.forEachIndexed { i, v -> if (i < n) stageTotals[i] += v }
+                }
+            }
+        }
+        val active = (0 until n).filter { it !in eliminatedAt }
+        return DoloState(active, eliminatedAt, handsInStage, handsDue, stageTotals, extension)
+    }
+
+    /** Lowest players for the cut, and whether a tie crosses the cut line. */
+    fun candidates(session: GameSession): Pair<List<Int>, Boolean> {
+        val st = state(session)
+        val count = session.rules.dolo.eliminateCount.coerceIn(1, (st.active.size - 1).coerceAtLeast(1))
+        val sorted = st.active.sortedWith(compareBy<Int> { st.stageTotals[it] }.thenBy { it })
+        val cut = sorted.take(count)
+        val next = sorted.getOrNull(count)
+        val tie = next != null && cut.isNotEmpty() && st.stageTotals[next] == st.stageTotals[cut.last()]
+        return cut to tie
+    }
+
+    fun isComplete(session: GameSession): Boolean = session.sides.size > 1 && state(session).active.size <= 1
 }
 
 data class ShalamTeamStats(
@@ -234,6 +435,8 @@ object GameEngine {
                 RoundKind.SHALAM_PASS -> List(sideCount) { 0 }
                 RoundKind.MENFI_HAND -> MenfiEngine.scoreRound(round, session.rules.menfi)
                 RoundKind.HEZAR_ROUND -> HezarEngine.scoreRound(round, session.rules.hezar)
+                RoundKind.DOLO_HAND -> DoloEngine.scoreRound(round, sideCount, session.rules.dolo)
+                RoundKind.DOLO_ELIM -> List(sideCount) { 0 }
                 RoundKind.PENALTY, RoundKind.ADJUST -> round.raw
                 RoundKind.FIXED -> round.scores
             }
@@ -248,7 +451,7 @@ object GameEngine {
 
     /** Hands that count toward hand/round limits; manual penalties and corrections are excluded. */
     fun playedHands(session: GameSession): Int =
-        session.rounds.count { it.kind != RoundKind.PENALTY && it.kind != RoundKind.ADJUST }
+        session.rounds.count { it.kind != RoundKind.PENALTY && it.kind != RoundKind.ADJUST && it.kind != RoundKind.DOLO_ELIM }
 
     fun isComplete(session: GameSession): Boolean {
         val totals = totals(session)
@@ -256,15 +459,25 @@ object GameEngine {
             GameType.SHALAM -> ShalamEngine.isComplete(totals, session.rules.shalam)
             GameType.MENFI -> MenfiEngine.isComplete(playedHands(session), session.rules.menfi)
             GameType.HEZARTAII -> HezarEngine.isComplete(totals, playedHands(session), session.rules.hezar)
+            GameType.DOLO -> DoloEngine.isComplete(session)
         }
     }
 
     fun highWins(session: GameSession): Boolean =
         session.game != GameType.MENFI || session.rules.menfi.highWins
 
-    /** Side indices from best to worst. */
+    /** Side indices from best to worst. In «دو لو گشنیز» players still in the game come first. */
     fun ranking(session: GameSession): List<Int> {
         val totals = totals(session)
+        if (session.game == GameType.DOLO) {
+            val st = DoloEngine.state(session)
+            return totals.indices.sortedWith(
+                compareBy<Int> { if (it in st.active) 0 else 1 }
+                    .thenByDescending { st.eliminatedAt[it] ?: Int.MAX_VALUE }
+                    .thenByDescending { totals[it] }
+                    .thenBy { it }
+            )
+        }
         val high = highWins(session)
         return totals.indices.sortedWith(compareBy<Int> { if (high) -totals[it] else totals[it] }.thenBy { it })
     }
@@ -272,6 +485,14 @@ object GameEngine {
     /** Best side(s); empty when every side is tied. */
     fun winners(session: GameSession): List<Int> {
         val totals = totals(session)
+        if (session.game == GameType.DOLO) {
+            val active = DoloEngine.state(session).active
+            if (active.size == 1) return active
+            val activeTotals = active.map { totals[it] }
+            if (activeTotals.isEmpty() || activeTotals.distinct().size == 1) return emptyList()
+            val best = activeTotals.maxOrNull()
+            return active.filter { totals[it] == best }
+        }
         if (totals.isEmpty() || totals.distinct().size == 1) return emptyList()
         val best = if (highWins(session)) totals.maxOrNull() else totals.minOrNull()
         return totals.indices.filter { totals[it] == best }

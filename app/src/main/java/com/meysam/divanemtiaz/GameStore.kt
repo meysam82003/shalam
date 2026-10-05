@@ -141,6 +141,33 @@ class GameRepository(private val kv: KeyValueStore, private val legacy: () -> Le
         kv.write(mapOf(KEY_SETTINGS to GameCodec.encodeSettings(settings).toString()))
     }
 
+    fun leagueIndex(): List<Long> = kv.get(KEY_LEAGUES)?.let { raw ->
+        runCatching {
+            val array = JSONArray(raw)
+            List(array.length()) { array.getLong(it) }
+        }.getOrNull()
+    } ?: emptyList()
+
+    fun league(id: Long): League? =
+        kv.get(leagueKey(id))?.let { raw -> runCatching { GameCodec.decodeLeague(JSONObject(raw)) }.getOrNull() }
+
+    fun leagues(): List<League> = leagueIndex().mapNotNull { league(it) }.sortedByDescending { it.updatedAt }
+
+    fun saveLeague(league: League) {
+        val ids = leagueIndex().filterNot { it == league.id }
+        kv.write(
+            mapOf(
+                leagueKey(league.id) to GameCodec.encodeLeague(league).toString(),
+                KEY_LEAGUES to JSONArray(listOf(league.id) + ids).toString()
+            )
+        )
+    }
+
+    /** Removes the league table only; its games stay in the history. */
+    fun deleteLeague(id: Long) {
+        kv.write(mapOf(leagueKey(id) to null, KEY_LEAGUES to JSONArray(leagueIndex().filterNot { it == id }).toString()))
+    }
+
     fun roster(): List<RosterEntry> = kv.get(KEY_ROSTER)?.let { raw ->
         runCatching { GameCodec.decodeRoster(JSONArray(raw)) }.getOrNull()
     } ?: emptyList()
@@ -155,7 +182,9 @@ class GameRepository(private val kv: KeyValueStore, private val legacy: () -> Le
         const val KEY_INDEX = "index"
         const val KEY_SETTINGS = "settings"
         const val KEY_ROSTER = "roster"
+        const val KEY_LEAGUES = "leagues"
         fun gameKey(id: Long) = "game_$id"
+        fun leagueKey(id: Long) = "league_$id"
     }
 }
 
@@ -192,6 +221,7 @@ object GameCodec {
         put("elapsed", session.elapsedMs)
         session.endedAt?.let { put("endedAt", it) }
         put("label", session.label)
+        if (session.leagueId != 0L) put("league", session.leagueId)
         put("sides", JSONArray().apply {
             session.sides.forEach { side -> put(JSONObject().put("name", side.name).put("avatar", side.avatar)) }
         })
@@ -231,7 +261,8 @@ object GameCodec {
             updatedAt = o.optLong("updatedAt", o.optLong("timestamp", id)),
             elapsedMs = o.optLong("elapsed", 0L),
             endedAt = if (o.has("endedAt")) o.optLong("endedAt") else null,
-            label = o.optString("label", "")
+            label = o.optString("label", ""),
+            leagueId = o.optLong("league", 0L)
         )
     }
 
@@ -287,12 +318,46 @@ object GameCodec {
             put("threeSuccess", rules.menfi.threeSuccess)
             put("threeFailure", rules.menfi.threeFailure)
             put("highWins", rules.menfi.highWins)
+            put("scoring", rules.menfi.scoring)
+            put("success", ints(rules.menfi.success))
+            put("failure", ints(rules.menfi.failure))
         })
         put("hezar", JSONObject().apply {
             put("target", rules.hezar.target)
             put("rounds", rules.hezar.rounds)
             put("zeroPenalty", rules.hezar.zeroPenalty)
         })
+        put("dolo", encodeDolo(rules.dolo))
+    }
+
+    fun encodeDolo(d: DoloRules): JSONObject = JSONObject().apply {
+        put("minUpTo4", d.minUpTo4)
+        put("min5to6", d.min5to6)
+        put("minFrom7", d.minFrom7)
+        put("madeMultiplier", d.madeMultiplier)
+        put("failMultiplier", d.failMultiplier)
+        put("handsPerRound", d.handsPerRound)
+        put("eliminateEvery", d.eliminateEvery)
+        put("eliminateCount", d.eliminateCount)
+        put("tieExtraHands", d.tieExtraHands)
+        put("resetAfterElimination", d.resetAfterElimination)
+    }
+
+    fun decodeDolo(o: JSONObject?): DoloRules {
+        val d = DoloRules()
+        if (o == null) return d
+        return DoloRules(
+            minUpTo4 = o.optInt("minUpTo4", d.minUpTo4),
+            min5to6 = o.optInt("min5to6", d.min5to6),
+            minFrom7 = o.optInt("minFrom7", d.minFrom7),
+            madeMultiplier = o.optInt("madeMultiplier", d.madeMultiplier),
+            failMultiplier = o.optInt("failMultiplier", d.failMultiplier),
+            handsPerRound = o.optInt("handsPerRound", d.handsPerRound),
+            eliminateEvery = o.optInt("eliminateEvery", d.eliminateEvery),
+            eliminateCount = o.optInt("eliminateCount", d.eliminateCount),
+            tieExtraHands = o.optInt("tieExtraHands", d.tieExtraHands),
+            resetAfterElimination = o.optBoolean("resetAfterElimination", d.resetAfterElimination)
+        )
     }
 
     fun decodeRules(o: JSONObject): GameRules {
@@ -320,13 +385,18 @@ object GameCodec {
                 hidden = m.optBoolean("hidden", d.menfi.hidden),
                 threeSuccess = m.optInt("threeSuccess", d.menfi.threeSuccess),
                 threeFailure = m.optInt("threeFailure", d.menfi.threeFailure),
-                highWins = m.optBoolean("highWins", d.menfi.highWins)
+                highWins = m.optBoolean("highWins", d.menfi.highWins),
+                // Games saved before the scoring table existed keep their original scoring.
+                scoring = m.optInt("scoring", MenfiScoring.LEGACY),
+                success = MenfiScoring.normalize(m.optJSONArray("success")?.let(::intList), MenfiScoring.defaultSuccess),
+                failure = MenfiScoring.normalize(m.optJSONArray("failure")?.let(::intList), MenfiScoring.defaultFailure)
             ),
             hezar = HezarRules(
                 target = h.optInt("target", d.hezar.target),
                 rounds = h.optInt("rounds", d.hezar.rounds),
                 zeroPenalty = h.optInt("zeroPenalty", d.hezar.zeroPenalty)
-            )
+            ),
+            dolo = decodeDolo(o.optJSONObject("dolo"))
         )
     }
 
@@ -373,6 +443,7 @@ object GameCodec {
             put("largeText", s.general.largeText)
             put("defaultTeam1", s.general.defaultTeam1)
             put("defaultTeam2", s.general.defaultTeam2)
+            put("uiScale", s.general.uiScale)
         })
         put("shalam", JSONObject().apply {
             put("dealType", s.shalam.dealType)
@@ -389,16 +460,117 @@ object GameCodec {
         put("menfi", JSONObject().apply {
             put("hands", s.menfi.hands)
             put("hidden", s.menfi.hidden)
-            put("threeSuccess", s.menfi.threeSuccess)
-            put("threeFailure", s.menfi.threeFailure)
             put("highWins", s.menfi.highWins)
+            put("success", ints(s.menfi.success))
+            put("failure", ints(s.menfi.failure))
         })
         put("hezar", JSONObject().apply {
             put("target", s.hezar.target)
             put("rounds", s.hezar.rounds)
             put("zeroPenalty", s.hezar.zeroPenalty)
             put("players", s.hezar.players)
+            put("cardLow", s.hezar.cards.low)
+            put("cardHigh", s.hezar.cards.high)
+            put("cardAce", s.hezar.cards.ace)
+            put("cardJoker", s.hezar.cards.joker)
         })
+        put("dolo", encodeDolo(s.dolo.rules).put("players", s.dolo.players))
+        put("deck", JSONObject().apply {
+            put("decks", s.deck.decks)
+            put("jokers", s.deck.jokers)
+            put("handSize", s.deck.handSize)
+            put("firstPacket", s.deck.firstPacket)
+            put("nextPacket", s.deck.nextPacket)
+            put("shortAllowance", s.deck.shortAllowance)
+            put("doloCards", s.deck.doloCards)
+        })
+        put("league", encodeLeagueConfig(s.league))
+    }
+
+    fun encodeLeagueConfig(c: LeagueSettings): JSONObject = JSONObject().apply {
+        put("format", c.format)
+        put("winsNeeded", c.winsNeeded)
+        put("pointsWin", c.pointsWin)
+        put("pointsDraw", c.pointsDraw)
+        put("pointsLoss", c.pointsLoss)
+        put("doubleRoundRobin", c.doubleRoundRobin)
+        put("finalAfterTable", c.finalAfterTable)
+    }
+
+    fun decodeLeagueConfig(o: JSONObject?): LeagueSettings {
+        val d = LeagueSettings()
+        if (o == null) return d
+        return LeagueSettings(
+            format = o.optInt("format", d.format),
+            winsNeeded = o.optInt("winsNeeded", d.winsNeeded),
+            pointsWin = o.optInt("pointsWin", d.pointsWin),
+            pointsDraw = o.optInt("pointsDraw", d.pointsDraw),
+            pointsLoss = o.optInt("pointsLoss", d.pointsLoss),
+            doubleRoundRobin = o.optBoolean("doubleRoundRobin", d.doubleRoundRobin),
+            finalAfterTable = o.optBoolean("finalAfterTable", d.finalAfterTable)
+        )
+    }
+
+    fun encodeLeague(l: League): JSONObject = JSONObject().apply {
+        put("id", l.id)
+        put("name", l.name)
+        put("game", l.game.key)
+        put("format", l.format)
+        put("updatedAt", l.updatedAt)
+        put("finished", l.finished)
+        put("config", encodeLeagueConfig(l.config))
+        put("rules", encodeRules(l.rules))
+        put("teams", JSONArray().apply { l.teams.forEach { put(JSONObject().put("name", it.name).put("avatar", it.avatar)) } })
+        put("matches", JSONArray().apply {
+            l.matches.forEach { m ->
+                put(JSONObject().apply {
+                    put("id", m.id)
+                    put("stage", m.stage)
+                    put("a", m.teamA)
+                    put("b", m.teamB)
+                    put("fa", m.feederA)
+                    put("fb", m.feederB)
+                    put("wins", m.winsNeeded)
+                    put("final", m.isFinal)
+                    put("games", JSONArray().apply { m.games.forEach { put(it) } })
+                })
+            }
+        })
+    }
+
+    fun decodeLeague(o: JSONObject): League {
+        val teamsJson = o.optJSONArray("teams") ?: JSONArray()
+        val matchesJson = o.optJSONArray("matches") ?: JSONArray()
+        val id = o.optLong("id")
+        return League(
+            id = id,
+            name = o.optString("name", "لیگ"),
+            game = GameType.fromKey(o.optString("game")),
+            teams = List(teamsJson.length()) { i ->
+                val t = teamsJson.optJSONObject(i) ?: JSONObject()
+                Side(t.optString("name", "تیم ${i + 1}"), t.optInt("avatar", i))
+            },
+            rules = o.optJSONObject("rules")?.let(::decodeRules) ?: GameRules(),
+            format = o.optInt("format", LeagueFormat.KNOCKOUT),
+            config = decodeLeagueConfig(o.optJSONObject("config")),
+            matches = List(matchesJson.length()) { i ->
+                val m = matchesJson.optJSONObject(i) ?: JSONObject()
+                val games = m.optJSONArray("games") ?: JSONArray()
+                LeagueMatch(
+                    id = m.optInt("id", i + 1),
+                    stage = m.optInt("stage", 1),
+                    teamA = m.optInt("a", -1),
+                    teamB = m.optInt("b", -1),
+                    feederA = m.optInt("fa", -1),
+                    feederB = m.optInt("fb", -1),
+                    winsNeeded = m.optInt("wins", 1),
+                    games = List(games.length()) { games.optLong(it) },
+                    isFinal = m.optBoolean("final", false)
+                )
+            },
+            updatedAt = o.optLong("updatedAt", id),
+            finished = o.optBoolean("finished", false)
+        )
     }
 
     fun decodeSettings(o: JSONObject): AppSettings {
@@ -414,7 +586,8 @@ object GameCodec {
                 persianDigits = g.optBoolean("persianDigits", d.general.persianDigits),
                 largeText = g.optBoolean("largeText", d.general.largeText),
                 defaultTeam1 = g.optString("defaultTeam1", d.general.defaultTeam1),
-                defaultTeam2 = g.optString("defaultTeam2", d.general.defaultTeam2)
+                defaultTeam2 = g.optString("defaultTeam2", d.general.defaultTeam2),
+                uiScale = g.optInt("uiScale", d.general.uiScale)
             ),
             shalam = ShalamSettings(
                 dealType = s.optInt("dealType", d.shalam.dealType),
@@ -431,16 +604,35 @@ object GameCodec {
             menfi = MenfiSettings(
                 hands = m.optInt("hands", d.menfi.hands),
                 hidden = m.optBoolean("hidden", d.menfi.hidden),
-                threeSuccess = m.optInt("threeSuccess", d.menfi.threeSuccess),
-                threeFailure = m.optInt("threeFailure", d.menfi.threeFailure),
-                highWins = m.optBoolean("highWins", d.menfi.highWins)
+                highWins = m.optBoolean("highWins", d.menfi.highWins),
+                success = MenfiScoring.normalize(m.optJSONArray("success")?.let(::intList), MenfiScoring.defaultSuccess),
+                failure = MenfiScoring.normalize(m.optJSONArray("failure")?.let(::intList), MenfiScoring.defaultFailure)
             ),
             hezar = HezarSettings(
                 target = h.optInt("target", d.hezar.target),
                 rounds = h.optInt("rounds", d.hezar.rounds),
                 zeroPenalty = h.optInt("zeroPenalty", d.hezar.zeroPenalty),
-                players = h.optInt("players", d.hezar.players)
-            )
+                players = h.optInt("players", d.hezar.players),
+                cards = CardValues(
+                    low = h.optInt("cardLow", d.hezar.cards.low),
+                    high = h.optInt("cardHigh", d.hezar.cards.high),
+                    ace = h.optInt("cardAce", d.hezar.cards.ace),
+                    joker = h.optInt("cardJoker", d.hezar.cards.joker)
+                )
+            ),
+            dolo = o.optJSONObject("dolo").let { dj -> DoloSettings(decodeDolo(dj), dj?.optInt("players", d.dolo.players) ?: d.dolo.players) },
+            deck = o.optJSONObject("deck").let { k ->
+                if (k == null) d.deck else DeckSettings(
+                    decks = k.optInt("decks", d.deck.decks),
+                    jokers = k.optInt("jokers", d.deck.jokers),
+                    handSize = k.optInt("handSize", d.deck.handSize),
+                    firstPacket = k.optInt("firstPacket", d.deck.firstPacket),
+                    nextPacket = k.optInt("nextPacket", d.deck.nextPacket),
+                    shortAllowance = k.optInt("shortAllowance", d.deck.shortAllowance),
+                    doloCards = k.optInt("doloCards", d.deck.doloCards)
+                )
+            },
+            league = decodeLeagueConfig(o.optJSONObject("league"))
         )
     }
 
@@ -518,8 +710,9 @@ object LegacyCodec {
                 note = if (note.isBlank()) contract else "$note • $contract"
             }
             val numbers = if (game == GameType.MENFI && sourceA != null && sourceB != null) listOf(sourceA, sourceB) else emptyList()
+            val legacyMenfi = MenfiRules(scoring = MenfiScoring.LEGACY)
             val outcome = if (numbers.size == 2 && numbers.all { it in MenfiEngine.readyNumbers }) {
-                MenfiEngine.outcomes(numbers[0], numbers[1]).indexOfFirst { it.teamAScore == a && it.teamBScore == b }
+                MenfiEngine.outcomes(numbers[0], numbers[1], legacyMenfi).firstOrNull { it.teamAScore == a && it.teamBScore == b }?.index ?: -1
             } else -1
             Round(
                 kind = RoundKind.FIXED,
@@ -575,7 +768,7 @@ object LegacyCodec {
     /** Earlier versions ranked «منفی» by the lowest total; migrated games keep that meaning. */
     private fun legacyRules(game: GameType, settings: AppSettings): GameRules {
         val rules = settings.rulesFor(game, withJoker = false)
-        return rules.copy(menfi = rules.menfi.copy(highWins = false))
+        return rules.copy(menfi = rules.menfi.copy(highWins = false, scoring = MenfiScoring.LEGACY))
     }
 
     private fun roundToFive(value: Int): Int = (value / 5) * 5

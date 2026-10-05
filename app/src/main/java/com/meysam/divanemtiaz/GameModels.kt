@@ -8,15 +8,19 @@ enum class GameType(
     val maxSides: Int
 ) {
     SHALAM("shalam", "شلم", "داوری دو تیمی با قوانین کامل شلم", 2, 2),
-    MENFI("menfi", "منفی", "ثبت پنهان عددها و نتیجهٔ سه‌حالته", 2, 2),
-    HEZARTAII("hezartaii", "هزارتایی", "رقابت انفرادی و رتبه‌بندی تا هزار", 2, 6);
+    MENFI("menfi", "منفی", "ثبت پنهان عددها و حالت رخ‌داده", 2, 2),
+    HEZARTAII("hezartaii", "هزارتایی", "رقابت انفرادی و رتبه‌بندی تا هزار", 2, MAX_PLAYERS),
+    DOLO("dolo", "دو لو گشنیز", "حکم با دارندهٔ دو لو گشنیز، حداقل و حذف", 3, MAX_PLAYERS);
 
-    val isTeamGame: Boolean get() = this != HEZARTAII
+    val isTeamGame: Boolean get() = this == SHALAM || this == MENFI
 
     companion object {
         fun fromKey(key: String?): GameType = values().firstOrNull { it.key == key } ?: SHALAM
     }
 }
+
+/** Practical upper bound for individual games; far above any real table. */
+const val MAX_PLAYERS = 99
 
 data class Side(val name: String, val avatar: Int)
 
@@ -27,6 +31,8 @@ enum class RoundKind(val key: String) {
     SHALAM_PASS("shalam_pass"),
     MENFI_HAND("menfi_hand"),
     HEZAR_ROUND("hezar_round"),
+    DOLO_HAND("dolo_hand"),
+    DOLO_ELIM("dolo_elim"),
     PENALTY("penalty"),
     ADJUST("adjust"),
     FIXED("fixed");
@@ -93,13 +99,14 @@ class GameSession(
     var updatedAt: Long = id,
     var elapsedMs: Long = 0L,
     var endedAt: Long? = null,
-    var label: String = ""
+    var label: String = "",
+    var leagueId: Long = 0L
 ) {
     val sides: MutableList<Side> = sides.toMutableList()
     val rounds: MutableList<Round> = rounds.toMutableList()
 
     fun copy(): GameSession = GameSession(
-        id, game, sides.toList(), rounds.toList(), rules, finished, updatedAt, elapsedMs, endedAt, label
+        id, game, sides.toList(), rounds.toList(), rules, finished, updatedAt, elapsedMs, endedAt, label, leagueId
     )
 }
 
@@ -185,13 +192,34 @@ data class ShalamRules(
     val dealType: Int = DealType.TWELVE
 )
 
+/**
+ * Menfi scoring. [MenfiScoring.TABLE] (default): a team that takes at least its number gets
+ * [success] of that number, otherwise [failure] (±number, and +20 / −10 for ten).
+ * [MenfiScoring.LEGACY] keeps the formula of version 3.0 for games recorded with it.
+ */
 data class MenfiRules(
     val hands: Int = 8,
     val hidden: Boolean = true,
     val threeSuccess: Int = 20,
     val threeFailure: Int = -10,
-    val highWins: Boolean = true
+    val highWins: Boolean = true,
+    val scoring: Int = MenfiScoring.TABLE,
+    val success: List<Int> = MenfiScoring.defaultSuccess,
+    val failure: List<Int> = MenfiScoring.defaultFailure
 )
+
+object MenfiScoring {
+    const val LEGACY = 1
+    const val TABLE = 2
+    const val TRICKS = 13
+    val numbers: List<Int> = (3..13).toList()
+    val defaultSuccess: List<Int> = numbers.map { if (it == 10) 20 else it }
+    val defaultFailure: List<Int> = numbers.map { -it }
+
+    /** Always 11 values (numbers 3..13); missing entries fall back to the defaults. */
+    fun normalize(values: List<Int>?, defaults: List<Int>): List<Int> =
+        numbers.indices.map { values?.getOrNull(it) ?: defaults[it] }
+}
 
 data class HezarRules(
     val target: Int = 1000,
@@ -199,10 +227,65 @@ data class HezarRules(
     val zeroPenalty: Int = -50
 )
 
+/**
+ * «دو لو گشنیز»: whoever holds the two of clubs names trump; each player declares at least the
+ * minimum number of tricks; a made declaration scores +number, a missed one −number. After every
+ * [eliminateEvery] rounds the lowest [eliminateCount] players leave; a tie at the cut gives
+ * [tieExtraHands] more hands. The last remaining player wins.
+ */
+data class DoloRules(
+    val minUpTo4: Int = 3,
+    val min5to6: Int = 2,
+    val minFrom7: Int = 1,
+    val madeMultiplier: Int = 1,
+    val failMultiplier: Int = 1,
+    val handsPerRound: Int = 0,
+    val eliminateEvery: Int = 1,
+    val eliminateCount: Int = 1,
+    val tieExtraHands: Int = 2,
+    val resetAfterElimination: Boolean = false
+) {
+    fun minimumFor(players: Int): Int = when {
+        players <= 4 -> minUpTo4
+        players <= 6 -> min5to6
+        else -> minFrom7
+    }.coerceAtLeast(0)
+}
+
 data class GameRules(
     val shalam: ShalamRules = ShalamRules(),
     val menfi: MenfiRules = MenfiRules(),
-    val hezar: HezarRules = HezarRules()
+    val hezar: HezarRules = HezarRules(),
+    val dolo: DoloRules = DoloRules()
+)
+
+/** Card values of «هزارتایی»: 2–9, 10–K, ace and joker. */
+data class CardValues(val low: Int = 5, val high: Int = 10, val ace: Int = 20, val joker: Int = 40)
+
+/** Defaults of the deck calculator. */
+data class DeckSettings(
+    val decks: Int = 2,
+    val jokers: Int = 4,
+    val handSize: Int = 14,
+    val firstPacket: Int = 6,
+    val nextPacket: Int = 4,
+    val shortAllowance: Int = 6,
+    val doloCards: Int = 52
+)
+
+object LeagueFormat {
+    const val KNOCKOUT = 1
+    const val ROUND_ROBIN = 2
+}
+
+data class LeagueSettings(
+    val format: Int = LeagueFormat.KNOCKOUT,
+    val winsNeeded: Int = 2,
+    val pointsWin: Int = 3,
+    val pointsDraw: Int = 1,
+    val pointsLoss: Int = 0,
+    val doubleRoundRobin: Boolean = false,
+    val finalAfterTable: Boolean = true
 )
 
 data class GeneralSettings(
@@ -211,8 +294,17 @@ data class GeneralSettings(
     val persianDigits: Boolean = true,
     val largeText: Boolean = false,
     val defaultTeam1: String = "ما",
-    val defaultTeam2: String = "اونا"
+    val defaultTeam2: String = "اونا",
+    val uiScale: Int = UiScale.NORMAL
 )
+
+/** Display size of the whole interface, in percent. */
+object UiScale {
+    const val COMPACT = 85
+    const val NORMAL = 100
+    const val LARGE = 115
+    val options = listOf(COMPACT to "فشرده", NORMAL to "معمولی", LARGE to "بزرگ")
+}
 
 data class ShalamSettings(
     val dealType: Int = DealType.TWELVE,
@@ -244,27 +336,36 @@ data class ShalamSettings(
 data class MenfiSettings(
     val hands: Int = 8,
     val hidden: Boolean = true,
-    val threeSuccess: Int = 20,
-    val threeFailure: Int = -10,
-    val highWins: Boolean = true
+    val highWins: Boolean = true,
+    val success: List<Int> = MenfiScoring.defaultSuccess,
+    val failure: List<Int> = MenfiScoring.defaultFailure
 ) {
-    fun rules(): MenfiRules = MenfiRules(hands, hidden, threeSuccess, threeFailure, highWins)
+    fun rules(): MenfiRules = MenfiRules(hands = hands, hidden = hidden, highWins = highWins, scoring = MenfiScoring.TABLE, success = success, failure = failure)
 }
 
 data class HezarSettings(
     val target: Int = 1000,
     val rounds: Int = 10,
     val zeroPenalty: Int = -50,
-    val players: Int = 3
+    val players: Int = 3,
+    val cards: CardValues = CardValues()
 ) {
     fun rules(): HezarRules = HezarRules(target, rounds, zeroPenalty)
 }
+
+data class DoloSettings(
+    val rules: DoloRules = DoloRules(),
+    val players: Int = 6
+)
 
 data class AppSettings(
     val general: GeneralSettings = GeneralSettings(),
     val shalam: ShalamSettings = ShalamSettings(),
     val menfi: MenfiSettings = MenfiSettings(),
-    val hezar: HezarSettings = HezarSettings()
+    val hezar: HezarSettings = HezarSettings(),
+    val dolo: DoloSettings = DoloSettings(),
+    val deck: DeckSettings = DeckSettings(),
+    val league: LeagueSettings = LeagueSettings()
 ) {
     fun rulesFor(game: GameType, withJoker: Boolean = shalam.defaultJoker, endPoint: Int? = null): GameRules {
         val shalamRules = shalam.rules(withJoker, endPoint ?: shalam.mode(withJoker).defaultEndPoint)
@@ -272,8 +373,44 @@ data class AppSettings(
             GameType.SHALAM -> GameRules(shalam = shalamRules)
             GameType.MENFI -> GameRules(menfi = menfi.rules())
             GameType.HEZARTAII -> GameRules(hezar = hezar.rules())
+            GameType.DOLO -> GameRules(dolo = dolo.rules)
         }
     }
+}
+
+/** One knockout tie or table fixture of a league; its games are ordinary saved sessions. */
+data class LeagueMatch(
+    val id: Int,
+    val stage: Int,
+    val teamA: Int,
+    val teamB: Int,
+    val feederA: Int = -1,
+    val feederB: Int = -1,
+    val winsNeeded: Int = 1,
+    val games: List<Long> = emptyList(),
+    val isFinal: Boolean = false
+) {
+    val isBye: Boolean get() = teamB == BYE && feederB == -1
+
+    companion object {
+        const val BYE = -1
+    }
+}
+
+class League(
+    val id: Long,
+    var name: String,
+    val game: GameType,
+    teams: List<Side>,
+    var rules: GameRules,
+    val format: Int,
+    val config: LeagueSettings,
+    matches: List<LeagueMatch> = emptyList(),
+    var updatedAt: Long = id,
+    var finished: Boolean = false
+) {
+    val teams: MutableList<Side> = teams.toMutableList()
+    val matches: MutableList<LeagueMatch> = matches.toMutableList()
 }
 
 data class RosterEntry(val id: Long, val name: String, val avatar: Int, val isTeam: Boolean)

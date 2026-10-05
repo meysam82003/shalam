@@ -1,21 +1,23 @@
 package com.meysam.divanemtiaz
 
+import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.widget.LinearLayout
 
 class SettingsScreen(host: MainActivity, private var tab: Int = TAB_GENERAL) : Screen(host) {
     private var shalamTab = 0
 
     override fun build(): View = scaffold(title = "تنظیمات", subtitle = "همهٔ تغییرات خودکار ذخیره می‌شوند") {
-        addView(kit.grid(4, listOf("عمومی", "شلم", "منفی", "هزارتایی").mapIndexed { i, label ->
+        addView(kit.grid(3, listOf("عمومی", "شلم", "منفی", "هزارتایی", "دو لو گشنیز", "لیگ").mapIndexed { i, label ->
             kit.chip(label, tab == i, ButtonKind.CHIP_GOLD) { tab = i; host.refresh() }
         }, 6), kit.spaced(8))
         when (tab) {
             TAB_SHALAM -> shalam(this)
             TAB_MENFI -> {
                 addView(kit.section("قوانین منفی", RoyalIcon.EYE_OFF))
-                editMenfi(this, settings.menfi.rules()) { r ->
-                    host.updateSettings { it.copy(menfi = MenfiSettings(r.hands, r.hidden, r.threeSuccess, r.threeFailure, r.highWins)) }
+                editMenfi(this, settings.menfi.rules(), false) { r ->
+                    host.updateSettings { it.copy(menfi = MenfiSettings(r.hands, r.hidden, r.highWins, r.success, r.failure)) }
                 }
                 resetButton(this, "منفی") { it.copy(menfi = MenfiSettings()) }
             }
@@ -24,10 +26,40 @@ class SettingsScreen(host: MainActivity, private var tab: Int = TAB_GENERAL) : S
                 editHezar(this, settings.hezar.rules()) { r ->
                     host.updateSettings { it.copy(hezar = it.hezar.copy(target = r.target, rounds = r.rounds, zeroPenalty = r.zeroPenalty)) }
                 }
-                addView(kit.stepperRow("تعداد پیش‌فرض بازیکنان", "در آماده‌سازی بازی قابل تغییر است", settings.hezar.players, 2, 6, 1) { v ->
+                addView(kit.stepperRow("تعداد پیش‌فرض بازیکنان", "بدون سقف؛ در آماده‌سازی بازی هم قابل تغییر است", settings.hezar.players, 2, MAX_PLAYERS, 1) { v ->
                     host.updateSettings { it.copy(hezar = it.hezar.copy(players = v)) }
                 })
-                resetButton(this, "هزارتایی") { it.copy(hezar = HezarSettings()) }
+                addView(kit.section("ارزش ورق‌ها", RoyalIcon.DIAMOND))
+                val c = settings.hezar.cards
+                addView(kit.stepperRow("۲ تا ۹", null, c.low, 0, 500, 5) { v -> host.updateSettings { it.copy(hezar = it.hezar.copy(cards = it.hezar.cards.copy(low = v))) } })
+                addView(kit.stepperRow("۱۰ تا شاه", null, c.high, 0, 500, 5) { v -> host.updateSettings { it.copy(hezar = it.hezar.copy(cards = it.hezar.cards.copy(high = v))) } })
+                addView(kit.stepperRow("تک (آس)", null, c.ace, 0, 500, 5) { v -> host.updateSettings { it.copy(hezar = it.hezar.copy(cards = it.hezar.cards.copy(ace = v))) } })
+                addView(kit.stepperRow("جوکر", null, c.joker, 0, 500, 5) { v -> host.updateSettings { it.copy(hezar = it.hezar.copy(cards = it.hezar.cards.copy(joker = v))) } })
+                addView(kit.section("ورق و پخش", RoyalIcon.CHART))
+                val d = settings.deck
+                addView(kit.stepperRow("تعداد دستهٔ ورق", null, d.decks, 1, 40, 1) { v -> host.updateSettings { it.copy(deck = it.deck.copy(decks = v)) } })
+                addView(kit.stepperRow("تعداد کل جوکرها", null, d.jokers, 0, 80, 1) { v -> host.updateSettings { it.copy(deck = it.deck.copy(jokers = v)) } })
+                addView(kit.stepperRow("ورق هر نفر", null, d.handSize, 1, 60, 1) { v -> host.updateSettings { it.copy(deck = it.deck.copy(handSize = v)) } })
+                addView(kit.stepperRow("بستهٔ اول پخش", null, d.firstPacket, 1, 20, 1) { v -> host.updateSettings { it.copy(deck = it.deck.copy(firstPacket = v)) } })
+                addView(kit.stepperRow("بسته‌های بعدی", null, d.nextPacket, 1, 20, 1) { v -> host.updateSettings { it.copy(deck = it.deck.copy(nextPacket = v)) } })
+                addView(kit.stepperRow("کمبود مجاز (برداشتن از زیر دسته)", "اگر تا این تعداد کم بیاید، همین تعداد کارت از زیر برداشته و بُر زده می‌شود", d.shortAllowance, 0, 30, 1) { v -> host.updateSettings { it.copy(deck = it.deck.copy(shortAllowance = v)) } })
+                resetButton(this, "هزارتایی") { it.copy(hezar = HezarSettings(), deck = it.deck.copy(decks = DeckSettings().decks, jokers = DeckSettings().jokers, handSize = DeckSettings().handSize, firstPacket = DeckSettings().firstPacket, nextPacket = DeckSettings().nextPacket, shortAllowance = DeckSettings().shortAllowance)) }
+            }
+            TAB_DOLO -> {
+                addView(kit.section("قوانین دو لو گشنیز", RoyalIcon.CLUB))
+                editDolo(this, settings.dolo.rules) { r -> host.updateSettings { it.copy(dolo = it.dolo.copy(rules = r)) } }
+                addView(kit.stepperRow("تعداد پیش‌فرض بازیکنان", null, settings.dolo.players, GameType.DOLO.minSides, MAX_PLAYERS, 1) { v ->
+                    host.updateSettings { it.copy(dolo = it.dolo.copy(players = v)) }
+                })
+                addView(kit.stepperRow("تعداد کل ورق‌ها (ماشین‌حساب)", null, settings.deck.doloCards, 1, 2000, 1) { v ->
+                    host.updateSettings { it.copy(deck = it.deck.copy(doloCards = v)) }
+                })
+                resetButton(this, "دو لو گشنیز") { it.copy(dolo = DoloSettings(), deck = it.deck.copy(doloCards = DeckSettings().doloCards)) }
+            }
+            TAB_LEAGUE -> {
+                addView(kit.section("پیش‌فرض لیگ‌ها", RoyalIcon.TROPHY))
+                editLeague(this, settings.league) { c -> host.updateSettings { it.copy(league = c) } }
+                resetButton(this, "لیگ") { it.copy(league = LeagueSettings()) }
             }
             else -> general(this)
         }
@@ -40,6 +72,10 @@ class SettingsScreen(host: MainActivity, private var tab: Int = TAB_GENERAL) : S
         parent.addView(kit.switchRow("روشن ماندن صفحه نمایش", "صفحه در طول بازی خاموش نمی‌شود", g.keepScreenAwake) { v -> host.updateSettings { it.copy(general = it.general.copy(keepScreenAwake = v)) } })
         parent.addView(kit.switchRow("اعداد فارسی", "نمایش همهٔ امتیازها با رقم فارسی", g.persianDigits) { v ->
             host.updateSettings { it.copy(general = it.general.copy(persianDigits = v)) }
+            host.refresh()
+        })
+        parent.addView(kit.choiceRow("اندازهٔ نمایش", "اندازهٔ کل برنامه روی صفحهٔ گوشی", UiScale.options, g.uiScale) { v ->
+            host.updateSettings { it.copy(general = it.general.copy(uiScale = v)) }
             host.refresh()
         })
         parent.addView(kit.switchRow("متن درشت", "افزایش اندازهٔ همهٔ متن‌ها", g.largeText) { v ->
@@ -123,6 +159,8 @@ class SettingsScreen(host: MainActivity, private var tab: Int = TAB_GENERAL) : S
         const val TAB_SHALAM = 1
         const val TAB_MENFI = 2
         const val TAB_HEZAR = 3
+        const val TAB_DOLO = 4
+        const val TAB_LEAGUE = 5
     }
 }
 
@@ -218,19 +256,88 @@ fun Screen.editShalamMode(parent: LinearLayout, mode: ShalamModeRules, showDefau
     }
 }
 
-fun Screen.editMenfi(parent: LinearLayout, rules: MenfiRules, update: (MenfiRules) -> Unit) {
+fun Screen.editMenfi(parent: LinearLayout, rules: MenfiRules, showScoring: Boolean, update: (MenfiRules) -> Unit) {
     var current = rules
-    fun set(next: MenfiRules) {
+    fun set(next: MenfiRules, redraw: Boolean = false) {
         current = next
         update(next)
+        if (redraw) host.refresh()
     }
     parent.addView(kit.stepperRow("تعداد دست‌ها", "بازی پس از این تعداد دست تمام می‌شود", current.hands, 1, 40, 1) { set(current.copy(hands = it)) })
     parent.addView(kit.switchRow("پنهان‌بودن جمع امتیاز", "تا زمان نمایش نتیجه، جمع و امتیاز دست‌ها دیده نشود", current.hidden) { set(current.copy(hidden = it)) })
-    parent.addView(kit.stepperRow("امتیاز گرفتن عدد ۳", "سایر اعداد: ۱۳ منهای عدد", current.threeSuccess, 0, 200, 1, { kit.signed(it) }) { set(current.copy(threeSuccess = it)) })
-    parent.addView(kit.stepperRow("امتیاز نگرفتن عدد ۳", "سایر اعداد: منفیِ (۱۳ منهای عدد)", current.threeFailure, -200, 0, 1, { kit.signed(it) }) { set(current.copy(threeFailure = it)) })
     parent.addView(kit.choiceRow("برندهٔ بازی", null, listOf(1 to "بیشترین جمع امتیاز", 0 to "کمترین جمع امتیاز"), if (current.highWins) 1 else 0) {
         set(current.copy(highWins = it == 1))
     })
+    if (showScoring) {
+        parent.addView(kit.choiceRow("روش امتیاز این بازی", "این بازی با نسخهٔ قبلی شروع شده؛ با انتخاب جدول، همهٔ دست‌ها دوباره محاسبه می‌شوند", listOf(
+            MenfiScoring.TABLE to "جدول امتیاز (± عدد، ده = +۲۰ / −۱۰)",
+            MenfiScoring.LEGACY to "روش قدیمی نسخهٔ ۳"
+        ), current.scoring) { set(current.copy(scoring = it), redraw = true) })
+    }
+    if (current.scoring == MenfiScoring.LEGACY) return
+    parent.addView(kit.section("جدول امتیاز اعداد", RoyalIcon.STAR))
+    parent.addView(kit.text("برای تغییر، روی هر امتیاز بزنید. گرفتن یعنی تیم دست‌کم به عدد خودش رسیده است.", TextStyle.CAPTION, Royal.muted), kit.spaced(6))
+    parent.addView(kit.vertical().apply {
+        background = PanelDrawable(kit.density, PanelStyle.FLAT, 14f)
+        setPadding(kit.dp(10), kit.dp(6), kit.dp(10), kit.dp(9))
+        layoutParams = kit.spaced(6)
+        addView(kit.horizontal().apply {
+            addView(kit.weight(kit.text("عدد", TextStyle.CAPTION, Royal.gold)))
+            addView(kit.text("گرفتن", TextStyle.CAPTION, Royal.turquoiseLight, Gravity.CENTER), LinearLayout.LayoutParams(kit.dp(84), ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(kit.hgap(8))
+            addView(kit.text("نگرفتن", TextStyle.CAPTION, Royal.crimsonLight, Gravity.CENTER), LinearLayout.LayoutParams(kit.dp(84), ViewGroup.LayoutParams.WRAP_CONTENT))
+        })
+        MenfiScoring.numbers.forEachIndexed { k, n ->
+            addView(kit.horizontal().apply {
+                setPadding(0, kit.dp(2), 0, kit.dp(2))
+                addView(kit.weight(kit.text("عدد ${kit.n(n)}", TextStyle.BODY_BOLD, Royal.ivory)))
+                addView(kit.chip(kit.signed(current.success[k]), false) {
+                    kit.numberPrompt("امتیاز گرفتن عدد ${kit.n(n)}", current.success[k], true) { v ->
+                        set(current.copy(success = current.success.toMutableList().also { it[k] = v }), redraw = true)
+                    }
+                }.apply { setTextColor(Royal.turquoiseLight) }, LinearLayout.LayoutParams(kit.dp(84), kit.dp(36)))
+                addView(kit.hgap(8))
+                addView(kit.chip(kit.signed(current.failure[k]), false) {
+                    kit.numberPrompt("امتیاز نگرفتن عدد ${kit.n(n)}", current.failure[k], true) { v ->
+                        set(current.copy(failure = current.failure.toMutableList().also { it[k] = v }), redraw = true)
+                    }
+                }.apply { setTextColor(Royal.crimsonLight) }, LinearLayout.LayoutParams(kit.dp(84), kit.dp(36)))
+            })
+        }
+    })
+}
+
+fun Screen.editDolo(parent: LinearLayout, rules: DoloRules, update: (DoloRules) -> Unit) {
+    var current = rules
+    fun set(next: DoloRules) {
+        current = next
+        update(next)
+    }
+    parent.addView(kit.stepperRow("حداقل برای ۴ نفر و کمتر", null, current.minUpTo4, 0, 20, 1) { set(current.copy(minUpTo4 = it)) })
+    parent.addView(kit.stepperRow("حداقل برای ۵ و ۶ نفر", null, current.min5to6, 0, 20, 1) { set(current.copy(min5to6 = it)) })
+    parent.addView(kit.stepperRow("حداقل برای ۷ نفر به بالا", null, current.minFrom7, 0, 20, 1) { set(current.copy(minFrom7 = it)) })
+    parent.addView(kit.stepperRow("ضریب امتیاز گرفتن", "گرفتن = عدد × این ضریب", current.madeMultiplier, 0, 20, 1) { set(current.copy(madeMultiplier = it)) })
+    parent.addView(kit.stepperRow("ضریب امتیاز نگرفتن", "نگرفتن = منفیِ عدد × این ضریب", current.failMultiplier, 0, 20, 1) { set(current.copy(failMultiplier = it)) })
+    parent.addView(kit.stepperRow("تعداد دست هر دور", "صفر یعنی به تعداد بازیکنان باقی‌مانده (هر نفر یک بار پخش کند)", current.handsPerRound, 0, 60, 1, { if (it == 0) "خودکار" else kit.n(it) }) { set(current.copy(handsPerRound = it)) })
+    parent.addView(kit.stepperRow("حذف پس از چند دور", null, current.eliminateEvery, 1, 10, 1) { set(current.copy(eliminateEvery = it)) })
+    parent.addView(kit.stepperRow("تعداد حذف در هر نوبت", "کم‌امتیازترین‌ها؛ داور با تیک تأیید می‌کند", current.eliminateCount, 1, 10, 1) { set(current.copy(eliminateCount = it)) })
+    parent.addView(kit.stepperRow("دست اضافه در تساوی", "اگر پایینی‌ها مساوی شوند", current.tieExtraHands, 1, 10, 1) { set(current.copy(tieExtraHands = it)) })
+    parent.addView(kit.switchRow("صفر شدن امتیازها پس از هر حذف", "برای حذف بعدی فقط امتیاز همان مرحله حساب شود", current.resetAfterElimination) { set(current.copy(resetAfterElimination = it)) })
+}
+
+fun Screen.editLeague(parent: LinearLayout, config: LeagueSettings, update: (LeagueSettings) -> Unit) {
+    var current = config
+    fun set(next: LeagueSettings) {
+        current = next
+        update(next)
+    }
+    parent.addView(kit.choiceRow("قالب پیش‌فرض", null, listOf(LeagueFormat.KNOCKOUT to "حذفی دو برده", LeagueFormat.ROUND_ROBIN to "دوره‌ای (جدول)"), current.format) { set(current.copy(format = it)) })
+    parent.addView(kit.stepperRow("برد لازم در هر رویارویی", "۲ = دو برده؛ در ۱–۱ بازی فینال", current.winsNeeded, 1, 5, 1) { set(current.copy(winsNeeded = it)) })
+    parent.addView(kit.stepperRow("امتیاز برد (جدول)", null, current.pointsWin, 0, 10, 1) { set(current.copy(pointsWin = it)) })
+    parent.addView(kit.stepperRow("امتیاز مساوی (جدول)", null, current.pointsDraw, 0, 10, 1) { set(current.copy(pointsDraw = it)) })
+    parent.addView(kit.stepperRow("امتیاز باخت (جدول)", null, current.pointsLoss, -5, 10, 1) { set(current.copy(pointsLoss = it)) })
+    parent.addView(kit.switchRow("رفت و برگشت", null, current.doubleRoundRobin) { set(current.copy(doubleRoundRobin = it)) })
+    parent.addView(kit.switchRow("فینال بین دو تیم اول جدول", null, current.finalAfterTable) { set(current.copy(finalAfterTable = it)) })
 }
 
 fun Screen.editHezar(parent: LinearLayout, rules: HezarRules, update: (HezarRules) -> Unit) {
@@ -247,6 +354,7 @@ fun Screen.editHezar(parent: LinearLayout, rules: HezarRules, update: (HezarRule
 /** Rules of one running game; every change recalculates all of its hands. */
 class SessionRulesScreen(host: MainActivity, private val session: GameSession) : Screen(host) {
     override val sessionId: Long get() = session.id
+    private var showScoring = false
 
     private fun apply(rules: GameRules) {
         session.rules = rules
@@ -278,11 +386,17 @@ class SessionRulesScreen(host: MainActivity, private val session: GameSession) :
             }
             GameType.MENFI -> {
                 addView(kit.section("قوانین منفی", RoyalIcon.EYE_OFF))
-                editMenfi(this, session.rules.menfi) { m -> apply(session.rules.copy(menfi = m)) }
+                val legacyGame = session.rules.menfi.scoring == MenfiScoring.LEGACY || showScoring
+                if (legacyGame) showScoring = true
+                editMenfi(this, session.rules.menfi, legacyGame) { m -> apply(session.rules.copy(menfi = m)) }
             }
             GameType.HEZARTAII -> {
                 addView(kit.section("قوانین هزارتایی", RoyalIcon.TROPHY))
                 editHezar(this, session.rules.hezar) { h -> apply(session.rules.copy(hezar = h)) }
+            }
+            GameType.DOLO -> {
+                addView(kit.section("قوانین دو لو گشنیز", RoyalIcon.CLUB))
+                editDolo(this, session.rules.dolo) { d -> apply(session.rules.copy(dolo = d)) }
             }
         }
     }

@@ -80,24 +80,30 @@ class MenfiBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(h
     private fun editAction(index: Int): (() -> Unit)? {
         val round = session.rounds[index]
         return when {
-            round.numbers.size == 2 && (round.kind == RoundKind.MENFI_HAND || round.kind == RoundKind.FIXED) -> { { host.push(MenfiHandScreen(host, session, index)) } }
+            round.kind == RoundKind.MENFI_HAND || (round.numbers.size == 2 && round.kind == RoundKind.FIXED) -> { { host.push(MenfiHandScreen(host, session, index)) } }
             else -> { { editScoresDialog(index) } }
         }
     }
 
     private fun describe(round: Round): String {
         if (hiddenNow) return if (round.kind == RoundKind.MENFI_HAND || round.numbers.isNotEmpty()) "ثبت شد  ✓" else round.note
-        if (round.numbers.size == 2) {
-            val title = outcomeTitle(round.outcome)
-            return "اعداد: ${session.sides[0].name} ${kit.n(round.numbers[0])} • ${session.sides[1].name} ${kit.n(round.numbers[1])}" + if (title.isNotBlank()) " • $title" else ""
-        }
-        return round.note
+        val parts = mutableListOf<String>()
+        if (round.numbers.size == 2) parts += "اعداد: ${session.sides[0].name} ${kit.n(round.numbers[0])} • ${session.sides[1].name} ${kit.n(round.numbers[1])}"
+        menfiOutcomeTitle(session, round.outcome).takeIf { it.isNotBlank() }?.let { parts += it }
+        if (parts.isEmpty()) return round.note
+        return parts.joinToString(" • ")
     }
+}
 
-    private fun outcomeTitle(outcome: Int): String = when (outcome) {
-        0 -> "هر دو تیم گرفتند"
-        1 -> "${session.sides[0].name} گرفت؛ ${session.sides[1].name} نگرفت"
-        2 -> "${session.sides[0].name} نگرفت؛ ${session.sides[1].name} گرفت"
+fun menfiOutcomeTitle(session: GameSession, outcome: Int): String {
+    val a = session.sides.getOrNull(0)?.name ?: "تیم اول"
+    val b = session.sides.getOrNull(1)?.name ?: "تیم دوم"
+    return when (outcome) {
+        MenfiEngine.BOTH -> "هر دو تیم گرفتند"
+        MenfiEngine.A_ONLY -> "$a گرفت؛ $b نگرفت"
+        MenfiEngine.B_ONLY -> "$a نگرفت؛ $b گرفت"
+        MenfiEngine.NONE -> "هیچ‌کدام نگرفتند؛ هر دو منفی"
+        MenfiEngine.MANUAL -> "ثبت دستی داور"
         else -> ""
     }
 }
@@ -107,7 +113,8 @@ class MenfiHandScreen(host: MainActivity, private val session: GameSession, priv
     private val editing = editIndex?.let { session.rounds.getOrNull(it) }
     private val numbers = arrayOf(editing?.numbers?.getOrNull(0), editing?.numbers?.getOrNull(1))
     private var picking = if (editing == null) 0 else -1
-    private var outcome = editing?.outcome?.takeIf { it in 0..2 }
+    private var outcome = editing?.outcome?.takeIf { it in 0..3 }
+    private var manual: List<Int>? = if (editing?.outcome == MenfiEngine.MANUAL) editing.raw else null
 
     override val sessionId: Long get() = session.id
 
@@ -120,42 +127,66 @@ class MenfiHandScreen(host: MainActivity, private val session: GameSession, priv
         ) {
             session.sides.forEachIndexed { i, side -> addView(numberPanel(i, side)) }
             if (ready) {
+                val a = numbers[0]!!
+                val b = numbers[1]!!
                 addView(kit.section("حالت رخ‌داده را انتخاب کنید", RoyalIcon.EYE))
-                addView(kit.text("${session.sides[0].name}: ${kit.n(numbers[0]!!)}   |   ${session.sides[1].name}: ${kit.n(numbers[1]!!)}", TextStyle.BODY_BOLD, Royal.goldLight, Gravity.CENTER))
-                addView(kit.gap(6))
-                MenfiEngine.outcomes(numbers[0]!!, numbers[1]!!, rules).forEachIndexed { index, o ->
-                    val title = when (index) {
-                        0 -> "هر دو تیم گرفتند"
-                        1 -> "${session.sides[0].name} گرفت؛ ${session.sides[1].name} نگرفت"
-                        else -> "${session.sides[0].name} نگرفت؛ ${session.sides[1].name} گرفت"
-                    }
+                val sum = a + b
+                val hint = when {
+                    rules.scoring == MenfiScoring.LEGACY -> "روش امتیاز قدیمی این بازی"
+                    sum <= MenfiScoring.TRICKS -> "جمع ${kit.n(sum)}: هر دو تیم می‌توانند بگیرند"
+                    sum == MenfiScoring.TRICKS + 1 -> "جمع ${kit.n(sum)}: حتماً یک تیم منفی می‌شود"
+                    else -> "جمع ${kit.n(sum)}: ممکن است هر دو تیم منفی شوند"
+                }
+                addView(kit.text(hint, TextStyle.LABEL, Royal.muted, Gravity.CENTER), kit.spaced(6))
+                MenfiEngine.outcomes(a, b, rules).forEach { o ->
+                    val title = menfiOutcomeTitle(session, o.index)
+                    val selected = manual == null && outcome == o.index
                     addView(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
-                        background = PanelDrawable(kit.density, if (outcome == index) PanelStyle.SELECTED else PanelStyle.NORMAL, 18f)
-                        setPadding(kit.dp(12), kit.dp(12), kit.dp(12), kit.dp(15))
-                        layoutParams = kit.spaced(8)
+                        background = PanelDrawable(kit.density, if (selected) PanelStyle.SELECTED else PanelStyle.NORMAL, 16f)
+                        setPadding(kit.dp(10), kit.dp(8), kit.dp(10), kit.dp(11))
+                        layoutParams = kit.spaced(6)
                         addView(kit.horizontal(Gravity.CENTER).apply {
+                            addView(kit.text("${session.sides[0].name} ", TextStyle.LABEL, Royal.muted))
                             addView(kit.text(kit.signed(o.teamAScore), TextStyle.NUMBER_L, scoreColor(o.teamAScore), Gravity.CENTER))
                             addView(kit.text("   |   ", TextStyle.HEADING, Royal.dim))
                             addView(kit.text(kit.signed(o.teamBScore), TextStyle.NUMBER_L, scoreColor(o.teamBScore), Gravity.CENTER))
+                            addView(kit.text(" ${session.sides[1].name}", TextStyle.LABEL, Royal.muted))
                         })
-                        addView(kit.text(title, TextStyle.LABEL, Royal.muted, Gravity.CENTER))
+                        addView(kit.text(title, TextStyle.LABEL, if (selected) Royal.turquoiseLight else Royal.ivory, Gravity.CENTER))
                         isClickable = true
                         contentDescription = title
-                        setOnClickListener { kit.tap(it); outcome = index; host.refresh() }
+                        setOnClickListener { kit.tap(it); outcome = o.index; manual = null; host.refresh() }
                     })
                 }
             }
+            addView(kit.section("ثبت دستی داور", RoyalIcon.EDIT))
+            val m = manual
+            if (m != null) {
+                addView(kit.panel(PanelStyle.SELECTED, 12).apply {
+                    layoutParams = kit.spaced(6)
+                    gravity = Gravity.CENTER_HORIZONTAL
+                    addView(kit.text(session.sides.indices.joinToString("   |   ") { "${session.sides[it].name} ${kit.signed(m.getOrElse(it) { 0 })}" }, TextStyle.BODY_BOLD, Royal.turquoiseLight, Gravity.CENTER))
+                    addView(kit.text("امتیاز این دست دستی ثبت می‌شود", TextStyle.CAPTION, Royal.muted, Gravity.CENTER))
+                })
+            }
+            addView(kit.button(if (m == null) "ورود دستی امتیاز هر تیم (+ / −)" else "ویرایش امتیاز دستی", ButtonKind.SECONDARY, RoyalIcon.SLIDERS, 42) {
+                val initial = m ?: outcome?.let { o -> if (ready) MenfiEngine.outcome(numbers[0]!!, numbers[1]!!, o, rules).let { listOf(it.teamAScore, it.teamBScore) } else null } ?: listOf(0, 0)
+                manualScoresDialog("ثبت دستی امتیاز", session.sides.map { it.name }, initial, "داور امتیاز هر تیم را با علامت + یا − وارد می‌کند؛ عددها اختیاری‌اند.") { values ->
+                    manual = values
+                    host.refresh()
+                }
+            })
         }
     }
 
-    private fun numberPanel(index: Int, side: Side): View = kit.panel(if (numbers[index] != null && picking != index) PanelStyle.SUCCESS else PanelStyle.NORMAL, 14).apply {
-        layoutParams = kit.spaced(10)
+    private fun numberPanel(index: Int, side: Side): View = kit.panel(if (numbers[index] != null && picking != index) PanelStyle.SUCCESS else PanelStyle.NORMAL, 12).apply {
+        layoutParams = kit.spaced(8)
         addView(kit.horizontal().apply {
-            addView(kit.avatar(side.avatar, 40))
-            addView(kit.hgap(10))
+            addView(kit.avatar(side.avatar, 34))
+            addView(kit.hgap(8))
             addView(kit.weight(kit.text("عدد ${side.name}", TextStyle.BODY_BOLD, Royal.goldLight)))
             if (numbers[index] != null && picking != index) {
-                addView(kit.button("تغییر", ButtonKind.GHOST, height = 38) {
+                addView(kit.button("تغییر", ButtonKind.GHOST, height = 34) {
                     picking = index
                     outcome = null
                     host.refresh()
@@ -163,7 +194,7 @@ class MenfiHandScreen(host: MainActivity, private val session: GameSession, priv
             }
         })
         if (picking == index || numbers[index] == null) {
-            addView(kit.gap(8))
+            addView(kit.gap(6))
             addView(kit.grid(6, MenfiEngine.readyNumbers.map { value ->
                 kit.chip(kit.n(value), !rules.hidden && numbers[index] == value, ButtonKind.CHIP_GOLD) {
                     numbers[index] = value
@@ -171,7 +202,7 @@ class MenfiHandScreen(host: MainActivity, private val session: GameSession, priv
                     picking = numbers.indexOfFirst { it == null }
                     host.refresh()
                 }
-            }, 6))
+            }, 5))
             if (rules.hidden) addView(kit.text("عدد پس از انتخاب پنهان می‌شود.", TextStyle.CAPTION, Royal.muted, Gravity.CENTER))
         } else {
             val shown = if (rules.hidden) "ثبت شد  ✓" else "عدد: ${kit.n(numbers[index]!!)}"
@@ -182,16 +213,21 @@ class MenfiHandScreen(host: MainActivity, private val session: GameSession, priv
     private fun save() {
         val a = numbers[0]
         val b = numbers[1]
-        if (a == null || b == null) {
-            kit.toast("ابتدا عدد هر دو تیم را ثبت کنید")
-            return
+        val m = manual
+        val round = if (m != null) {
+            Round(RoundKind.MENFI_HAND, emptyList(), numbers = if (a != null && b != null) listOf(a, b) else emptyList(), outcome = MenfiEngine.MANUAL, raw = m)
+        } else {
+            if (a == null || b == null) {
+                kit.toast("ابتدا عدد هر دو تیم را ثبت کنید یا امتیاز را دستی وارد کنید")
+                return
+            }
+            val chosen = outcome?.takeIf { it in MenfiEngine.possible(a, b, rules) }
+            if (chosen == null) {
+                kit.toast("حالت رخ‌داده را انتخاب کنید")
+                return
+            }
+            Round(RoundKind.MENFI_HAND, emptyList(), numbers = listOf(a, b), outcome = chosen)
         }
-        val chosen = outcome
-        if (chosen == null) {
-            kit.toast("حالت رخ‌داده را انتخاب کنید")
-            return
-        }
-        val round = Round(RoundKind.MENFI_HAND, emptyList(), numbers = listOf(a, b), outcome = chosen)
         if (editIndex != null) session.rounds[editIndex] = round else session.rounds += round
         val ended = SessionOps.commitAndCheck(host, session)
         host.pop()
@@ -210,7 +246,10 @@ class HezarBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(h
         return scaffold(
             title = "داوری هزارتایی",
             subtitle = sessionSubtitle(session),
-            actions = listOf(menuButton(commonMenu())),
+            actions = listOf(menuButton(listOf(
+                "افزودن بازیکن" to { addPlayerDialog(session) { afterChange() } },
+                "ماشین‌حساب ورق و پخش" to { host.push(DeckCalcScreen(host, GameType.HEZARTAII, session.sides.size)) }
+            ) + commonMenu())),
             bottom = kit.horizontal().apply {
                 addView(kit.weight(kit.button("ثبت دور ${kit.n(played + 1)}", ButtonKind.PRIMARY, RoyalIcon.PLUS) {
                     host.push(HezarRoundScreen(host, session, null))
@@ -267,21 +306,21 @@ class HezarBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(h
     }
 
     private fun rankRow(place: Int, side: Side, total: Int, leader: Boolean): View = kit.horizontal().apply {
-        background = PanelDrawable(kit.density, if (leader) PanelStyle.RAISED else PanelStyle.NORMAL, 18f)
-        setPadding(kit.dp(12), kit.dp(10), kit.dp(12), kit.dp(13))
-        layoutParams = kit.spaced(8)
+        background = PanelDrawable(kit.density, if (leader) PanelStyle.RAISED else PanelStyle.NORMAL, 16f)
+        setPadding(kit.dp(10), kit.dp(6), kit.dp(10), kit.dp(9))
+        layoutParams = kit.spaced(5)
         val medal = when (place) {
             0 -> ButtonKind.CHIP_GOLD
             1 -> ButtonKind.CHIP_SELECTED
             else -> ButtonKind.CHIP
         }
-        addView(kit.text(kit.n(place + 1), TextStyle.HEADING, ButtonDrawable.textColor(medal), Gravity.CENTER).apply {
-            background = ButtonDrawable(kit.density, medal, 16f)
+        addView(kit.text(kit.n(place + 1), TextStyle.LABEL_BOLD, ButtonDrawable.textColor(medal), Gravity.CENTER).apply {
+            background = ButtonDrawable(kit.density, medal, 14f)
             setPadding(0, 0, 0, kit.dp(2))
-        }, LinearLayout.LayoutParams(kit.dp(36), kit.dp(36)))
-        addView(kit.hgap(10))
-        addView(kit.avatar(side.avatar, 46))
-        addView(kit.hgap(10))
+        }, LinearLayout.LayoutParams(kit.dp(30), kit.dp(30)))
+        addView(kit.hgap(8))
+        addView(kit.avatar(side.avatar, 36))
+        addView(kit.hgap(8))
         addView(kit.vertical().apply {
             addView(kit.horizontal().apply {
                 addView(kit.text(side.name, TextStyle.BODY_BOLD, Royal.ivory, maxLines = 1))
@@ -290,62 +329,87 @@ class HezarBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(h
                     addView(kit.icon(RoyalIcon.CROWN, Royal.goldLight, 16))
                 }
             })
-            addView(kit.gap(4))
-            addView(kit.progress(if (rules.target > 0) total.toFloat() / rules.target else 0f, if (leader) Royal.turquoise else Royal.gold, 6))
+            addView(kit.gap(3))
+            addView(kit.progress(if (rules.target > 0) total.toFloat() / rules.target else 0f, if (leader) Royal.turquoise else Royal.gold, 5))
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        addView(kit.hgap(10))
-        addView(kit.text(kit.signed(total), TextStyle.NUMBER_L, if (leader) Royal.goldLight else Royal.ivory, Gravity.CENTER))
+        addView(kit.hgap(8))
+        addView(kit.text(kit.signed(total), TextStyle.HEADING, if (leader) Royal.goldLight else Royal.ivory, Gravity.CENTER))
     }
 }
 
 class HezarRoundScreen(host: MainActivity, private val session: GameSession, private val editIndex: Int?) : Screen(host) {
     private val rules get() = session.rules.hezar
     private val editing = editIndex?.let { session.rounds.getOrNull(it) }
-    private val values = MutableList(session.sides.size) { editing?.raw?.getOrNull(it)?.toString() ?: "" }
+    private val values = MutableList(session.sides.size) { editing?.raw?.getOrNull(it)?.let { v -> kotlin.math.abs(v).toString() } ?: "" }
+    private val negative = MutableList(session.sides.size) { (editing?.raw?.getOrNull(it) ?: 0) < 0 }
 
     override val sessionId: Long get() = session.id
 
     override fun build(): View = scaffold(
         title = if (editing != null) "ویرایش دور ${kit.n(editIndex!! + 1)}" else "دور ${kit.n(GameEngine.playedHands(session) + 1)}",
-        subtitle = "صفر با جریمهٔ ${kit.signed(rules.zeroPenalty)} ثبت می‌شود؛ امتیاز منفی مجاز است",
+        subtitle = "صفر با جریمهٔ ${kit.signed(rules.zeroPenalty)} ثبت می‌شود؛ با دکمهٔ ± منفی کنید",
         bottom = kit.button(if (editing != null) "ذخیرهٔ تغییرات" else "ثبت امتیاز این دور", ButtonKind.PRIMARY, RoyalIcon.CHECK) { save() }
     ) {
         session.sides.forEachIndexed { i, side ->
-            val preview = kit.text(previewText(i), TextStyle.CAPTION, Royal.muted, Gravity.CENTER)
-            val field = kit.field("امتیاز ${side.name}", values[i], numeric = true, signed = true).apply {
+            val preview = kit.text(previewText(i), TextStyle.CAPTION, Royal.muted)
+            val field = kit.field("امتیاز", values[i], numeric = true).apply {
                 addTextChangedListener(object : android.text.TextWatcher {
                     override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
                     override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
                     override fun afterTextChanged(s: android.text.Editable?) {
-                        values[i] = s?.toString().orEmpty()
+                        val text = s?.toString().orEmpty()
+                        if (text.startsWith("-") || text.startsWith("−")) {
+                            negative[i] = true
+                            values[i] = text.drop(1)
+                        } else values[i] = text
                         preview.text = previewText(i)
                     }
                 })
             }
+            val sign = kit.chip(if (negative[i]) "−" else "+", negative[i], ButtonKind.DANGER) {}
+            sign.setOnClickListener {
+                kit.tap(it)
+                negative[i] = !negative[i]
+                sign.text = if (negative[i]) "−" else "+"
+                sign.background = ButtonDrawable(kit.density, if (negative[i]) ButtonKind.DANGER else ButtonKind.CHIP, 12f)
+                sign.setTextColor(ButtonDrawable.textColor(if (negative[i]) ButtonKind.DANGER else ButtonKind.CHIP))
+                preview.text = previewText(i)
+            }
             addView(kit.horizontal().apply {
-                background = PanelDrawable(kit.density, PanelStyle.NORMAL, 18f)
-                setPadding(kit.dp(12), kit.dp(10), kit.dp(12), kit.dp(13))
-                layoutParams = kit.spaced(8)
-                addView(kit.avatar(side.avatar, 46))
-                addView(kit.hgap(10))
+                background = PanelDrawable(kit.density, PanelStyle.NORMAL, 16f)
+                setPadding(kit.dp(10), kit.dp(6), kit.dp(10), kit.dp(9))
+                layoutParams = kit.spaced(5)
+                addView(kit.avatar(side.avatar, 32))
+                addView(kit.hgap(8))
                 addView(kit.vertical().apply {
-                    addView(kit.text(side.name, TextStyle.BODY_BOLD, Royal.goldLight))
+                    addView(kit.text(side.name, TextStyle.LABEL_BOLD, Royal.goldLight, maxLines = 1))
                     addView(preview)
                 }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-                addView(kit.hgap(8))
-                addView(field, LinearLayout.LayoutParams(kit.dp(130), ViewGroup.LayoutParams.WRAP_CONTENT))
+                addView(kit.iconButton(RoyalIcon.CHART, "ماشین‌حساب کارت ${side.name}", ButtonKind.CHIP, 36) {
+                    cardCalculator(side.name) { points ->
+                        negative[i] = points < 0
+                        values[i] = kotlin.math.abs(points).toString()
+                        host.refresh()
+                    }
+                })
+                addView(kit.hgap(4))
+                addView(sign, LinearLayout.LayoutParams(kit.dp(38), kit.dp(38)))
+                addView(kit.hgap(4))
+                addView(field, LinearLayout.LayoutParams(kit.dp(86), ViewGroup.LayoutParams.WRAP_CONTENT))
             })
         }
     }
 
+    private fun parsed(i: Int): Int? = PersianText.parseInt(values[i])?.let { kotlin.math.abs(it) }?.let { if (negative[i]) -it else it }
+
     private fun previewText(i: Int): String {
-        val v = PersianText.parseInt(values[i]) ?: return "منتظر امتیاز"
+        val v = parsed(i) ?: return "منتظر امتیاز"
         val score = HezarEngine.roundScore(v, rules)
         return if (v == 0) "ثبت: ${kit.signed(score)} (جریمهٔ صفر)" else "ثبت: ${kit.signed(score)}"
     }
 
     private fun save() {
-        val parsed = values.map { PersianText.parseInt(it) }
+        val parsed = session.sides.indices.map { parsed(it) }
         if (parsed.any { it == null }) {
             kit.toast("امتیاز همهٔ بازیکنان را وارد کنید")
             return
@@ -357,4 +421,52 @@ class HezarRoundScreen(host: MainActivity, private val session: GameSession, pri
         host.pop()
         if (ended) host.replace(ResultScreen(host, session))
     }
+}
+
+/** Counts cards by value (2–9, 10–K, ace, joker) and returns their points, positive or negative. */
+fun Screen.cardCalculator(name: String, onResult: (Int) -> Unit) {
+    val values = settings.hezar.cards
+    val counts = intArrayOf(0, 0, 0, 0)
+    var minus = false
+    val total = kit.text("", TextStyle.NUMBER_L, Royal.goldLight, Gravity.CENTER)
+    fun points() = CardCalc.points(CardCount(counts[0], counts[1], counts[2], counts[3]), values).let { if (minus) -it else it }
+    fun update() { total.text = kit.signed(points()) }
+    val labels = listOf(
+        "۲ تا ۹ (هر کدام ${kit.n(values.low)})",
+        "۱۰ تا شاه (هر کدام ${kit.n(values.high)})",
+        "تک / آس (هر کدام ${kit.n(values.ace)})",
+        "جوکر (هر کدام ${kit.n(values.joker)})"
+    )
+    val signBox = kit.vertical()
+    fun drawSign() {
+        signBox.removeAllViews()
+        signBox.addView(kit.grid(2, listOf(
+            kit.chip("امتیاز مثبت", !minus) { minus = false; drawSign(); update() },
+            kit.chip("امتیاز منفی (کارت‌های مانده)", minus, ButtonKind.DANGER) { minus = true; drawSign(); update() }
+        ), 6))
+    }
+    drawSign()
+    val body = kit.vertical().apply {
+        labels.forEachIndexed { i, label ->
+            val count = kit.text(kit.n(0), TextStyle.HEADING, Royal.ivory, Gravity.CENTER)
+            addView(kit.horizontal().apply {
+                layoutParams = kit.spaced(6)
+                addView(kit.weight(kit.text(label, TextStyle.LABEL, Royal.ivory)))
+                addView(kit.iconButton(RoyalIcon.PLUS, "افزایش", ButtonKind.CHIP, 34) { counts[i]++; count.text = kit.n(counts[i]); update() })
+                addView(count, LinearLayout.LayoutParams(kit.dp(40), ViewGroup.LayoutParams.WRAP_CONTENT))
+                addView(kit.iconButton(RoyalIcon.MINUS, "کاهش", ButtonKind.CHIP, 34) {
+                    if (counts[i] > 0) counts[i]--
+                    count.text = kit.n(counts[i])
+                    update()
+                })
+            })
+        }
+        addView(signBox, kit.spaced(6))
+        addView(total)
+    }
+    update()
+    kit.dialog("شمارش کارت‌های $name", null, body, listOf(
+        DialogAction("ثبت امتیاز", ButtonKind.PRIMARY) { onResult(points()) },
+        DialogAction("انصراف")
+    )).show()
 }
