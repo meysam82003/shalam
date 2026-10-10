@@ -13,46 +13,73 @@ class MafiaSpeakingScreen(host: MainActivity, gameId: Long) : MafiaScreen(host, 
     private val challengers = HashMap<Int, Int>()
     private var cuePlayed = false
 
+    private fun pickChallenger(p: MafiaPlayer) {
+        val taken = challengers.filterKeys { it != p.id }.values.toSet()
+        pickPlayers("انتخاب چلنجر برای ${p.name}", g.alive.filter { it.id != p.id && it.id !in taken && MafiaFlow.silenced(it) == null }, 1, 1, false,
+            challengers[p.id]?.let { setOf(it) } ?: emptySet()) { ids ->
+            challengers[p.id] = ids.first(); host.refresh()
+        }
+    }
+
     override fun build(): View {
         if (!load()) return missing()
         timers.forEach { it.stop() }
         timers.clear()
         val s = mafiaSettings
         return scaffold("صحبت", "زمان صحبت ${kit.n(s.speakTime)} • چالش ${kit.n(s.challengeTime)} ثانیه",
-            actions = listOf(kit.iconButton(RoyalIcon.UNDO, "بازنشانی", ButtonKind.SECONDARY, 44) { challengers.clear(); host.refresh() }),
-            bottom = kit.button("پایان", ButtonKind.PRIMARY, RoyalIcon.CHECK, 52) {
-                g.day.speakingDone = true
-                g.log += MafiaLog(g.phaseTitle, "صحبت روز انجام شد")
-                store()
-                host.pop()
-            }) {
+            actions = listOf(
+                kit.iconButton(RoyalIcon.SWAP, "ترتیب نشستن", ButtonKind.SECONDARY, 44) { host.push(MafiaSeatingScreen(host, gameId)) },
+                kit.iconButton(RoyalIcon.UNDO, "بازنشانی", ButtonKind.SECONDARY, 44) { challengers.clear(); host.refresh() }
+            ),
+            bottom = kit.button("پایان", ButtonKind.PRIMARY, RoyalIcon.CHECK, 52) { finish() }) {
             addView(narration("صحبت‌ها به ترتیب نشستن؛ بازیکن اول سر صحبت است.", MafiaCues.SPEAKING, PanelStyle.NORMAL))
-            g.alive.forEachIndexed { i, p ->
+            MafiaManual.speakingOrder(g).forEachIndexed { i, p ->
                 val challenger = challengers[p.id]?.let { g.player(it) }
                 val extra = kit.horizontal().apply {
                     if (challenger == null) {
-                        addView(kit.chip("انتخاب چلنجر", false) {
-                            val taken = challengers.values.toSet()
-                            pickPlayers("انتخاب چلنجر", g.alive.filter { it.id != p.id && it.id !in taken && MafiaFlow.silenced(it) == null }, 1, 1, false) { ids ->
-                                challengers[p.id] = ids.first(); host.refresh()
-                            }
-                        }.apply { setPadding(kit.dp(12), kit.dp(4), kit.dp(12), kit.dp(6)) })
+                        addView(kit.chip("انتخاب چلنجر", false) { pickChallenger(p) }.apply { setPadding(kit.dp(12), kit.dp(4), kit.dp(12), kit.dp(6)) })
                     } else {
-                        addView(kit.weight(kit.text("چلنجر: ${challenger.name}", TextStyle.LABEL_BOLD, Royal.turquoiseLight)))
+                        addView(kit.weight(kit.text("چلنجر: ${challenger.name}", TextStyle.LABEL_BOLD, Royal.turquoiseLight, maxLines = 1)))
                         val time = kit.text(clock(s.challengeTime), TextStyle.HEADING, Royal.goldLight, Gravity.CENTER, 1)
                         lateinit var timer: MafiaTimer
                         timer = MafiaTimer(this@MafiaSpeakingScreen, s.challengeTime) { left, _ -> time.text = clock(left) }
                         timers += timer
-                        addView(time, LinearLayout.LayoutParams(kit.dp(58), ViewGroup.LayoutParams.WRAP_CONTENT))
+                        addView(time, LinearLayout.LayoutParams(kit.dp(54), ViewGroup.LayoutParams.WRAP_CONTENT))
                         addView(kit.chip("شروع/توقف", false, ButtonKind.CHIP_GOLD) {
                             if (timer.running) timer.pause() else { timers.filter { it !== timer }.forEach { it.pause() }; timer.start() }
-                        }.apply { setPadding(kit.dp(10), kit.dp(4), kit.dp(10), kit.dp(6)) })
+                        }.apply { setPadding(kit.dp(8), kit.dp(4), kit.dp(8), kit.dp(6)) })
+                        addView(kit.hgap(4))
+                        addView(kit.iconButton(RoyalIcon.EDIT, "تغییر چلنجر ${p.name}", ButtonKind.CHIP, 36) { timer.stop(); pickChallenger(p) })
+                        addView(kit.hgap(4))
+                        addView(kit.iconButton(RoyalIcon.CLOSE, "حذف چالش ${p.name}", ButtonKind.DANGER, 36) { timer.stop(); challengers.remove(p.id); host.refresh() })
                     }
                 }
                 val note = (if (i == 0) "سر صحبت" else null) ?: if (p.has("extraTime")) "زمان دوبرابر (کشیش)" else null
                 addView(timerRow(p, MafiaFlow.speakTime(p, s), note, MafiaFlow.silenced(p), timers, extra))
             }
         }
+    }
+
+    private fun finish() {
+        timers.forEach { it.stop() }
+        val fire = MafiaDay.fireback(g)
+        if (fire.isNotEmpty()) {
+            kit.dialog("تفنگ جنگی", "بازیکن از تفنگ جنگی خود استفاده نکرده است\n" + fire.joinToString("، ") { it.name }, null, listOf(
+                DialogAction("خروج", ButtonKind.DANGER) {
+                    fire.forEach { it.marks.remove("gun") }
+                    g.day.speakingDone = true
+                    g.log += MafiaLog(g.phaseTitle, "صحبت روز انجام شد؛ تفنگ جنگی به سمت ${fire.joinToString("، ") { it.name }} برگشت")
+                    store()
+                    host.replace(MafiaExitScreen(host, gameId, fire.map { it.id }, MafiaDeath.GUN))
+                },
+                DialogAction("بازگشت به صحبت")
+            )).show()
+            return
+        }
+        g.day.speakingDone = true
+        g.log += MafiaLog(g.phaseTitle, "صحبت روز انجام شد")
+        store()
+        host.pop()
     }
 
     override fun onShow() {
@@ -168,10 +195,13 @@ class MafiaLotteryScreen(host: MainActivity, gameId: Long, private val tied: Lis
  * Exit flow (source ExitProgress): special exit rules, then «آیا برای خروج حق انتخاب کارت حرکت اخر را دارد؟»,
  * the face-down deck, the drawn card and its effect.
  */
-class MafiaExitScreen(host: MainActivity, gameId: Long, queue: List<Int>, private val type: String, private val voteResult: Boolean = false, private val allowCard: Boolean = true) : MafiaScreen(host, gameId) {
+class MafiaExitScreen(host: MainActivity, gameId: Long, queue: List<Int>, private val type: String, private val voteResult: Boolean = false, private val allowCard: Boolean = true,
+    typeOf: Map<Int, String> = emptyMap()) : MafiaScreen(host, gameId) {
     private enum class Stage { CHECK, ASK, PICK, CARD, RESULT }
 
     private val queue = ArrayList(queue)
+    /** Exit type per queued player when it differs from [type] (e.g. a terror victim after a vote). */
+    private val types = HashMap<Int, String>(typeOf)
     private var stage = Stage.CHECK
     private var checked: Pair<List<Int>, String>? = null
     private var card: Int = -1
@@ -188,18 +218,27 @@ class MafiaExitScreen(host: MainActivity, gameId: Long, queue: List<Int>, privat
         val check = checked ?: (listOf(id) to "")
         val staying = check.first.isEmpty()
         val cards = allowCard && MafiaFlow.remainingCards(g).isNotEmpty()
-        if (stage == Stage.CHECK && check.second.isBlank() && !staying && cards) stage = Stage.ASK
+        val sacrificeOffer = !staying && p.alive && MafiaDay.sacrificeAvailable(g, id)
+        if (stage == Stage.CHECK && check.second.isBlank() && !staying && cards && !sacrificeOffer) stage = Stage.ASK
+        val proceed = {
+            when {
+                staying -> nextPlayer()
+                cards -> { stage = Stage.ASK; host.refresh() }
+                else -> finishPlayer(false)
+            }
+        }
         return when (stage) {
-            Stage.CHECK -> scaffold("خروج بازیکن", p.name, bottom = kit.button("ادامه", ButtonKind.PRIMARY, RoyalIcon.NEXT, 52) {
-                when {
-                    staying -> nextPlayer()
-                    cards -> { stage = Stage.ASK; host.refresh() }
-                    else -> finishPlayer(false)
-                }
-            }) {
+            Stage.CHECK -> scaffold("خروج بازیکن", p.name, bottom = if (sacrificeOffer) kit.horizontal().apply {
+                addView(kit.weight(kit.button("فدایی فدا می‌شود", ButtonKind.DANGER, RoyalIcon.HEART, 52) {
+                    MafiaDay.sacrifice(g, id); store(); nextPlayer()
+                }))
+                addView(kit.hgap(8))
+                addView(kit.weight(kit.button("ادامه", ButtonKind.PRIMARY, RoyalIcon.NEXT, 52) { proceed() }))
+            } else kit.button("ادامه", ButtonKind.PRIMARY, RoyalIcon.NEXT, 52) { proceed() }) {
                 addView(kit.horizontal(Gravity.CENTER).apply { addView(playerTile(p, false, false), LinearLayout.LayoutParams(kit.dp(130), ViewGroup.LayoutParams.WRAP_CONTENT)) }, kit.spaced(8))
-                val text = check.second.ifBlank { "بازیکن زیر از بازی خارج خواهد شد" + if (allowCard) "\nکارت حرکت آخری وجود ندارد" else "" }
+                val text = check.second.ifBlank { "بازیکن زیر از بازی خارج خواهد شد" + if (allowCard && !cards) "\nکارت حرکت آخری وجود ندارد" else "" }
                 addView(narration(text, null, if (staying) PanelStyle.SUCCESS else PanelStyle.DANGER))
+                if (sacrificeOffer) addView(narration("آیا ${MafiaRole.SACRIFICE.faName} میخواهد خود را فدا کند؟", null, PanelStyle.NORMAL))
                 check.first.filter { it != id }.mapNotNull { g.player(it) }.forEach { addView(kit.text("${it.name} نیز از بازی خارج می‌شود", TextStyle.BODY_BOLD, Royal.crimsonLight, Gravity.CENTER)) }
             }
             Stage.ASK -> scaffold("کارت حرکت آخر", p.name, bottom = kit.horizontal().apply {
@@ -296,9 +335,29 @@ class MafiaExitScreen(host: MainActivity, gameId: Long, queue: List<Int>, privat
     private fun finishPlayer(stays: Boolean) {
         val id = queue.first()
         val check = checked ?: (listOf(id) to "")
-        if (!stays) check.first.forEach { MafiaFlow.exit(g, it, if (it == id) type else MafiaDeath.DAY_SHOT) }
-        else g.log += MafiaLog(g.phaseTitle, "${g.player(id)?.name} در بازی ماند")
+        val p = g.player(id)
+        if (!stays) check.first.forEach { MafiaFlow.exit(g, it, if (it == id) types[id] ?: type else MafiaDeath.DAY_SHOT) }
+        else g.log += MafiaLog(g.phaseTitle, "${p?.name} در بازی ماند")
         store()
+        if (!stays && p?.role == MafiaRole.TERRORIST && (types[id] ?: type) != MafiaDeath.TERROR && !p.has("taken")) {
+            val selfKill = g.extra["selfKill"] != "0"
+            val targets = g.alive.filter { selfKill || it.side != MafiaSide.MAFIA }
+            if (targets.isNotEmpty()) {
+                kit.dialog("ترور", "بازیکن اخراجی ${MafiaRole.TERRORIST.faName} است\nآیا ${MafiaRole.TERRORIST.faName} میخواهد کسی را ترور کند؟", null, listOf(
+                    DialogAction("بله", ButtonKind.DANGER) {
+                        pickPlayers("ترور", targets, 1, 1, false) { ids ->
+                            g.log += MafiaLog(g.phaseTitle, "${p.name} (تروریست) ${g.player(ids.first())?.name} را ترور کرد")
+                            store()
+                            queue.add(1, ids.first())
+                            types[ids.first()] = MafiaDeath.TERROR
+                            nextPlayer()
+                        }
+                    },
+                    DialogAction("خیر") { nextPlayer() }
+                )).show()
+                return
+            }
+        }
         nextPlayer()
     }
 
@@ -347,52 +406,6 @@ class MafiaShakeHandScreen(host: MainActivity, gameId: Long) : MafiaScreen(host,
                 }
             }, 6))
             if (c != null) addView(kit.button("انتخاب دوباره", ButtonKind.GHOST, RoyalIcon.UNDO, 42) { citizen = null; chosen = null; host.refresh() }, kit.spaced(8))
-        }
-    }
-}
-
-/** Day actions of roles (terrorist, cowboy, sacrifice, gun shots, bombs…): explanation plus an exit tool. */
-class MafiaDayActionScreen(host: MainActivity, gameId: Long) : MafiaScreen(host, gameId) {
-    private val dayRoles = listOf(MafiaRole.TERRORIST, MafiaRole.COWBOY, MafiaRole.SACRIFICE, MafiaRole.SUICIDE_BOMBER, MafiaRole.RUSSIAN_ROULETTE,
-        MafiaRole.GUNMAN, MafiaRole.VOODOO, MafiaRole.BOMBER, MafiaRole.PROTECTOR, MafiaRole.JIGSAW, MafiaRole.INTERROGATOR, MafiaRole.SNOWMAN, MafiaRole.ZODIAC)
-
-    override fun build(): View {
-        if (!load()) return missing()
-        return scaffold("اقدام روز نقش‌ها", "خروج در روز با کارت حرکت آخر") {
-            val present = dayRoles.filter { g.inGame(it) }
-            if (present.isEmpty()) addView(kit.text("در این بازی نقشی با اقدام روز نیست؛ برای خروج‌های دیگر از ابزار زیر استفاده کنید.", TextStyle.LABEL, Royal.muted, Gravity.CENTER), kit.spaced(8))
-            present.forEach { r ->
-                val holder = g.holders(r).first()
-                addView(kit.panel(PanelStyle.NORMAL, 12).apply {
-                    layoutParams = kit.spaced(8)
-                    addView(kit.horizontal().apply {
-                        addView(seal(r.glyph, r.side, 44))
-                        addView(kit.hgap(8))
-                        addView(kit.vertical().apply {
-                            addView(kit.text(r.faName, TextStyle.BODY_BOLD, Royal.goldLight))
-                            addView(kit.text(holder.name + if (!holder.alive) " (بیرون)" else "", TextStyle.CAPTION, Royal.muted))
-                        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-                        addView(kit.iconButton(RoyalIcon.RULES, "توضیح", ButtonKind.CHIP, 38) { roleInfo(r, g.options[r] ?: emptyMap()) })
-                    })
-                    g.extra["bombOn"]?.toIntOrNull()?.takeIf { r == MafiaRole.BOMBER || r == MafiaRole.PROTECTOR }?.let {
-                        addView(kit.text("بمب روی ${g.player(it)?.name} — رمز: ${kit.n(g.extra["bombCode"] ?: "")}", TextStyle.LABEL_BOLD, Royal.crimsonLight))
-                    }
-                    g.extra["voodooWord"]?.takeIf { r == MafiaRole.VOODOO && it.isNotBlank() }?.let { addView(kit.text("کلمهٔ ممنوعه: $it", TextStyle.LABEL_BOLD, Royal.crimsonLight)) }
-                    g.extra["jigsaw"]?.takeIf { r == MafiaRole.JIGSAW && it.isNotBlank() }?.let { ids ->
-                        addView(kit.text("انتخاب‌های اره: " + ids.split(",").mapNotNull { it.toIntOrNull()?.let { x -> g.player(x)?.name } }.joinToString("، "), TextStyle.LABEL_BOLD, Royal.crimsonLight))
-                    }
-                    g.extra["interrogate"]?.takeIf { r == MafiaRole.INTERROGATOR && it.isNotBlank() }?.let { ids ->
-                        addView(kit.text("بازپرسی: " + ids.split(",").mapNotNull { it.toIntOrNull()?.let { x -> g.player(x)?.name } }.joinToString("، "), TextStyle.LABEL_BOLD, Royal.crimsonLight))
-                    }
-                })
-            }
-            addView(kit.section("خروج در روز", RoyalIcon.FLAG))
-            addView(kit.button("انتخاب بازیکنان خارج‌شده", ButtonKind.DANGER, RoyalIcon.USER, 48) {
-                pickPlayers("چه کسانی از بازی خارج می‌شوند؟", g.alive, 1, g.alive.size, false) { ids ->
-                    host.replace(MafiaExitScreen(host, gameId, ids, MafiaDeath.DAY_SHOT))
-                }
-            }, kit.spaced(6))
-            addView(kit.text("هر بازیکن خارج‌شده مانند رأی‌گیری می‌تواند کارت حرکت آخر بردارد.", TextStyle.CAPTION, Royal.dim, Gravity.CENTER))
         }
     }
 }

@@ -130,14 +130,15 @@ fun Screen.playerTile(
     setPadding(kit.dp(4), kit.dp(8), kit.dp(4), kit.dp(10))
     addView(FrameLayout(host).apply {
         addView(kit.avatar(p.avatar, 50).apply { layoutParams = FrameLayout.LayoutParams(kit.dp(50), kit.dp(50), Gravity.CENTER) })
-        if (showRole && p.role != null) {
-            addView(seal(p.role!!.glyph, p.side, 26).apply {
+        val shown = p.shownRole
+        if (showRole && shown != null) {
+            addView(seal(shown.glyph, shown.side, 26).apply {
                 layoutParams = FrameLayout.LayoutParams(kit.dp(26), kit.dp(26), Gravity.BOTTOM or Gravity.LEFT)
             })
         }
     }, LinearLayout.LayoutParams(kit.dp(60), kit.dp(54)))
     addView(kit.text(p.name, TextStyle.LABEL_BOLD, if (p.alive) Royal.ivory else Royal.dim, Gravity.CENTER, 1))
-    if (showRole && p.role != null) addView(kit.text(p.role!!.faName, TextStyle.CAPTION, p.side.textColor(), Gravity.CENTER, 1))
+    if (showRole && p.shownRole != null) addView(kit.text(p.shownRole!!.faName, TextStyle.CAPTION, (p.side ?: p.shownRole!!.side).textColor(), Gravity.CENTER, 1))
     if (badge != null) addView(kit.badge(badge, if (selected) Royal.turquoise else Royal.gold).apply {
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = kit.dp(3) }
     })

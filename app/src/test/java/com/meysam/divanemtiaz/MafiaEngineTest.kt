@@ -218,4 +218,70 @@ class MafiaEngineTest {
         g.night = 2
         MafiaNight.resolve(g, apply = false)
     }
+
+    @Test
+    fun substituteTakesRoleStateAndSeat() {
+        val g = game(MafiaRole.GODFATHER, MafiaRole.MAFIA, MafiaRole.DOCTOR, MafiaRole.DETECTIVE, MafiaRole.CITIZEN, MafiaRole.CITIZEN)
+        val doctor = p(g, MafiaRole.DOCTOR)
+        val out = g.holders(MafiaRole.CITIZEN).first()
+        MafiaFlow.exit(g, out.id, MafiaDeath.VOTE)
+        doctor.counters["تعداد نجات خود"] = 0
+        val seat = g.players.indexOf(doctor)
+        val b = MafiaManual.substitute(g, doctor.id, out.id)!!
+        assertEquals(MafiaRole.DOCTOR, b.role)
+        assertTrue(b.alive)
+        assertEquals(0, b.counter("تعداد نجات خود"))
+        assertEquals(seat, g.players.indexOf(b))
+        assertFalse(doctor.alive)
+        assertEquals(MafiaRole.DOCTOR, doctor.shownRole)
+        assertEquals(1, g.holders(MafiaRole.DOCTOR).size)
+        assertEquals(2, g.stints.size)
+        val back = MafiaCodec.decodeGame(JSONObject(MafiaCodec.encodeGame(g).toString()))
+        assertEquals(2, back.stints.size)
+        assertEquals(MafiaRole.DOCTOR, back.player(doctor.id)!!.formerRole)
+    }
+
+    @Test
+    fun manualResultAndResume() {
+        val g = game(MafiaRole.GODFATHER, MafiaRole.MAFIA, MafiaRole.DOCTOR, MafiaRole.CITIZEN, MafiaRole.CITIZEN, MafiaRole.CITIZEN)
+        MafiaManual.declare(g, "MAFIA")
+        assertTrue(g.finished)
+        assertEquals("MAFIA", g.extra["winSide"])
+        MafiaManual.resume(g)
+        assertFalse(g.finished)
+        MafiaFlow.exit(g, g.players[3].id, MafiaDeath.VOTE)
+        MafiaFlow.exit(g, g.players[4].id, MafiaDeath.VOTE)
+        assertNull(MafiaFlow.checkWin(g))
+    }
+
+    @Test
+    fun seatingOrderStartsFromStarter() {
+        val g = game(MafiaRole.GODFATHER, MafiaRole.MAFIA, MafiaRole.DOCTOR, MafiaRole.CITIZEN, MafiaRole.CITIZEN, MafiaRole.CITIZEN)
+        MafiaManual.setStarter(g, g.players[2].id)
+        assertEquals(g.players[2].id, MafiaManual.speakingOrder(g).first().id)
+        MafiaManual.move(g, g.players[5].id, -1)
+        assertEquals(6, g.players.size)
+    }
+
+    @Test
+    fun dayActionsRouletteGunAndCapo() {
+        val g = game(MafiaRole.GODFATHER, MafiaRole.MAFIA, MafiaRole.GUNMAN, MafiaRole.RUSSIAN_ROULETTE, MafiaRole.CITIZEN, MafiaRole.CITIZEN, MafiaRole.CITIZEN)
+        act(g, MafiaNight.INTRO, emptyList())
+        MafiaFlow.endNight(g)
+        val a = g.players[4]; val b = g.players[5]
+        g.extra["rouletteOn"] = a.id.toString(); g.extra["rouletteNumber"] = "2"
+        assertFalse(MafiaDay.rouletteShot(g, b.id).second)
+        assertEquals(b.id.toString(), g.extra["rouletteOn"])
+        assertTrue(MafiaDay.rouletteShot(g, a.id).second)
+        a.marks["gun"] = 2
+        assertEquals(listOf(b.id), MafiaDay.gunShot(g, a.id, b.id).second)
+        b.marks["gun"] = 1
+        assertTrue(MafiaDay.gunShot(g, b.id, a.id).second.isEmpty())
+        g.extra["capo"] = "1"
+        assertTrue(MafiaDay.capoDay(g))
+        g.extra["capoGun"] = "2"
+        assertNull(MafiaDay.capoShot(g, 1, a.id).second)
+        assertEquals(a.id, MafiaDay.capoShot(g, 2, a.id).second)
+        assertEquals("تمام مراحل روز انجام نشده است", MafiaFlow.dayEndRefusal(g.apply { day.speakingDone = true }))
+    }
 }

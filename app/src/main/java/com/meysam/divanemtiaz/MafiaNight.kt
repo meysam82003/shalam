@@ -184,7 +184,7 @@ object MafiaNight {
             }
             MafiaRole.PRIEST -> listOf(JobMode("", TargetPool.ALIVE_OTHERS, 1, g.optionInt(r, "تعداد نفرات در هر شب", 1).coerceAtLeast(1)))
             MafiaRole.RUSSIAN_ROULETTE -> listOf(JobMode("", TargetPool.ALIVE_OTHERS, 1, 1, number = 3..7))
-            MafiaRole.JIGSAW -> listOf(JobMode("", TargetPool.ALIVE_OTHERS, 3, 3))
+            MafiaRole.JIGSAW -> listOf(JobMode("", TargetPool.ALIVE, 3, 3, includeSelf = true))
             MafiaRole.VOODOO -> listOf(JobMode("", TargetPool.ALIVE_OTHERS, 1, 1, word = true))
             MafiaRole.SAINT -> listOf(JobMode("", TargetPool.ALIVE_OTHERS, 1, if (n == 1) 2 else 1))
             MafiaRole.SPIDER -> listOf(JobMode("", TargetPool.ALIVE_OTHERS, 1, g.optionInt(r, "تعداد انتخاب", 2).coerceAtLeast(1)))
@@ -222,6 +222,12 @@ object MafiaNight {
             MafiaRole.NATASHA -> "ناتاشا یک نفر را برای فردا کاملاً ساکت می‌کند"
             MafiaRole.SLEEP_WALKER -> "خوابگرد می‌تواند یک بار در بازی گروه مافیا را بخواباند (و خودش از بازی خارج می‌شود)"
             MafiaRole.DIE_HARD -> "آیا جان سخت امشب استعلام وضعیت خارج‌شده‌ها را می‌خواهد؟"
+            MafiaRole.JIGSAW -> "جیگساو سه نفر را انتخاب کند؛ نفر اول انتخابی صاحب اره است (اره را نمی‌تواند به خودش بدهد)"
+            MafiaRole.GUNMAN -> "تفنگدار به یک یا دو نفر تفنگ بدهد و نوع هر تفنگ را مشخص کنید"
+            MafiaRole.RUSSIAN_ROULETTE -> "رولت روسی به یک نفر تفنگ بدهد و یک عدد از ۳ تا ۷ اعلام کند"
+            MafiaRole.BOMBER -> "بمب گذار جلوی یک نفر بمب بگذارد و کد خنثی سازی (۱ تا ۴) را اعلام کند"
+            MafiaRole.VOODOO -> "افسونگر یک کلمهٔ چهار حرفی یا بیشتر را روی یک نفر افسون کند"
+            MafiaRole.INTERROGATOR -> "بازپرس دو نفر را برای بازپرسی فردا انتخاب کند"
             else -> null
         }
         return if (what != null) "$wake\n$what" else wake
@@ -246,7 +252,7 @@ object MafiaNight {
         if (p.id !in job.holders) return true
         return when (job.role) {
             MafiaRole.DOCTOR, MafiaRole.DOCTOR_LECTOR -> p.counter("تعداد نجات خود") > 0
-            MafiaRole.GUNMAN, MafiaRole.CHARLATAN, MafiaRole.NATASHA -> true
+            MafiaRole.GUNMAN, MafiaRole.CHARLATAN, MafiaRole.NATASHA, MafiaRole.JIGSAW -> true
             else -> false
         }
     }
@@ -688,7 +694,15 @@ object MafiaNight {
         rec(MafiaRole.ZODIAC)?.takeIf { it.text.isNotBlank() }?.let { g.extra["zodiacLetter"] = it.text; report += "زودیاک یک نامه نوشته است" }
         rec(MafiaRole.ATTAR)?.targets?.firstOrNull()?.let { g.player(it)?.marks?.set("attarPoison", n); report += "زهر توسط عطار به بازی وارد شد" }
         g.records[ATTAR_ANTIDOTE]?.let { r -> if (r.choice == "پادزهر نمی‌دهد") g.players.firstOrNull { it.marks["attarPoison"] == n - 1 }?.let { dead += it.id } }
-        rec(MafiaRole.GUNMAN)?.let { r -> r.targets.forEachIndexed { i, id -> g.player(id)?.marks?.set("gun", if (r.text.split(",").getOrNull(i) == "تفنگ جنگی") 2 else 1) } }
+        rec(MafiaRole.GUNMAN)?.let { r ->
+            val gunman = g.aliveHolder(MafiaRole.GUNMAN)
+            r.targets.forEachIndexed { i, id ->
+                val war = r.text.split(",").getOrNull(i) == "تفنگ جنگی"
+                g.player(id)?.marks?.set("gun", if (war) 2 else 1)
+                val key = if (war) "تعداد تفنگ جنگی" else "تعداد تفنگ مشقی"
+                gunman?.let { gm -> if (gm.counter(key) < 1000) gm.counters[key] = (gm.counter(key) - 1).coerceAtLeast(0) }
+            }
+        }
         rec(MafiaRole.WRECKER)?.targets?.forEach { g.player(it)?.flags?.add("sabotaged") }
         rec(MafiaRole.RUSSIAN_ROULETTE)?.let { r -> r.targets.firstOrNull()?.let { g.extra["rouletteOn"] = it.toString(); g.extra["rouletteNumber"] = r.number.toString() } }
         rec(MafiaRole.JIGSAW)?.let { g.extra["jigsaw"] = it.targets.joinToString(",") }
@@ -719,7 +733,10 @@ object MafiaNight {
                 if (kills[id] == "execute" || kills[id] == "sleepwalk") p.flags += "noReturn"
                 if (kills[id] == "execute") report += " ${p.name}سلاخی شد"
                 // Guns return to the gunman's stock.
-                if (p.marks.remove("gun") != null) Unit
+                p.marks.remove("gun")?.let { kind ->
+                    val key = if (kind == 2) "تعداد تفنگ جنگی" else "تعداد تفنگ مشقی"
+                    g.aliveHolder(MafiaRole.GUNMAN)?.let { gm -> if (gm.counter(key) < 1000) gm.counters[key] = gm.counter(key) + 1 }
+                }
             }
         }
         revived.forEach { id -> g.player(id)?.let { p -> p.alive = true; p.deathType = MafiaDeath.NONE; p.outNight = -1 } }

@@ -15,6 +15,22 @@ object MafiaDeath {
     const val EXECUTE = "execute"
     const val SHAKE_HAND = "shake_hand"
     const val LOTTERY = "lottery"
+    const val TERROR = "terror"
+    const val COWBOY = "cowboy"
+    const val SUICIDE = "suicide"
+    const val GUN = "gun"
+    const val ROULETTE = "roulette"
+    const val CURSE = "curse"
+    const val BOMB = "bomb"
+    const val SAW = "saw"
+    const val INTERROGATION = "interrogation"
+    const val SACRIFICE = "sacrifice"
+    const val CAPO = "capo"
+    const val LEFT = "left"
+    const val MANUAL = "manual"
+
+    /** Every way the narrator may take a player out by hand. */
+    val manual = listOf(NIGHT, VOTE, DAY_SHOT, TERROR, GUN, BOMB, POISON, EXECUTE, CARD, DISCIPLINE, LEFT, MANUAL)
 
     fun title(type: String): String = when (type) {
         NIGHT -> "کشته در شب"
@@ -26,6 +42,19 @@ object MafiaDeath {
         EXECUTE -> "سلاخی"
         SHAKE_HAND -> "دست دادن"
         LOTTERY -> "قرعهٔ مرگ"
+        TERROR -> "ترور"
+        COWBOY -> "دوئل کابوی"
+        SUICIDE -> "انفجار بمبر"
+        GUN -> "تیر تفنگ"
+        ROULETTE -> "رولت روسی"
+        CURSE -> "کلمهٔ ممنوعه"
+        BOMB -> "انفجار بمب"
+        SAW -> "ارهٔ جیگساو"
+        INTERROGATION -> "بازپرسی"
+        SACRIFICE -> "فدا شدن"
+        CAPO -> "تفنگ کاپو"
+        LEFT -> "ترک بازی"
+        MANUAL -> "خروج توسط راوی"
         else -> "خارج از بازی"
     }
 }
@@ -39,6 +68,8 @@ class MafiaPlayer(val id: Int, var name: String, var avatar: Int) {
     var revealed: Boolean = false
     var outNight: Int = -1
     var deathType: String = MafiaDeath.NONE
+    /** Role held before leaving the game in favour of a substitute (the role itself moved to him). */
+    var formerRole: MafiaRole? = null
     /** Remaining uses of each ability, keyed by the role option label (e.g. «تعداد نجات کل»). */
     val counters: MutableMap<String, Int> = HashMap()
     var armor: Int = 0
@@ -51,7 +82,13 @@ class MafiaPlayer(val id: Int, var name: String, var avatar: Int) {
     fun has(flag: String): Boolean = flag in flags
 
     val side: MafiaSide? get() = if (has("converted")) MafiaSide.MAFIA else role?.side
+
+    /** The role to show for this player (his current one, or the one he handed over). */
+    val shownRole: MafiaRole? get() = role ?: formerRole
 }
+
+/** A finished stretch of one person in one role (kept when a substitute takes over, for the person's statistics). */
+data class MafiaStint(val name: String, val role: MafiaRole, val side: MafiaSide, val fromNight: Int, val toNight: Int, val deathType: String)
 
 /** What one night job chose. */
 data class NightRecord(
@@ -113,6 +150,8 @@ class MafiaGame(val id: Long) {
     var elapsedMs: Long = 0L
     /** Full snapshots taken at each day/night switch for «بازگشت به گذشته». */
     val snapshots: MutableList<Pair<String, String>> = ArrayList()
+    /** Earlier stretches of players replaced during the game. */
+    val stints: MutableList<MafiaStint> = ArrayList()
 
     fun player(id: Int): MafiaPlayer? = players.firstOrNull { it.id == id }
     val alive: List<MafiaPlayer> get() = players.filter { it.alive }
@@ -288,7 +327,7 @@ object MafiaCodec {
                     put("id", p.id); put("name", p.name); put("avatar", p.avatar); put("role", p.role?.name ?: "")
                     put("alive", p.alive); put("seen", p.seen); put("revealed", p.revealed); put("outNight", p.outNight)
                     put("death", p.deathType); put("counters", intMap(p.counters)); put("armor", p.armor)
-                    put("flags", JSONArray(p.flags.toList())); put("marks", intMap(p.marks))
+                    put("flags", JSONArray(p.flags.toList())); put("marks", intMap(p.marks)); put("former", p.formerRole?.name ?: "")
                 })
             }
         })
@@ -315,6 +354,7 @@ object MafiaCodec {
         put("finished", g.finished); put("winner", g.winner)
         put("extra", JSONObject().apply { g.extra.forEach { (k, v) -> put(k, v) } })
         put("updatedAt", g.updatedAt); put("elapsed", g.elapsedMs)
+        put("stints", JSONArray().apply { g.stints.forEach { put(JSONObject().put("n", it.name).put("r", it.role.name).put("s", it.side.name).put("f", it.fromNight).put("t", it.toNight).put("d", it.deathType)) } })
         if (withSnapshots) put("snapshots", JSONArray().apply { g.snapshots.forEach { (label, json) -> put(JSONObject().put("label", label).put("json", json)) } })
     }
 
@@ -329,6 +369,7 @@ object MafiaCodec {
                     counters.putAll(intMap(j.optJSONObject("counters"))); armor = j.optInt("armor")
                     j.optJSONArray("flags")?.let { f -> for (k in 0 until f.length()) flags += f.optString(k) }
                     marks.putAll(intMap(j.optJSONObject("marks")))
+                    formerRole = role(j.optString("former"))
                 }
             }
         }
@@ -367,6 +408,12 @@ object MafiaCodec {
         g.finished = o.optBoolean("finished"); g.winner = o.optString("winner")
         o.optJSONObject("extra")?.let { j -> j.keys().forEach { k -> g.extra[k] = j.optString(k) } }
         g.updatedAt = o.optLong("updatedAt", g.id); g.elapsedMs = o.optLong("elapsed")
+        o.optJSONArray("stints")?.let { a ->
+            for (i in 0 until a.length()) a.optJSONObject(i)?.let { j ->
+                val r = role(j.optString("r")) ?: return@let
+                g.stints += MafiaStint(j.optString("n"), r, MafiaSide.values().firstOrNull { it.name == j.optString("s") } ?: r.side, j.optInt("f"), j.optInt("t"), j.optString("d"))
+            }
+        }
         o.optJSONArray("snapshots")?.let { a -> for (i in 0 until a.length()) a.optJSONObject(i)?.let { g.snapshots += it.optString("label") to it.optString("json") } }
         return g
     }

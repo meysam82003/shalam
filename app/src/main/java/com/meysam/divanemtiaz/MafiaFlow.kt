@@ -59,6 +59,7 @@ object MafiaFlow {
         val shuffled = g.deck.map { it.card }.shuffled(random)
         g.deck.clear(); shuffled.forEach { g.deck += MafiaCardState(it) }
         g.extra["selfKill"] = if (settings.selfKill) "1" else "0"
+        g.extra["capo"] = if (settings.capoGun) "1" else "0"
         g.night = 0; g.isDay = false; g.started = true; g.introDone = false
         g.records.clear(); g.day = MafiaDayState(); g.log.clear(); g.snapshots.clear()
         g.extra["lineup"] = g.players.joinToString("|") { "${it.id}:${it.role?.name}" }
@@ -107,6 +108,7 @@ object MafiaFlow {
     /** Resolves the night and opens the next day; returns the morning report. */
     fun endNight(g: MafiaGame): MafiaNight.Outcome {
         val n = g.night
+        g.players.forEach { it.flags.remove("illusioned") }
         val outcome = if (insomnia(g)) MafiaNight.Outcome(emptyList(), listOf("امشب بی خوابی داریم\nزد و خوردی انجام نمیشود\nمستقیم به روز بعد خواهیم رفت"), emptyList())
             else MafiaNight.resolve(g)
         if (n == 0) g.introDone = true
@@ -116,7 +118,6 @@ object MafiaFlow {
         g.records.values.filter { it.key != MafiaNight.INTRO }.forEach { r -> g.log += MafiaLog(g.phaseTitle, traceLine(g, r)) }
         outcome.dead.forEach { id -> g.player(id)?.let { g.log += MafiaLog(g.phaseTitle, "${it.name} (${it.role?.faName}) در شب از بازی خارج شد") } }
         g.records.clear()
-        g.players.forEach { it.flags.remove("illusioned") }
         g.night = n + 1
         g.isDay = true
         g.day = MafiaDayState()
@@ -143,8 +144,13 @@ object MafiaFlow {
     fun startNight(g: MafiaGame) {
         g.isDay = false
         g.records.clear()
-        g.players.forEach { it.flags.removeAll(setOf("redCarpet", "greenMile", "lambs", "discipline")) }
-        // Black night: citizen jobs are void tonight.
+        g.players.forEach {
+            it.flags.removeAll(setOf("redCarpet", "greenMile", "lambs", "discipline", "sabotaged"))
+            it.marks.remove("gun")
+        }
+        // Day-only state of yesterday's night roles.
+        listOf("rouletteOn", "rouletteNumber", "rouletteCount", "voodooWord", "voodooOn", "jigsaw", "interrogate", "bombOn", "bombCode",
+            "capoTrustee", "capoGun", "capoPicks", "capoStage").forEach { g.extra.remove(it) }
         snapshot(g)
     }
 
@@ -152,6 +158,7 @@ object MafiaFlow {
 
     fun dayEndRefusal(g: MafiaGame): String? = when {
         shakeHandDue(g) -> if ("shake" in g.day.done) null else "تمام مراحل روز انجام نشده است"
+        MafiaDay.capoDay(g) -> if ("capo" in g.day.done) null else "تمام مراحل روز انجام نشده است"
         g.night > 0 && !g.day.resultDone -> "تمام مراحل روز انجام نشده است"
         !g.day.speakingDone -> "تمام مراحل روز انجام نشده است"
         else -> null
@@ -420,6 +427,8 @@ object MafiaFlow {
 
     /** Source Checker.isWin: returns the win message, or null. Also marks the game finished. */
     fun checkWin(g: MafiaGame): String? {
+        if (g.finished) return g.winner
+        if (g.extra["noAutoWin"] == g.night.toString() + (if (g.isDay) "d" else "n")) return null
         if (g.deck.any { (it.card == MafiaLastCard.FACE_OFF || it.card == MafiaLastCard.CARD_EXCHANGE || it.card == MafiaLastCard.FINAL_SHOT) && it.pending }) return null
         val alive = g.alive
         var city = alive.count { it.side == MafiaSide.CITY }
@@ -453,8 +462,19 @@ object MafiaFlow {
         val result = msg ?: return null
         g.finished = true
         g.winner = result
+        g.extra["winSide"] = winSideOf(result)
         g.log += MafiaLog(g.phaseTitle, "********پایان بازی*******\n$result")
         return result
+    }
+
+    /** CITY, MAFIA, CITY+NOSTRADAMUS, MAFIA+NOSTRADAMUS or the winning independent role. */
+    fun winSideOf(msg: String): String {
+        val nostra = msg.contains(MafiaRole.NOSTRADAMUS.faName) && msg.contains("به همراه")
+        return when {
+            msg.startsWith("شهروند") || msg.startsWith("گروه شهروند") -> if (nostra) "CITY+NOSTRADAMUS" else "CITY"
+            msg.startsWith("گروه مافیا") -> if (nostra) "MAFIA+NOSTRADAMUS" else "MAFIA"
+            else -> MafiaRole.values().firstOrNull { msg.startsWith(it.faName + " برنده") }?.name ?: ""
+        }
     }
 
     fun winCue(msg: String): String = when {

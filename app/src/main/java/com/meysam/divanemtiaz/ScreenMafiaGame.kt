@@ -76,6 +76,8 @@ class MafiaGameScreen(host: MainActivity, gameId: Long) : MafiaScreen(host, game
         host.applyWindowSettings()
     }
 
+    private fun toolsButton(): View = kit.iconButton(RoyalIcon.SLIDERS, "ابزار راوی", ButtonKind.SECONDARY, 44) { host.push(MafiaToolsScreen(host, gameId)) }
+
     private fun menuButton(): View = kit.iconButton(RoyalIcon.MENU, "منو", ButtonKind.SECONDARY, 44) { menu() }
 
     private fun header(glyph: MafiaGlyph, title: String, line: String, cues: List<String>): View = kit.panel(PanelStyle.RAISED, 12).apply {
@@ -106,7 +108,7 @@ class MafiaGameScreen(host: MainActivity, gameId: Long) : MafiaScreen(host, game
 
     // ------------------------------------------------------------------ night
 
-    private fun night(): View = scaffold("شب : ${MafiaText.ordinal(g.night)}", counts(), actions = listOf(menuButton()),
+    private fun night(): View = scaffold("شب : ${MafiaText.ordinal(g.night)}", counts(), actions = listOf(toolsButton(), menuButton()),
         bottom = kit.button(if (g.night == 0) "پایان شب معارفه" else "پایان شب", ButtonKind.PRIMARY, RoyalIcon.NEXT, 52) { endNight() }) {
         addView(header(MafiaGlyph.MOON, if (g.night == 0) "شب معارفه" else "شب می‌شود", "نقش‌ها را به ترتیب بیدار کنید؛ ترتیب پیشنهادی از راست به چپ است.",
             listOf(MafiaCues.NIGHT_START, MafiaCues.ALL_SLEEP)))
@@ -164,7 +166,7 @@ class MafiaGameScreen(host: MainActivity, gameId: Long) : MafiaScreen(host, game
 
     // ------------------------------------------------------------------ day
 
-    private fun day(): View = scaffold("روز : ${MafiaText.ordinal(g.night)}", counts(), actions = listOf(menuButton()),
+    private fun day(): View = scaffold("روز : ${MafiaText.ordinal(g.night)}", counts(), actions = listOf(toolsButton(), menuButton()),
         bottom = kit.button("شروع شب", ButtonKind.PRIMARY, RoyalIcon.NEXT, 52) { startNight() }) {
         addView(header(MafiaGlyph.CROWN, "روز می‌شود", "گزارش شب را اعلام کنید و مراحل روز را به ترتیب پیش ببرید.", listOf(MafiaCues.DAY_START, MafiaCues.DEAD_REPORT)))
         addView(report())
@@ -174,13 +176,29 @@ class MafiaGameScreen(host: MainActivity, gameId: Long) : MafiaScreen(host, game
         }
         addView(kit.section("مراحل روز", RoyalIcon.FLAG))
         val d = g.day
-        addView(step("صحبت", MafiaCues.SPEAKING, d.speakingDone, true, if (d.speakingDone) "انجام شد" else "زمان صحبت ${kit.n(mafiaSettings.speakTime)} ثانیه") {
+        val interrogation = !g.extra["interrogate"].isNullOrBlank()
+        if (interrogation) addView(step("بازپرسی", MafiaCues.DEFENCE, "interrogation" in d.done, true, MafiaDay.interrogated(g).joinToString("، ") { it.name }) {
+            if ("interrogation" in d.done) kit.toast("بازپرسی امروز انجام شده است") else host.push(MafiaInterrogationScreen(host, gameId))
+        })
+        val speakOk = !interrogation || "interrogation" in d.done
+        addView(step("صحبت", MafiaCues.SPEAKING, d.speakingDone, speakOk, if (d.speakingDone) "انجام شد" else "زمان صحبت ${kit.n(mafiaSettings.speakTime)} ثانیه") {
             host.push(MafiaSpeakingScreen(host, gameId))
+        })
+        if (!g.extra["jigsaw"].isNullOrBlank()) addView(step("خروج با اره", null, "jigsaw" in d.done, d.speakingDone, MafiaDay.saw(g)?.first?.let { "اره دست ${it.name}" }) {
+            if ("jigsaw" in d.done) kit.toast("خروج با اره انجام شده است") else host.push(MafiaSawScreen(host, gameId))
+        })
+        val bombOk = !MafiaDay.bombPending(g)
+        if (MafiaDay.bombHolder(g) != null || "bomb" in d.done) addView(step("خنثی سازی بمب", null, "bomb" in d.done, d.speakingDone, MafiaDay.bombHolder(g)?.let { "بمب جلوی ${it.name}" }) {
+            if ("bomb" in d.done) kit.toast("بمب امروز تعیین تکلیف شده است") else host.push(MafiaBombScreen(host, gameId))
         })
         if (MafiaFlow.shakeHandDue(g) && g.night > 0) {
             addView(step("دست دادن", null, "shake" in d.done, d.speakingDone, "تعداد بازیکنان به ${kit.n(3)} نفر رسیده است") { host.push(MafiaShakeHandScreen(host, gameId)) })
+        } else if (MafiaDay.capoDay(g)) {
+            addView(step("تفنگ کاپو", null, "capo" in d.done, d.speakingDone && bombOk, "معتمد شهر و دو تفنگ") {
+                if ("capo" in d.done) kit.toast("تفنگ کاپو امروز انجام شده است") else host.push(MafiaCapoScreen(host, gameId))
+            })
         } else if (g.night > 0) {
-            addView(step("رای گیری دور اول", MafiaCues.VOTE_FIRST, d.firstVoteDone, d.speakingDone,
+            addView(step("رای گیری دور اول", MafiaCues.VOTE_FIRST, d.firstVoteDone, d.speakingDone && bombOk,
                 if (d.firstVoteDone) "${kit.n(d.defenders.size)} نفر به دفاع رفتند" else "رای لازم برای به دفاع رفتن بازیکن : ${kit.n(MafiaFlow.firstEdge(g.alive.size, mafiaSettings))}") {
                 host.push(MafiaVoteScreen(host, gameId, false))
             })
@@ -200,7 +218,9 @@ class MafiaGameScreen(host: MainActivity, gameId: Long) : MafiaScreen(host, game
             playersDialog("استعلام جان سخت", g.out)
         }
         g.extra["zodiacLetter"]?.takeIf { it.isNotBlank() }?.let { letter -> tools += tool(MafiaGlyph.ZODIAC, "نامه زودیاک", "خواندن نامه") { kit.dialog("نامه زودیاک", letter, null, listOf(DialogAction("بستن"))).show() } }
-        tools += tool(MafiaGlyph.PISTOL, "اقدام روز نقش‌ها", "ترور، کابوی، فدایی و…") { host.push(MafiaDayActionScreen(host, gameId)) }
+        val acts = MafiaDay.actions(g)
+        tools += tool(MafiaGlyph.PISTOL, "اقدام روز نقش‌ها", if (acts.isEmpty()) "خروج دستی در روز" else acts.joinToString("، ") { it.title }) { host.push(MafiaDayActionScreen(host, gameId)) }
+        tools += tool(MafiaGlyph.COMPASS, "ترتیب نشستن", "جابه‌جایی و سر صحبت") { host.push(MafiaSeatingScreen(host, gameId)) }
         tools += tool(MafiaGlyph.HOURGLASS, "تایمر", "زمان آزاد") { freeTimer() }
         addView(kit.grid(2, tools, 8))
     }
@@ -324,7 +344,7 @@ class MafiaGameScreen(host: MainActivity, gameId: Long) : MafiaScreen(host, game
 
     // ------------------------------------------------------------------ finished
 
-    private fun finished(): View = scaffold("پایان بازی", g.phaseTitle, actions = listOf(menuButton())) {
+    private fun finished(): View = scaffold("پایان بازی", g.phaseTitle, actions = listOf(toolsButton(), menuButton())) {
         addView(kit.panel(PanelStyle.RAISED, 16).apply {
             layoutParams = kit.spaced(10)
             gravity = Gravity.CENTER_HORIZONTAL
@@ -344,6 +364,8 @@ class MafiaGameScreen(host: MainActivity, gameId: Long) : MafiaScreen(host, game
 
     private fun menu() {
         val items = ArrayList<DialogAction>()
+        items += DialogAction("ابزار راوی", ButtonKind.PRIMARY) { host.push(MafiaToolsScreen(host, gameId)) }
+        items += DialogAction("ترتیب نشستن") { host.push(MafiaSeatingScreen(host, gameId)) }
         items += DialogAction("بازیکنان حاضر در بازی") { playersDialog("بازیکنان حاضر در بازی", g.alive) }
         items += DialogAction("بازیکنان خارج از بازی") { playersDialog("بازیکنان خارج از بازی", g.out) }
         if (!g.finished) {
