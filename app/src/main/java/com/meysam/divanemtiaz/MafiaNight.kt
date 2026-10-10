@@ -76,7 +76,7 @@ object MafiaNight {
             pendingCard(g, c)?.let { st -> out += cardJob(g, st) }
         }
         if (g.night == 0) {
-            out += NightJob(INTRO, "معارفه", null, null, MafiaGlyph.MASK, "شب معارفه: نقش‌ها خود را به راوی معرفی می‌کنند", emptyList(), emptyList())
+            out += NightJob(INTRO, "معارفه", null, null, MafiaGlyph.MASK, "شب معارفه: نقش‌ها خود را به راوی معرفی می‌کنند", listOf(JobMode("", TargetPool.NONE, 0, 0)), emptyList())
             introNightRoles.forEach { r ->
                 if (!g.inGame(r)) return@forEach
                 if (r == MafiaRole.MASON && g.optionInt(r, "اجبار به انتخاب در شب معارفه", 1) == 0) return@forEach
