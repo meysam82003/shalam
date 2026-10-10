@@ -75,6 +75,21 @@ jobs:
           "$APKSIGNER" verify --print-certs "Divan-Emtiaz-v$VERSION.apk" | tee cert.txt
           if grep -qi "CN=Android Debug" cert.txt; then echo "::error::APK is debug-signed"; exit 1; fi
 
+      - name: Publish unsigned build for re-signing
+        if: env.RELEASE_SIGNED != 'true' && github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-v${{ env.VERSION }}
+          target_commitish: ${{ github.sha }}
+          name: ساخت آزمایشی v${{ env.VERSION }} (امضای دیباگ؛ برای بازار نیست)
+          prerelease: true
+          make_latest: false
+          body: |
+            این فایل با کلید دیباگ امضا شده و برای کافه‌بازار قابل قبول نیست؛ فقط برای امضای مجدد با کلید انتشار است.
+          files: |
+            Divan-Emtiaz-v${{ env.VERSION }}.apk
+          overwrite_files: true
+
       - name: Publish GitHub Release
         if: env.RELEASE_SIGNED == 'true' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
         uses: softprops/action-gh-release@v2
