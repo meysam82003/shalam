@@ -50,8 +50,8 @@ abstract class Screen(val host: MainActivity) {
             bar.addView(kit.hgap(8))
         }
         bar.addView(kit.vertical().apply {
-            addView(kit.text(title, TextStyle.TITLE, Royal.goldLight, maxLines = 1))
-            if (!subtitle.isNullOrBlank()) addView(kit.text(subtitle, TextStyle.CAPTION, Royal.muted, maxLines = 1))
+            addView(kit.text(title, TextStyle.TITLE, Royal.goldLight))
+            if (!subtitle.isNullOrBlank()) addView(kit.text(subtitle, TextStyle.CAPTION, Royal.muted))
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         actions.forEach {
             bar.addView(kit.hgap(6))

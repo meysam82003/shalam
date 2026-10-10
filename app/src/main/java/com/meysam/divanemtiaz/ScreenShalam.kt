@@ -256,6 +256,7 @@ class ShalamHandScreen(host: MainActivity, private val session: GameSession, pri
     private var takenText = editing?.taken?.toString() ?: ""
     private var preview: LinearLayout? = null
     private var footer: FrameLayout? = null
+    private val contractUpdates = mutableListOf<() -> Unit>()
 
     override val sessionId: Long get() = session.id
 
@@ -268,7 +269,21 @@ class ShalamHandScreen(host: MainActivity, private val session: GameSession, pri
         return false
     }
 
-    override fun build(): View = if (step == 1) buildContract() else buildResult()
+    override fun build(): View {
+        contractUpdates.clear()
+        return if (step == 1) buildContract() else buildResult()
+    }
+
+    private fun updateContractSelection() = contractUpdates.forEach { it() }
+
+    private fun contractChip(label: String, selectedKind: ButtonKind, selected: () -> Boolean, choose: () -> Unit): View {
+        val chip = kit.chip(label, selected(), selectedKind) {
+            choose()
+            updateContractSelection()
+        }
+        contractUpdates += { kit.styleChip(chip, selected(), selectedKind) }
+        return chip
+    }
 
     private fun buildContract(): View = scaffold(
         title = if (editing != null) "ویرایش دست ${kit.n(editIndex!! + 1)}" else "دست ${kit.n(session.rounds.size + 1)} — تعهد",
@@ -283,12 +298,27 @@ class ShalamHandScreen(host: MainActivity, private val session: GameSession, pri
                 addView(kit.weight(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
                     background = PanelDrawable(kit.density, if (team == i) PanelStyle.SELECTED else PanelStyle.NORMAL, 18f)
                     setPadding(kit.dp(8), kit.dp(8), kit.dp(8), kit.dp(11))
-                    addView(kit.avatar(side.avatar, 44))
-                    addView(kit.text(side.name, TextStyle.BODY_BOLD, if (team == i) Royal.turquoiseLight else Royal.ivory, Gravity.CENTER, 1))
-                    if (team == i) addView(kit.badge("حاکم", Royal.turquoise, true))
+                    isSelected = team == i
+                    val avatar = kit.avatar(side.avatar, 44).apply { selectedRing = team == i }
+                    val name = kit.text(side.name, TextStyle.BODY_BOLD, if (team == i) Royal.turquoiseLight else Royal.ivory, Gravity.CENTER)
+                    val badge = kit.badge("حاکم", Royal.turquoise, true).apply {
+                        visibility = if (team == i) View.VISIBLE else View.INVISIBLE
+                    }
+                    addView(avatar)
+                    addView(name)
+                    addView(badge)
+                    contractUpdates += update@{
+                        if (isSelected == (team == i)) return@update
+                        isSelected = team == i
+                        background = PanelDrawable(kit.density, if (team == i) PanelStyle.SELECTED else PanelStyle.NORMAL, 18f)
+                        setPadding(kit.dp(8), kit.dp(8), kit.dp(8), kit.dp(11))
+                        name.setTextColor(if (team == i) Royal.turquoiseLight else Royal.ivory)
+                        badge.visibility = if (team == i) View.VISIBLE else View.INVISIBLE
+                        avatar.selectedRing = team == i
+                    }
                     isClickable = true
                     contentDescription = "حاکم ${side.name}"
-                    setOnClickListener { kit.tap(it); team = i; host.refresh() }
+                    setOnClickListener { kit.tap(it); team = i; updateContractSelection() }
                 }))
             }
         })
@@ -299,6 +329,7 @@ class ShalamHandScreen(host: MainActivity, private val session: GameSession, pri
                     bidText = text
                     kind = RoundKind.SHALAM_HAND
                     bid = PersianText.parseInt(text)?.let { ShalamEngine.normalizeTypedBid(it, mode) }
+                    updateContractSelection()
                 })
             }
             addView(field, kit.spaced(6))
@@ -306,23 +337,22 @@ class ShalamHandScreen(host: MainActivity, private val session: GameSession, pri
         } else {
             addView(kit.grid(5, ShalamEngine.bidOptions(mode).map { value ->
                 val label = if (value == mode.maxPoints && mode.maxBidIsShelem) "شلم" else kit.n(value)
-                kit.chip(label, kind == RoundKind.SHALAM_HAND && bid == value, ButtonKind.CHIP_GOLD) {
+                contractChip(label, ButtonKind.CHIP_GOLD, { kind == RoundKind.SHALAM_HAND && bid == value }) {
                     kind = RoundKind.SHALAM_HAND
                     bid = value
-                    host.refresh()
                 }
             }, 6), kit.spaced(8))
         }
         addView(kit.gap(6))
         addView(kit.grid(4, listOf(
-            kit.chip("شلم", kind == RoundKind.SHALAM_SHELEM, ButtonKind.CHIP_SELECTED) { kind = RoundKind.SHALAM_SHELEM; host.refresh() },
-            kit.chip("شلم دوبل", kind == RoundKind.SHALAM_DOUBLE_SHELEM, ButtonKind.CHIP_SELECTED) { kind = RoundKind.SHALAM_DOUBLE_SHELEM; host.refresh() },
+            contractChip("شلم", ButtonKind.CHIP_SELECTED, { kind == RoundKind.SHALAM_SHELEM }) { kind = RoundKind.SHALAM_SHELEM },
+            contractChip("شلم دوبل", ButtonKind.CHIP_SELECTED, { kind == RoundKind.SHALAM_DOUBLE_SHELEM }) { kind = RoundKind.SHALAM_DOUBLE_SHELEM },
             kit.chip("پاس", false) { recordPass() },
             kit.chip("ثبت دستی", false) { recordManual() }
         ), 6))
         addView(kit.section("خال حکم (اختیاری)", RoyalIcon.SPADE))
         addView(kit.grid(5, (listOf(Suit.NONE) + Suit.all).map { s ->
-            if (s == Suit.NONE) kit.chip("بدون", suit == s) { suit = s; host.refresh() }
+            if (s == Suit.NONE) contractChip("بدون", ButtonKind.CHIP_SELECTED, { suit == s }) { suit = s }
             else suitChip(s)
         }, 6))
     }
@@ -332,8 +362,18 @@ class ShalamHandScreen(host: MainActivity, private val session: GameSession, pri
         minimumHeight = kit.dp(44)
         isClickable = true
         contentDescription = Suit.title(s)
-        addView(IconView(host, RoyalIcons.forSuit(s)!!, if (suit == s) Royal.night else RoyalIcons.suitColor(s)), FrameLayout.LayoutParams(kit.dp(22), kit.dp(22), Gravity.CENTER))
-        setOnClickListener { kit.tap(it); suit = s; host.refresh() }
+        isSelected = suit == s
+        isFocusable = true
+        val icon = IconView(host, RoyalIcons.forSuit(s)!!, if (suit == s) Royal.night else RoyalIcons.suitColor(s))
+        addView(icon, FrameLayout.LayoutParams(kit.dp(22), kit.dp(22), Gravity.CENTER))
+        contractUpdates += update@{
+            if (isSelected == (suit == s)) return@update
+            isSelected = suit == s
+            background = ButtonDrawable(kit.density, if (suit == s) ButtonKind.CHIP_SELECTED else ButtonKind.CHIP, 12f)
+            icon.color = if (suit == s) Royal.night else RoyalIcons.suitColor(s)
+            icon.invalidate()
+        }
+        setOnClickListener { kit.tap(it); suit = s; updateContractSelection() }
     }
 
     private fun toStepTwo() {
@@ -411,12 +451,14 @@ class ShalamHandScreen(host: MainActivity, private val session: GameSession, pri
                     })
                 }, kit.spaced(8))
             } else {
+                val takenChips = mutableListOf<Pair<Int, TextView>>()
                 addView(kit.grid(6, ShalamEngine.takenOptions(mode).map { value ->
                     kit.chip(kit.n(value), taken == value, ButtonKind.CHIP_GOLD) {
                         taken = value
                         takenText = value.toString()
-                        host.refresh()
-                    }
+                        takenChips.forEach { (v, chip) -> kit.styleChip(chip, taken == v, ButtonKind.CHIP_GOLD) }
+                        updatePreview()
+                    }.also { takenChips += value to it }
                 }, 5), kit.spaced(8))
             }
             val box = kit.vertical()

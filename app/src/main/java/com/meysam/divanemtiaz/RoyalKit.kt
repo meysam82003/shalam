@@ -160,7 +160,10 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
             addView(icon(icon, color, 18))
             addView(hgap(6))
         }
-        addView(text(label, TextStyle.BODY_BOLD, color, Gravity.CENTER, 2))
+        // Reserve the icon's width before measuring Persian labels. Unweighted WRAP_CONTENT
+        // text can extend beyond a narrow button and the old two-line cap hid actions.
+        addView(text(label, TextStyle.BODY_BOLD, color, Gravity.CENTER),
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         contentDescription = label
         setOnClickListener { tap(it); onClick() }
     }
@@ -170,6 +173,7 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
             background = ButtonDrawable(density, kind, size / 2.2f)
             layoutParams = LinearLayout.LayoutParams(dp(size), dp(size))
             isClickable = true
+            isFocusable = true
             contentDescription = description
             addView(IconView(context, icon, ButtonDrawable.textColor(kind)), FrameLayout.LayoutParams(dp(size / 2), dp(size / 2), Gravity.CENTER).apply {
                 bottomMargin = dp(1)
@@ -178,14 +182,27 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
         }
 
     fun chip(label: String, selected: Boolean, selectedKind: ButtonKind = ButtonKind.CHIP_SELECTED, onClick: () -> Unit): TextView =
-        text(label, TextStyle.LABEL_BOLD, ButtonDrawable.textColor(if (selected) selectedKind else ButtonKind.CHIP), Gravity.CENTER, 2).apply {
+        text(label, TextStyle.LABEL_BOLD, ButtonDrawable.textColor(if (selected) selectedKind else ButtonKind.CHIP), Gravity.CENTER).apply {
             background = ButtonDrawable(density, if (selected) selectedKind else ButtonKind.CHIP, 12f)
             minHeight = dp(40)
             minWidth = dp(40)
+            // Six-column number pads need room for three Persian digits at narrow widths.
+            setPadding(dp(4), dp(6), dp(4), dp(8))
             isClickable = true
+            isFocusable = true
+            isSelected = selected
             contentDescription = label
             setOnClickListener { tap(it); onClick() }
         }
+
+    fun styleChip(view: TextView, selected: Boolean, selectedKind: ButtonKind = ButtonKind.CHIP_SELECTED) {
+        if (view.isSelected == selected) return
+        val kind = if (selected) selectedKind else ButtonKind.CHIP
+        view.isSelected = selected
+        view.background = ButtonDrawable(density, kind, 12f)
+        view.setTextColor(ButtonDrawable.textColor(kind))
+        view.setPadding(dp(4), dp(6), dp(4), dp(8))
+    }
 
     fun badge(label: String, color: Int = Royal.gold, filled: Boolean = false): TextView =
         text(label, TextStyle.CAPTION, if (filled) Royal.night else color, Gravity.CENTER, 1).apply {

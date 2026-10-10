@@ -7,7 +7,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 
-const val APP_VERSION_LABEL = "نسخهٔ ۴.۱.۰"
+const val APP_VERSION_LABEL = "نسخهٔ ۴.۱.۱"
 
 class SplashScreen(host: MainActivity) : Screen(host) {
     override fun build(): View = FrameLayout(host).apply {
@@ -28,7 +28,7 @@ class SplashScreen(host: MainActivity) : Screen(host) {
         isClickable = true
         setOnClickListener { goHome() }
         alpha = 0f
-        animate().alpha(1f).setDuration(450).start()
+        animate().alpha(1f).setDuration(180).start()
     }
 
     private var done = false
@@ -41,7 +41,7 @@ class SplashScreen(host: MainActivity) : Screen(host) {
     }
 
     override fun onShow() {
-        host.post(1400) { goHome() }
+        host.post(350) { goHome() }
     }
 
     override fun onHide() {
@@ -147,8 +147,8 @@ class HomeScreen(host: MainActivity) : Screen(host) {
             setPadding(kit.dp(6), kit.dp(9), kit.dp(6), kit.dp(11))
             addView(kit.icon(icon, Royal.gold, 24))
             addView(kit.gap(4))
-            addView(kit.text(title, TextStyle.BODY_BOLD, Royal.ivory, Gravity.CENTER, 1))
-            addView(kit.text(caption, TextStyle.CAPTION, Royal.muted, Gravity.CENTER, 2))
+            addView(kit.text(title, TextStyle.BODY_BOLD, Royal.ivory, Gravity.CENTER))
+            addView(kit.text(caption, TextStyle.CAPTION, Royal.muted, Gravity.CENTER))
             isClickable = true
             contentDescription = title
             setOnClickListener { kit.tap(it); onClick() }

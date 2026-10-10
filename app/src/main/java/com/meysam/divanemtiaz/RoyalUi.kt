@@ -73,6 +73,13 @@ object RoyalFonts {
 }
 
 abstract class SimpleDrawable : Drawable() {
+    private val shaders = HashMap<Int, Shader>()
+    protected fun cachedShader(key: Int, create: () -> Shader): Shader = shaders.getOrPut(key, create)
+    protected fun clearShaders() = shaders.clear()
+    override fun onBoundsChange(bounds: Rect) {
+        super.onBoundsChange(bounds)
+        clearShaders()
+    }
     private var drawAlpha = 255
     override fun setAlpha(alpha: Int) {
         drawAlpha = alpha
@@ -94,16 +101,16 @@ class BackdropDrawable(private val density: Float) : SimpleDrawable() {
         if (b.isEmpty) return
         val w = b.width().toFloat()
         val h = b.height().toFloat()
-        paint.shader = LinearGradient(0f, 0f, 0f, h, intArrayOf(0xFF060D22.toInt(), 0xFF0A1734.toInt(), 0xFF0F2048.toInt()), floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
+        paint.shader = cachedShader(1) { LinearGradient(0f, 0f, 0f, h, intArrayOf(0xFF060D22.toInt(), 0xFF0A1734.toInt(), 0xFF0F2048.toInt()), floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP) }
         canvas.drawRect(b, paint)
-        paint.shader = BitmapShader(patternTile(), Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
+        paint.shader = cachedShader(2) { BitmapShader(patternTile(), Shader.TileMode.REPEAT, Shader.TileMode.REPEAT) }
         paint.alpha = 255
         canvas.drawRect(b, paint)
-        paint.shader = RadialGradient(w / 2f, -h * 0.06f, w * 0.9f, intArrayOf(Royal.alpha(0xFF3A63C8.toInt(), 0.45f), Royal.alpha(0xFF1D3B7C.toInt(), 0.18f), 0), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
+        paint.shader = cachedShader(3) { RadialGradient(w / 2f, -h * 0.06f, w * 0.9f, intArrayOf(Royal.alpha(0xFF3A63C8.toInt(), 0.45f), Royal.alpha(0xFF1D3B7C.toInt(), 0.18f), 0), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP) }
         canvas.drawRect(b, paint)
-        paint.shader = RadialGradient(w / 2f, h * 1.05f, w * 0.9f, intArrayOf(Royal.alpha(Royal.turquoise, 0.10f), 0), null, Shader.TileMode.CLAMP)
+        paint.shader = cachedShader(4) { RadialGradient(w / 2f, h * 1.05f, w * 0.9f, intArrayOf(Royal.alpha(Royal.turquoise, 0.10f), 0), null, Shader.TileMode.CLAMP) }
         canvas.drawRect(b, paint)
-        paint.shader = RadialGradient(w / 2f, h * 0.45f, maxOf(w, h) * 0.75f, intArrayOf(0, 0, 0x88000000.toInt()), floatArrayOf(0f, 0.6f, 1f), Shader.TileMode.CLAMP)
+        paint.shader = cachedShader(5) { RadialGradient(w / 2f, h * 0.45f, maxOf(w, h) * 0.75f, intArrayOf(0, 0, 0x88000000.toInt()), floatArrayOf(0f, 0.6f, 1f), Shader.TileMode.CLAMP) }
         canvas.drawRect(b, paint)
         paint.shader = null
     }
@@ -135,6 +142,7 @@ class BackdropDrawable(private val density: Float) : SimpleDrawable() {
         return bitmap
     }
 }
+
 
 enum class PanelStyle { NORMAL, RAISED, FLAT, SELECTED, DANGER, SUCCESS, GHOST }
 
@@ -179,10 +187,10 @@ class PanelDrawable(
         }
         if (style != PanelStyle.GHOST) {
             paint.style = Paint.Style.FILL
-            paint.shader = LinearGradient(0f, rect.top, 0f, rect.bottom, top, bottom, Shader.TileMode.CLAMP)
+            paint.shader = cachedShader(1) { LinearGradient(0f, rect.top, 0f, rect.bottom, top, bottom, Shader.TileMode.CLAMP) }
             paint.alpha = (255 * alphaFraction).toInt()
             canvas.drawRoundRect(rect, r, r, paint)
-            paint.shader = LinearGradient(0f, rect.top, 0f, rect.top + (rect.height() * 0.5f), Royal.alpha(Color.WHITE, 0.07f), 0, Shader.TileMode.CLAMP)
+            paint.shader = cachedShader(2) { LinearGradient(0f, rect.top, 0f, rect.top + (rect.height() * 0.5f), Royal.alpha(Color.WHITE, 0.07f), 0, Shader.TileMode.CLAMP) }
             canvas.drawRoundRect(rect, r, r, paint)
         }
         val (frameA, frameB) = when (style) {
@@ -193,7 +201,7 @@ class PanelDrawable(
         }
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = (if (style == PanelStyle.RAISED || style == PanelStyle.SELECTED) 1.8f else 1.3f) * density
-        paint.shader = LinearGradient(0f, rect.top, 0f, rect.bottom, frameA, frameB, Shader.TileMode.CLAMP)
+        paint.shader = cachedShader(3) { LinearGradient(0f, rect.top, 0f, rect.bottom, frameA, frameB, Shader.TileMode.CLAMP) }
         paint.alpha = (235 * alphaFraction).toInt()
         val half = paint.strokeWidth / 2f
         canvas.drawRoundRect(RectF(rect.left + half, rect.top + half, rect.right - half, rect.bottom - half), r, r, paint)
@@ -220,6 +228,7 @@ class PanelDrawable(
     }
 }
 
+
 enum class ButtonKind { PRIMARY, SECONDARY, SUCCESS, DANGER, GHOST, CHIP, CHIP_SELECTED, CHIP_GOLD }
 
 /** Beveled 3D button face that reacts to pressed / disabled state. */
@@ -240,7 +249,7 @@ class ButtonDrawable(
         val changed = newPressed != pressed || newEnabled != enabled
         pressed = newPressed
         enabled = newEnabled
-        if (changed) invalidateSelf()
+        if (changed) { clearShaders(); invalidateSelf() }
         return changed
     }
 
@@ -272,6 +281,12 @@ class ButtonDrawable(
             ButtonKind.DANGER -> 0xFF4E0D16.toInt()
             else -> 0xFF07112B.toInt()
         }
+        if (kind == ButtonKind.GHOST) {
+            paint.style = Paint.Style.FILL
+            paint.shader = null
+            paint.color = Royal.alpha(Royal.gold, 0.10f * a)
+            canvas.drawRoundRect(face, r, r, paint)
+        }
         if (kind != ButtonKind.GHOST) {
             paint.style = Paint.Style.FILL
             paint.shader = null
@@ -281,10 +296,10 @@ class ButtonDrawable(
             canvas.drawRoundRect(RectF(face.left, face.top + depth, face.right, face.bottom + depth), r, r, paint)
             var c = colors
             if (pressed) c = c.map { Royal.mix(it, 0xFF000000.toInt(), 0.12f) }.toIntArray()
-            paint.shader = LinearGradient(0f, face.top, 0f, face.bottom, c, floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
+            paint.shader = cachedShader(1) { LinearGradient(0f, face.top, 0f, face.bottom, c, floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP) }
             paint.alpha = (255 * a).toInt()
             canvas.drawRoundRect(face, r, r, paint)
-            paint.shader = LinearGradient(0f, face.top, 0f, face.centerY(), Royal.alpha(Color.WHITE, 0.30f), 0, Shader.TileMode.CLAMP)
+            paint.shader = cachedShader(2) { LinearGradient(0f, face.top, 0f, face.centerY(), Royal.alpha(Color.WHITE, 0.30f), 0, Shader.TileMode.CLAMP) }
             canvas.drawRoundRect(RectF(face.left + 2 * density, face.top + 1.5f * density, face.right - 2 * density, face.centerY()), r * 0.8f, r * 0.8f, paint)
             paint.shader = null
         }
@@ -313,6 +328,7 @@ class ButtonDrawable(
         }
     }
 }
+
 
 /** Gold progress rail with a turquoise or crimson fill. */
 class ProgressDrawable(private val density: Float, var fraction: Float, var fill: Int = Royal.gold) : SimpleDrawable() {

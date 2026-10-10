@@ -493,20 +493,7 @@ class EmblemAvatarView(context: Context, avatar: Int = 0) : View(context) {
 class GameSealView(context: Context, private val game: GameType?) : View(context) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
-    override fun onDraw(canvas: Canvas) {
-        val r = min(width, height) / 2f * 0.92f
-        if (r <= 0f) return
-        val cx = width / 2f
-        val cy = height / 2f
-        val base = when (game) {
-            GameType.SHALAM -> 0xFF1C4AA0.toInt()
-            GameType.MENFI -> 0xFF9E2633.toInt()
-            GameType.HEZARTAII -> 0xFF0F7F73.toInt()
-            GameType.DOLO -> 0xFF5B2C8C.toInt()
-            null -> 0xFF23367A.toInt()
-        }
-        Emblems.drawMedallion(canvas, cx, cy, r, base, paint)
-        val path = when (game) {
+    private val path: Path by lazy { when (game) {
             GameType.SHALAM -> Path().apply {
                 addPath(SuitShapes.spade(100f), Matrix().apply { setScale(0.62f, 0.62f); postTranslate(19f, 34f) })
                 moveTo(32f, 30f); lineTo(29f, 14f); lineTo(39f, 21f); lineTo(50f, 9f); lineTo(61f, 21f); lineTo(71f, 14f); lineTo(68f, 30f); close()
@@ -535,7 +522,21 @@ class GameSealView(context: Context, private val game: GameType?) : View(context
                 addPath(SuitShapes.club(100f), Matrix().apply { setScale(0.5f, 0.5f); postTranslate(13f, 25f) })
             }
             null -> RoyalShapes.star8Path(50f, 50f, 34f)
+        } }
+
+    override fun onDraw(canvas: Canvas) {
+        val r = min(width, height) / 2f * 0.92f
+        if (r <= 0f) return
+        val cx = width / 2f
+        val cy = height / 2f
+        val base = when (game) {
+            GameType.SHALAM -> 0xFF1C4AA0.toInt()
+            GameType.MENFI -> 0xFF9E2633.toInt()
+            GameType.HEZARTAII -> 0xFF0F7F73.toInt()
+            GameType.DOLO -> 0xFF5B2C8C.toInt()
+            null -> 0xFF23367A.toInt()
         }
+        Emblems.drawMedallion(canvas, cx, cy, r, base, paint)
         Emblems.drawRelief(canvas, path, cx, cy, r, paint)
         if (game == GameType.HEZARTAII || game == GameType.DOLO) {
             val label = if (game == GameType.DOLO) "۲" else "۱۰۰۰"
