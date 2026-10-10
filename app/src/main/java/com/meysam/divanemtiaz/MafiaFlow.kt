@@ -113,7 +113,7 @@ object MafiaFlow {
         if (g.extra["nightLikeDay"] == n.toString()) {
             g.extra["nightTrace"] = g.records.values.joinToString("\n") { r -> traceLine(g, r) }
         }
-        g.records.values.filter { !it.void }.forEach { r -> g.log += MafiaLog(g.phaseTitle, traceLine(g, r)) }
+        g.records.values.filter { it.key != MafiaNight.INTRO }.forEach { r -> g.log += MafiaLog(g.phaseTitle, traceLine(g, r)) }
         outcome.dead.forEach { id -> g.player(id)?.let { g.log += MafiaLog(g.phaseTitle, "${it.name} (${it.role?.faName}) در شب از بازی خارج شد") } }
         g.records.clear()
         g.players.forEach { it.flags.remove("illusioned") }

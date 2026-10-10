@@ -30,6 +30,9 @@ data class LegacyData(val v1History: String? = null, val v2History: String? = nu
 }
 
 class GameRepository(private val kv: KeyValueStore, private val legacy: () -> LegacyData = { LegacyData.NONE }) {
+    /** The underlying store, shared with the mafia narrator's own keys. */
+    val store: KeyValueStore get() = kv
+
     private var migrated = false
 
     @Synchronized

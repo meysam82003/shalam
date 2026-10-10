@@ -174,6 +174,7 @@ object MafiaCues {
     const val INTRO_END = "intro_end"
     const val MAFIA_WAKE = "mafia_wake"
     const val MAFIA_SLEEP = "mafia_sleep"
+    const val MAFIA_DONE = "mafia_done"
     const val ALL_SLEEP = "all_sleep"
     const val SPEAKING = "speaking"
     const val VOTE_FIRST = "vote_first"
@@ -195,6 +196,7 @@ object MafiaCues {
         INTRO_END to "پایان شب معارفه",
         MAFIA_WAKE to "گروه مافیا بیدار شوند",
         MAFIA_SLEEP to "گروه مافیا بخوابند",
+        MAFIA_DONE to "پایان کار گروه مافیا (شلیک)",
         ALL_SLEEP to "همه بخوابند",
         DEAD_REPORT to "اعلام کشته‌های شب",
         SPEAKING to "شروع صحبت",
@@ -222,6 +224,7 @@ object MafiaCues {
         m[TIMER_END] = SoundChoice(SoundSource.BUILTIN, "mafia_end_timer")
         m[DEAD_REPORT] = SoundChoice(SoundSource.BUILTIN, "mafia_heart_sound")
         m[LAST_CARD] = SoundChoice(SoundSource.BUILTIN, "mafia_typing_sound")
+        m[MAFIA_DONE] = SoundChoice(SoundSource.BUILTIN, "mafia_shot_sound")
         MafiaRole.values().forEach { r -> if (r.nightSound.isNotBlank()) m[done(r)] = SoundChoice(SoundSource.BUILTIN, r.nightSound) }
         m[done(MafiaRole.JOKER)] = SoundChoice(SoundSource.BUILTIN, "mafia_joker_laugh")
         return m
@@ -394,10 +397,18 @@ class MafiaRepository(private val kv: KeyValueStore) {
 
     fun saveGroups(a: JSONArray) = kv.write(mapOf(KEY_GROUPS to a.toString()))
 
+    /** The game being designed (players, roles, options and last cards) before distribution. */
+    fun draft(): MafiaGame = kv.get(KEY_DRAFT)?.let { runCatching { MafiaCodec.decodeGame(JSONObject(it)) }.getOrNull() } ?: MafiaGame(0L)
+
+    fun saveDraft(g: MafiaGame) = kv.write(mapOf(KEY_DRAFT to MafiaCodec.encodeGame(g, withSnapshots = false).toString()))
+
+    fun latestUnfinished(): MafiaGame? = games().firstOrNull { it.started && !it.finished }
+
     companion object {
         const val KEY_SETTINGS = "mafia_settings"
         const val KEY_INDEX = "mafia_index"
         const val KEY_GAME = "mafia_game_"
         const val KEY_GROUPS = "mafia_groups"
+        const val KEY_DRAFT = "mafia_draft"
     }
 }

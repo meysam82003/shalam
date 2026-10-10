@@ -56,6 +56,7 @@ class HomeScreen(host: MainActivity) : Screen(host) {
         host.repo.latestUnfinished()?.let { column.addView(continueCard(it)) }
         column.addView(kit.section("بازی تازه", RoyalIcon.PLAY))
         GameType.values().forEach { game -> column.addView(gameCard(game), kit.spaced(8)) }
+        column.addView(mafiaCard(), kit.spaced(8))
         column.addView(kit.section("دیوان", RoyalIcon.STAR))
         column.addView(kit.grid(3, listOf(
             tile(RoyalIcon.TROPHY, "لیگ‌ها", "دو برده، جدول و فینال") { host.push(LeagueListScreen(host)) },
@@ -127,6 +128,24 @@ class HomeScreen(host: MainActivity) : Screen(host) {
         isClickable = true
         contentDescription = "شروع ${game.title}"
         setOnClickListener { kit.tap(it); host.push(SetupScreen(host, game)) }
+    }
+
+    private fun mafiaCard(): View = kit.horizontal().apply {
+        background = PanelDrawable(kit.density, PanelStyle.RAISED, 18f)
+        setPadding(kit.dp(14), kit.dp(12), kit.dp(14), kit.dp(15))
+        addView(RoleSealView(host, MafiaGlyph.MASK, MafiaColors.MAFIA), LinearLayout.LayoutParams(kit.dp(70), kit.dp(70)))
+        addView(kit.hgap(12))
+        addView(kit.vertical().apply {
+            addView(kit.text("راوی مافیا", TextStyle.TITLE, Royal.goldLight))
+            addView(kit.text("گردانندگی شب و روز، نقش‌ها، رأی‌گیری و کارت حرکت آخر", TextStyle.CAPTION, Royal.muted, maxLines = 2))
+            addView(kit.gap(4))
+            val live = host.mafia.latestUnfinished()
+            addView(kit.badge(if (live != null) "بازی در جریان — ${live.phaseTitle}" else "${kit.n(MafiaRole.values().size)} نقش • ${kit.n(MafiaLastCard.values().size)} کارت", Royal.turquoise))
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        addView(kit.icon(RoyalIcon.NEXT, Royal.gold, 24))
+        isClickable = true
+        contentDescription = "راوی مافیا"
+        setOnClickListener { kit.tap(it); host.push(MafiaHomeScreen(host)) }
     }
 
     private fun gameSummary(game: GameType): String = when (game) {

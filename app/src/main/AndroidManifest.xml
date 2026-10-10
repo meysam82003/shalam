@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Only for recording the narrator's own voice for a mafia cue; asked when the narrator taps «ضبط». -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <application
         android:allowBackup="true"
         android:fullBackupContent="true"

@@ -102,6 +102,14 @@ class MainActivity : Activity() {
 
     val current: Screen? get() = stack.lastOrNull()
 
+    /** Mafia narrator games and settings, kept in the same store as the score games. */
+    val mafia: MafiaRepository by lazy { MafiaRepository(repo.store) }
+
+    /** Narrator cues, night music and voice recording. */
+    val audio: MafiaAudio by lazy { MafiaAudio(this) }
+    private var audioUsed = false
+    fun audio(): MafiaAudio { audioUsed = true; return audio }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         repo = GameStore.open(this)
@@ -144,7 +152,16 @@ class MainActivity : Activity() {
     override fun onPause() {
         current?.onHide()
         resumed = false
+        if (audioUsed) {
+            audio.stopMusic()
+            if (audio.isRecording) audio.stopRecording(discard = true)
+        }
         super.onPause()
+    }
+
+    override fun onDestroy() {
+        if (audioUsed) audio.release()
+        super.onDestroy()
     }
 
     /**
@@ -270,6 +287,43 @@ class MainActivity : Activity() {
         }
     }
 
+    /** Opens the system picker for any of [mimeTypes] (e.g. audio or images). */
+    fun pickFile(mimeTypes: Array<String>, onResult: (Uri?) -> Unit) {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = if (mimeTypes.size == 1) mimeTypes[0] else "*/*"
+            if (mimeTypes.size > 1) putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes)
+        }
+        pendingResult = onResult
+        try {
+            @Suppress("DEPRECATION")
+            startActivityForResult(intent, REQUEST_DOCUMENT)
+        } catch (e: Exception) {
+            pendingResult = null
+            kit.toast("انتخاب فایل در این گوشی در دسترس نیست")
+        }
+    }
+
+    private var pendingPermission: ((Boolean) -> Unit)? = null
+
+    /** Asks for the microphone (Android 6+); older versions grant it at install. */
+    fun requestMicrophone(onResult: (Boolean) -> Unit) {
+        if (Build.VERSION.SDK_INT < 23 || checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            onResult(true)
+            return
+        }
+        pendingPermission = onResult
+        requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), REQUEST_MIC)
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != REQUEST_MIC) return
+        val callback = pendingPermission ?: return
+        pendingPermission = null
+        callback(grantResults.isNotEmpty() && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED)
+    }
+
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         @Suppress("DEPRECATION")
@@ -374,5 +428,6 @@ class MainActivity : Activity() {
     companion object {
         private const val STATE_SESSION = "session_id"
         private const val REQUEST_DOCUMENT = 4101
+        private const val REQUEST_MIC = 4102
     }
 }

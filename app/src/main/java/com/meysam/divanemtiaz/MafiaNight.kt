@@ -362,6 +362,12 @@ object MafiaNight {
         return result
     }
 
+    /** The role was woken but chose nobody: recorded as done, nothing spent. */
+    fun skip(g: MafiaGame, job: NightJob) {
+        g.records[job.key] = NightRecord(job.key, choice = "کاری انجام نداد", void = true)
+        if (job.key.startsWith("CARD_")) g.deck.firstOrNull { cardKey(it.card) == job.key }?.pending = false
+    }
+
     fun cancel(g: MafiaGame, job: NightJob) {
         val rec = g.records.remove(job.key) ?: return
         if (rec.void) return
