@@ -499,8 +499,21 @@ const ShalamEngine = {
   normalizeTypedBid(value, mode) { return value < 100 && value + 100 <= mode.maxPoints ? value + 100 : value; },
   isValidBid(bid, mode) { return bid >= 50 && bid <= mode.maxPoints && bid % 5 === 0; },
   isValidTaken(taken, mode) { return taken >= 0 && taken < mode.maxPoints; },
-  isDoubleHand(bid, taken, rules) { return bid + taken > rules.mode.maxPoints && taken >= rules.mode.doubleLimit && rules.doubleType !== DoubleType.DISABLED; },
+  isDoubleHand(bid, taken, rules) { return !ShalamEngine.isPositiveOnly(rules) && bid + taken > rules.mode.maxPoints && taken >= rules.mode.doubleLimit && rules.doubleType !== DoubleType.DISABLED; },
+  /** «شلم ۱۲ برگ بدون منفی»: no score is ever negative and no total ever goes down. */
+  isPositiveOnly(rules) { return rules.dealType === DealType.TWELVE_POSITIVE_ONLY; },
+  /**
+   * Positive-only hand: a contractor who reaches the bid gets exactly the bid, otherwise zero;
+   * the opponents always get the points they actually took. Taking everything is a full shelem (2 × 165).
+   */
+  scorePositiveOnly(bid, taken, rules) {
+    const mode = rules.mode;
+    const actual = mode.maxPoints - taken;
+    if (taken <= 0) return shalamOutcome(mode.maxPoints * 2, 0, ShalamResult.SUCCESS, actual, { collectedAll: true });
+    return bid + taken <= mode.maxPoints ? shalamOutcome(bid, taken, ShalamResult.SUCCESS, actual) : shalamOutcome(0, taken, ShalamResult.FAIL, actual);
+  },
   scoreHand(bid, taken, rules, double = DoubleChoice.AUTO) {
+    if (ShalamEngine.isPositiveOnly(rules)) return ShalamEngine.scorePositiveOnly(bid, taken, rules);
     const mode = rules.mode;
     const actual = mode.maxPoints - taken;
     if (bid + taken <= mode.maxPoints) {
@@ -528,6 +541,11 @@ const ShalamEngine = {
   scoreShelem(doubleShelem, taken, rules) {
     const mode = rules.mode;
     const won = taken <= 0;
+    if (ShalamEngine.isPositiveOnly(rules)) {
+      // A won shelem is 330 (660 when doubled) and the opponents get nothing; a lost one is zero for the contractor.
+      const win = doubleShelem ? mode.maxPoints * 4 : mode.maxPoints * 2;
+      return won ? shalamOutcome(win, 0, ShalamResult.SHELEM_WIN, mode.maxPoints) : shalamOutcome(0, taken, ShalamResult.SHELEM_LOSE, mode.maxPoints - taken);
+    }
     const base = mode.maxPoints * 2;
     let contractor = 0, opponent = taken;
     switch (mode.shelemMode) {
@@ -549,7 +567,8 @@ const ShalamEngine = {
   },
   limitedOpponentScore(contractor, opponent, opponentTotalBefore, rules) {
     if (rules.highLimitEnabled && opponentTotalBefore >= rules.highLimit) {
-      if (!(rules.loserPointsAboveLimit && contractor < 0)) return 0;
+      const failed = contractor < 0 || (ShalamEngine.isPositiveOnly(rules) && contractor === 0);
+      if (!(rules.loserPointsAboveLimit && failed)) return 0;
     }
     return opponent;
   },
@@ -654,12 +673,15 @@ const DeckCalc = {
     while (left > 0) { const p = Math.min(step, left); out.push(p); left -= p; }
     return out;
   },
-  /** Automatic dealing rounds: 3 rounds from 9 cards, 2 rounds from 4, else 1; the remainder goes into the first round. */
-  splitPackets(hand) {
+  /**
+   * Every dealing round in packets of `packet` cards; the first round also takes the remainder
+   * (14 → 6 + 4 + 4, 18 → 6 + 4 + 4 + 4, 20 → 4 + 4 + 4 + 4 + 4).
+   */
+  splitPackets(hand, packet = 4) {
     if (hand <= 0) return [];
-    const rounds = hand >= 9 ? 3 : hand >= 4 ? 2 : 1;
-    const base = Math.floor(hand / rounds), rem = hand % rounds;
-    return Array.from({ length: rounds }, (_, i) => (i === 0 ? base + rem : base));
+    const size = Math.max(Math.trunc(packet) || 0, 1);
+    const rounds = Math.max(Math.floor(hand / size), 1);
+    return Array.from({ length: rounds }, (_, i) => (i === 0 ? hand - size * (rounds - 1) : size));
   },
   totalCards(decks, jokers, deck) {
     return deck.customTotalEnabled ? Math.max(deck.customTotal, 0) : Math.max(decks, 0) * 52 + Math.max(jokers, 0);
@@ -691,9 +713,9 @@ const DeckCalc = {
     else if (auto) { mode = "reduced"; hand = Math.max(1, Math.floor(total / p)); }
     else mode = "short";
     const dealt = p * hand;
-    const packets = auto ? DeckCalc.splitPackets(hand) : DeckCalc.packets(hand, deck.firstPacket, deck.nextPacket);
+    const packets = auto ? DeckCalc.splitPackets(hand, deck.nextPacket) : DeckCalc.packets(hand, deck.firstPacket, deck.nextPacket);
     return { totalCards: total, custom: !!deck.customTotalEnabled, auto, mode, preferred, handSize: hand, packets, rounds: packets.length,
-      dealt, stock: Math.max(total - dealt, 0), short: shortPref, needCards: need, takeFromBottom: allowance, decksNeeded,
+      dealt, stock: Math.max(total - dealt, 0), short: shortPref, needCards: need, takeFromBottom: mode === "bottom" ? shortPref : 0, decksNeeded,
       maxHandSize: Math.trunc(total / p), totalPoints: deck.customTotalEnabled ? null : CardCalc.deckPoints(decks, jokers, values),
       fits: shortPref === 0, fixableFromBottom: mode === "bottom" };
   },
@@ -888,19 +910,52 @@ const LeagueEngine = {
       if (!s) return;
       if (!s.finished) { if (open == null) open = id; return; }
       played++;
+      const ia = LeagueEngine.sideOfTeam(league, s, a, b);
       const totals = GameEngine.totals(s);
       const sign = GameEngine.highWins(s) ? 1 : -1;
-      pointsA += (totals[0] || 0) * sign;
-      pointsB += (totals[1] || 0) * sign;
+      pointsA += (totals[ia] || 0) * sign;
+      pointsB += (totals[1 - ia] || 0) * sign;
       const w = GameEngine.winners(s);
       const single = w.length === 1 ? w[0] : null;
-      if (single === 0) winsA++; else if (single === 1) winsB++; else draws++;
+      if (single === ia) winsA++; else if (single === 1 - ia) winsB++; else draws++;
     });
     const need = Math.max(match.winsNeeded, 1);
     let winner = null;
     if (a != null && b != null) { if (winsA >= need) winner = a; else if (winsB >= need) winner = b; }
     const decided = league.format === LeagueFormat.ROUND_ROBIN && !match.isFinal ? played >= 1 : winner != null;
     return mk({ teamA: a, teamB: b, winsA, winsB, draws, played, pointsA, pointsB, winner, decided, openGame: open });
+  },
+  /**
+   * Which side of a saved game is league team `teamA`. Games started from the league put team A first;
+   * a game added later may have the teams the other way round, so the side is matched by name.
+   */
+  sideOfTeam(league, s, teamA, teamB) {
+    const ta = teamA != null ? league.teams[teamA] : null, tb = teamB != null ? league.teams[teamB] : null;
+    if (!ta || !tb) return 0;
+    return s.sides[0] && s.sides[1] && s.sides[0].name === tb.name && s.sides[1].name === ta.name ? 1 : 0;
+  },
+  /** Matches a finished or running game can be added to: both teams known and not yet decided. */
+  openMatches(league, lookup) {
+    return league.matches.filter((m) => !isBye(m)).map((m) => LeagueEngine.state(league, m, lookup)).filter((st) => st.ready && !st.decided);
+  },
+  /**
+   * Adds an existing game to a match: its sides take the league team names and avatars
+   * (`teamAFirst` tells which game side is team A), and its result counts from now on.
+   */
+  attach(league, matchId, session, teamAFirst, lookup) {
+    const index = league.matches.findIndex((m) => m.id === matchId);
+    if (index < 0 || session.leagueId || session.game !== league.game || session.sides.length !== 2) return false;
+    const st = LeagueEngine.state(league, league.matches[index], lookup);
+    if (st.teamA == null || st.teamB == null) return false;
+    const teamA = { name: league.teams[st.teamA].name, avatar: league.teams[st.teamA].avatar };
+    const teamB = { name: league.teams[st.teamB].name, avatar: league.teams[st.teamB].avatar };
+    session.sides[0] = teamAFirst ? teamA : teamB;
+    session.sides[1] = teamAFirst ? teamB : teamA;
+    session.leagueId = league.id;
+    session.label = league.name + " • " + LeagueEngine.stageTitle(league, league.matches[index].stage);
+    league.matches[index] = Object.assign({}, league.matches[index], { games: league.matches[index].games.concat([session.id]) });
+    league.updatedAt = Date.now();
+    return true;
   },
   winnerOf(league, matchId, lookup) {
     const m = league.matches.find((x) => x.id === matchId);
@@ -1002,13 +1057,14 @@ const LeagueEngine = {
       const a = m.teamA, b = m.teamB;
       if (a < 0 || b < 0) return;
       m.games.map(lookup).filter((s) => s && s.finished).forEach((s) => {
+        const ia = LeagueEngine.sideOfTeam(league, s, a, b);
         const totals = GameEngine.totals(s);
         const sign = GameEngine.highWins(s) ? 1 : -1;
-        const pa = (totals[0] || 0) * sign, pb = (totals[1] || 0) * sign;
+        const pa = (totals[ia] || 0) * sign, pb = (totals[1 - ia] || 0) * sign;
         const w0 = GameEngine.winners(s);
         const w = w0.length === 1 ? w0[0] : null;
-        add(rows[a], pa, pb, w === 0, w === 1);
-        add(rows[b], pb, pa, w === 1, w === 0);
+        add(rows[a], pa, pb, w === ia, w === 1 - ia);
+        add(rows[b], pb, pa, w === 1 - ia, w === ia);
       });
     });
     rows.forEach((r) => { r.diff = r.pointsFor - r.pointsAgainst; });
@@ -1594,6 +1650,19 @@ function divanSelfTest() {
     eq(-135, PersianText.parseInt("−۱۳۵")); eq(42, PersianText.parseInt("٤٢")); eq(null, PersianText.parseInt("abc")); eq(null, PersianText.parseInt(""));
   });
 
+  test("positiveOnlyTwelveCardsNeverGoesNegative", () => {
+    const r = Object.assign({}, noJoker, { dealType: DealType.TWELVE_POSITIVE_ONLY, doubleType: DoubleType.NEGATIVE });
+    const hand = (bid, took) => pair(ShalamEngine.scoreHand(bid, 165 - took, r));
+    eq([120, 35], hand(120, 130)); eq([120, 45], hand(120, 120)); eq([0, 50], hand(120, 115)); eq([0, 85], hand(130, 80)); eq([0, 120], hand(160, 45));
+    ok(!ShalamEngine.isDoubleHand(160, 120, r)); eq([330, 0], hand(120, 165));
+    eq(330, ShalamEngine.scoreShelem(false, 0, r).contractor); eq(660, ShalamEngine.scoreShelem(true, 0, r).contractor); eq([0, 10], pair(ShalamEngine.scoreShelem(false, 10, r)));
+    const s = mkSession(9, "shalam", [{ name: "ما", avatar: 0 }, { name: "اونا", avatar: 1 }], [], gameRules({ shalam: r }));
+    s.rounds.push(R(K.SHALAM_HAND, { contractTeam: 0, bid: 120, taken: 35 }), R(K.SHALAM_HAND, { contractTeam: 0, bid: 130, taken: 85 }), R(K.SHALAM_HAND, { contractTeam: 1, bid: 150, taken: 60 }));
+    GameEngine.recompute(s);
+    eq([[120, 35], [0, 85], [60, 0]], s.rounds.map((x) => x.scores)); eq([180, 120], GameEngine.totals(s));
+    ok(s.rounds.every((x) => x.scores.every((v) => v >= 0)), "never negative");
+  });
+
   // NewGamesTest
   const players = (n) => Array.from({ length: n }, (_, i) => ({ name: "بازیکن " + i, avatar: i }));
   test("doloMinimumFollowsPlayerCount", () => {
@@ -1693,6 +1762,33 @@ function divanSelfTest() {
     const fin = league.matches[league.matches.length - 1];
     ok(fin.isFinal); eq([0, 1], [fin.teamA, fin.teamB]); eq(2, fin.winsNeeded);
   });
+  test("gamesPlayedOutsideCanJoinALeagueMatchInEitherOrder", () => {
+    const league = mkLeague(9, "لیگ", "shalam", [{ name: "شیرها", avatar: 1 }, { name: "عقاب‌ها", avatar: 2 }], gameRules(), LeagueFormat.KNOCKOUT,
+      Object.assign({}, defaultSettings().league, { winsNeeded: 2 }));
+    LeagueEngine.start(league, [0, 1], seededRandom(3));
+    const games = new Map(); const lookup = (id) => games.get(id) || null;
+    const match = league.matches[0];
+    const teamA = LeagueEngine.state(league, match, lookup).teamA;
+    const g1 = mkSession(200, "shalam", [{ name: "ما", avatar: 0 }, { name: "اونا", avatar: 3 }], [R(K.FIXED, { scores: [100, 600] })], gameRules(), { finished: true });
+    games.set(g1.id, g1);
+    eq(1, LeagueEngine.openMatches(league, lookup).length);
+    ok(LeagueEngine.attach(league, match.id, g1, false, lookup), "attach reversed");
+    eq(league.id, g1.leagueId); eq(league.teams[teamA].name, g1.sides[1].name); eq(1, LeagueEngine.sideOfTeam(league, g1, teamA, 1 - teamA));
+    const st1 = LeagueEngine.state(league, league.matches[0], lookup); eq(1, st1.winsA); eq(0, st1.winsB); eq(600, st1.pointsA);
+    ok(!LeagueEngine.attach(league, match.id, g1, true, lookup), "not twice");
+    const g2 = mkSession(201, "shalam", [{ name: "ما", avatar: 0 }, { name: "اونا", avatar: 3 }], [], gameRules());
+    games.set(g2.id, g2);
+    ok(LeagueEngine.attach(league, match.id, g2, true, lookup), "attach running");
+    const st2 = LeagueEngine.state(league, league.matches[0], lookup); eq(201, st2.openGame); eq(1, st2.played);
+    g2.rounds.push(R(K.FIXED, { scores: [700, 50] })); g2.finished = true;
+    const st3 = LeagueEngine.state(league, league.matches[0], lookup); eq(2, st3.winsA); eq(teamA, st3.winner);
+    ok(LeagueEngine.advance(league, lookup)); eq(teamA, LeagueEngine.champion(league, lookup));
+    ok(!LeagueEngine.attach(league, match.id, mkSession(202, "menfi", league.teams, [], gameRules()), true, lookup), "menfi not in shalam league");
+  });
+  test("menfiWithAWinnerAfterAllHandsIsComplete", () => {
+    const r = menfiRules({ hands: 2, extraHands: 2 });
+    ok(!MenfiEngine.isComplete(4, r, [3, 3])); ok(MenfiEngine.isComplete(4, r, [5, 3])); ok(!MenfiEngine.isComplete(3, r, [5, 3]));
+  });
   test("roundRobinDoubleLegSwapsSides", () => {
     const pairs = LeagueEngine.roundRobin([0, 1, 2], true).flat();
     eq(6, pairs.length); eq(pairs.length, new Set(pairs.map((p) => p.join("-"))).size);
@@ -1734,12 +1830,15 @@ function divanSelfTest() {
   // Web/Android parity additions: deck auto mode, menfi tie, Elo, backup
   test("splitPacketsExamples", () => {
     eq([6, 4, 4], DeckCalc.splitPackets(14)); eq([4, 4, 4], DeckCalc.splitPackets(12)); eq([5, 4, 4], DeckCalc.splitPackets(13));
-    eq([4, 3, 3], DeckCalc.splitPackets(10)); eq([4, 3], DeckCalc.splitPackets(7)); eq([3], DeckCalc.splitPackets(3));
+    eq([6, 4], DeckCalc.splitPackets(10)); eq([7], DeckCalc.splitPackets(7)); eq([3], DeckCalc.splitPackets(3));
+    eq([6, 4, 4, 4], DeckCalc.splitPackets(18)); eq([4, 4, 4, 4, 4], DeckCalc.splitPackets(20));
+    eq([5, 3, 3, 3, 3], DeckCalc.splitPackets(17, 3)); eq(17, DeckCalc.splitPackets(17, 3).reduce((a, b) => a + b, 0));
   });
   test("deckAutoNinePlayersReducesHand", () => {
     const d = DeckCalc.hezar(9, 2, 6, defaultSettings().deck, defaultSettings().hezar.cards);
     eq(110, d.totalCards); eq("reduced", d.mode); eq(12, d.handSize); eq([4, 4, 4], d.packets); eq(2, d.stock); eq(3, d.decksNeeded); eq(108, d.dealt);
-    const bottom = DeckCalc.hezar(4, 1, 0, defaultSettings().deck, defaultSettings().hezar.cards); eq("bottom", bottom.mode); eq(14, bottom.handSize); eq(4, bottom.short);
+    const bottom = DeckCalc.hezar(4, 1, 0, defaultSettings().deck, defaultSettings().hezar.cards); eq("bottom", bottom.mode); eq(14, bottom.handSize); eq(4, bottom.short); eq(4, bottom.takeFromBottom);
+    const two = DeckCalc.hezar(4, 0, 0, Object.assign(defaultSettings().deck, { customTotalEnabled: true, customTotal: 54 }), defaultSettings().hezar.cards); eq("bottom", two.mode); eq(2, two.takeFromBottom);
     const custom = DeckCalc.hezar(3, 2, 4, Object.assign(defaultSettings().deck, { customTotalEnabled: true, customTotal: 32 }), defaultSettings().hezar.cards);
     eq(32, custom.totalCards); eq(null, custom.totalPoints); eq("reduced", custom.mode); eq(10, custom.handSize); eq(2, custom.stock);
     const manual = DeckCalc.hezar(4, 2, 4, Object.assign(defaultSettings().deck, { autoHand: false, handSize: 15 }), defaultSettings().hezar.cards);
@@ -1941,6 +2040,7 @@ function crestSvg() {
 function trophySvg() {
   return `<svg viewBox="0 0 120 120" aria-hidden="true" focusable="false" style="width:112px;height:112px;filter:drop-shadow(0 8px 10px rgba(0,0,0,.45))"><circle cx="60" cy="56" r="50" fill="#E6BE6A" fill-opacity=".08"/><path d="M38 24h44v20a22 22 0 01-44 0z" fill="url(#g-gold)" stroke="#6E4A1A" stroke-width="1.5"/><path d="M38 30H25v6a14 14 0 0014 14M82 30h13v6a14 14 0 01-14 14" fill="none" stroke="url(#g-gold)" stroke-width="5"/><rect x="55" y="66" width="10" height="16" fill="url(#g-gold)"/><path d="M42 96l6-14h24l6 14z" fill="url(#g-gold)" stroke="#6E4A1A" stroke-width="1.5"/><rect x="36" y="96" width="48" height="8" rx="2" fill="#B1832F"/><path d="M60 31l3 6.2 6.8.9-5 4.7 1.3 6.7L60 46.3l-6.1 3.2 1.3-6.7-5-4.7 6.8-.9z" fill="#FBE3A6" stroke="#6E4A1A" stroke-width=".8"/><path d="M44 28v12" stroke="#fff" stroke-opacity=".5" stroke-width="3" stroke-linecap="round"/></svg>`;
 }
+const APP_VERSION_LABEL = "نسخهٔ ۴.۳.۰";
 const ruleSvg = '<svg class="rule" viewBox="0 0 220 14" aria-hidden="true"><path d="M0 7h92M128 7h92" stroke="#E6BE6A" stroke-opacity=".6"/><path d="M110 0l7 7-7 7-7-7z" fill="#E6BE6A"/><circle cx="96" cy="7" r="2" fill="#E6BE6A"/><circle cx="124" cy="7" r="2" fill="#E6BE6A"/></svg>';
 
 /* ---------- Handler registry, navigation and rendering ---------- */
@@ -2183,7 +2283,7 @@ function SplashScreen() {
     view() {
       return {
         bare: true,
-        body: `<div class="splash" id="splash" role="button" tabindex="0" aria-label="ورود به برنامه" data-a="${on(goHome)}">${crestSvg()}<h1>دیوان امتیاز</h1><p class="cap" style="font-size:.95rem">داور و دفتر امتیاز شاهانه</p>${ruleSvg}<p class="games">شلم  •  منفی  •  هزارتایی  •  دو لو گشنیز</p><p class="foot">نسخهٔ وب  •  آفلاین</p></div>`,
+        body: `<div class="splash" id="splash" role="button" tabindex="0" aria-label="ورود به برنامه" data-a="${on(goHome)}">${crestSvg()}<h1>دیوان امتیاز</h1><p class="cap" style="font-size:.95rem">داور و دفتر امتیاز شاهانه</p>${ruleSvg}<p class="games">شلم  •  منفی  •  هزارتایی  •  دو لو گشنیز</p><p class="foot">${APP_VERSION_LABEL}  •  وب  •  آفلاین</p></div>`,
         after() { setTimeout(goHome, 1300); }
       };
     }
@@ -2235,7 +2335,7 @@ function HomeScreen() {
         ["backup", "پشتیبان‌گیری", "خروجی و بازگردانی داده‌ها", () => push(BackupScreen()), "tile-backup"]
       ];
       body += `<div class="grid g2" style="gap:10px">${tiles.map(([icn, t, c, fn, id]) => `<button type="button" class="panel tap tile" id="${id}" data-a="${on(fn)}">${ic(icn)}<b>${esc(t)}</b><span>${esc(c)}</span></button>`).join("")}</div>`;
-      body += `<p class="foot">نسخهٔ وب  •  آفلاین  •  بدون تبلیغ</p>`;
+      body += `<p class="foot">${APP_VERSION_LABEL}  •  وب  •  آفلاین  •  بدون تبلیغ</p>`;
       return { bare: true, body };
     }
   };
@@ -2364,8 +2464,9 @@ function menuButton(s, extra) {
     ["قوانین این بازی", () => push(SessionRulesScreen(s.id)), "rules"],
     ["پایان بازی و ثبت نتیجه", () => finishSession(s), "trophy"],
     ["نمودار بازی", () => gameChartDialog(s), "chart", "menu-chart"],
+    canAddToLeague(s) ? ["افزودن این بازی به لیگ", () => addToLeague(s, refresh), "league", "menu-league"] : null,
     ["اشتراک تصویر وضعیت بازی", () => shareGame(s), "share", "menu-share"]
-  ]);
+  ].filter(Boolean));
   return ibtn("menu", "گزینه‌های بازی", () => openModal({
     title: "گزینه‌های بازی",
     body: () => items.map(([label, fn, icn, mid], k) => btn(label, () => { closeModal(); fn(); }, { kind: "secondary", icon: icn, cls: "block", id: mid || "menu-" + k })).join(""),
@@ -2737,6 +2838,8 @@ function MenfiBoard(sid) {
     const played = GameEngine.playedHands(s);
     const length = MenfiEngine.length(rules);
     const tiePending = GameEngine.menfiTiePending(s);
+    // All hands are played and there is a winner: the game is over and no further hand is recorded.
+    const complete = MenfiEngine.isComplete(played, rules, totals);
     const w = hidden ? [] : GameEngine.winners(s);
     const leader = w.length === 1 ? w[0] : -1;
     let actions = "";
@@ -2748,6 +2851,7 @@ function MenfiBoard(sid) {
     let body = `<div class="duo">${s.sides.map((x, i) => sideCard(x, hidden ? '<span class="dimt hidden-chip">•••</span>' : sg(totals[i]), hidden ? "" : sc(totals[i]), hidden ? "جمع پنهان است" : null, leader === i, null, "side-" + i)).join("")}</div>`;
     if (tiePending) body += menfiTiePanel(s, hidden);
     body += statusRow(s, menfiProgress(played, rules));
+    if (complete) body += `<div class="panel success stack tight" id="menfi-complete" style="text-align:center"><b style="color:var(--turq-light);font-size:1.08rem">همهٔ ${n(rules.hands)}${rules.extraHands > 0 ? " + " + n(rules.extraHands) : ""} دست بازی شد</b><span class="cap" style="color:var(--ivory)">بازی تمام است و دست دیگری ثبت نمی‌شود؛ دست‌ها هنوز قابل ویرایش‌اند.</span></div>`;
     body += bar(played / Math.max(1, length), true);
     body += `<p class="cap" style="text-align:center">${rules.highWins ? "برنده: بیشترین جمع امتیاز" : "برنده: کمترین جمع امتیاز"}${rules.scoring === MenfiScoring.LEGACY ? " • امتیازدهی نسخهٔ قدیم" : ""}</p>`;
     body += roundsList(s, "دست‌های ثبت‌شده", "eyeoff", "هنوز دستی ثبت نشده", "هر تیم عدد خود را از ۳ تا ۱۳ پنهانی ثبت می‌کند؛ سپس حالت رخ‌داده انتخاب می‌شود.", (i) => {
@@ -2757,7 +2861,9 @@ function MenfiBoard(sid) {
     }, hidden);
     return {
       title: "داوری منفی", subtitle: sessionSubtitle(s), actions, body,
-      bottom: `<div class="row"><div class="grow">${btn(tiePending ? "تعیین دست اضافه" : "ثبت دست " + n(played + 1), () => (tiePending ? menfiTieDialog(s) : push(MenfiHand(sid, null))), { kind: "primary", icon: "plus", cls: "block", id: "menfi-new-hand" })}</div>${ibtn("undo", "حذف دست آخر", () => undoLast(s), { size: "lg", id: "undo-last" })}</div>`
+      bottom: `<div class="row"><div class="grow">${complete
+        ? btn("پایان بازی و نتیجه", () => { accrue(s); s.finished = true; s.endedAt = Date.now(); commit(s); replace(ResultScreen(s.id)); }, { kind: "success", icon: "trophy", cls: "block", id: "menfi-finish" })
+        : btn(tiePending ? "تعیین دست اضافه" : "ثبت دست " + n(played + 1), () => (tiePending ? menfiTieDialog(s) : push(MenfiHand(sid, null))), { kind: "primary", icon: "plus", cls: "block", id: "menfi-new-hand" })}</div>${ibtn("undo", "حذف دست آخر", () => undoLast(s), { size: "lg", id: "undo-last" })}</div>`
     };
   };
   return me;
@@ -3173,20 +3279,38 @@ function ResultScreen(sid) {
         ["تعداد دست‌ها", n(GameEngine.playedHands(s))], ["مدت بازی", dur(s.elapsedMs)], ["شروع", jdate(s.id)], ["پایان", s.endedAt ? jdate(s.endedAt) : "—"]
       ])}</div>`;
       body += `<div class="grid g2">${btn("اشتراک تصویر", () => shareGame(s), { kind: "secondary", icon: "share", id: "result-share" })}${s.game === "shalam" ? btn("آمار کامل بازی", () => shalamStatsDialog(s), { kind: "ghost", icon: "chart", id: "result-stats" }) : btn("رنک‌بندی", () => push(RankingsScreen()), { kind: "ghost", icon: "rank", id: "result-rankings" })}</div>`;
+      if (canAddToLeague(s)) body += btn("افزودن این بازی به لیگ", () => addToLeague(s, refresh), { kind: "ghost", icon: "league", cls: "block", id: "result-add-league" });
       body += section("نمودار بازی", "chart") + `<div class="panel flat" id="result-chart">${gameChart(s)}</div>`;
       body += section("دست‌ها", "history");
       body += s.rounds.length ? s.rounds.map((_, i) => roundCard(s, i, null, false)).join("") : emptyState("history", "دستی ثبت نشده", "این بازی بدون دست به پایان رسیده است.");
       const reopen = () => { s.finished = false; s.endedAt = null; commit(s); replace(boardFor(sid)); };
       const rematch = () => {
         const id = repo.newSessionId();
-        const fresh = mkSession(id, s.game, s.sides, [], clone(s.rules), { updatedAt: id, label: s.label });
+        const rules = clone(s.rules);
+        rules.menfi.extraHands = 0;
+        const fresh = mkSession(id, s.game, s.sides, [], rules, { updatedAt: id, label: s.label });
         live.set(id, fresh);
         resetTo(HomeScreen(), boardFor(id));
       };
-      let bottom = s.leagueId && repo.league(s.leagueId)
-        ? btn("بازگشت به لیگ", () => resetTo(HomeScreen(), LeaguesScreen(), LeagueScreen(s.leagueId)), { kind: "primary", icon: "league", cls: "block", id: "result-league" })
-        : btn("بازی دوباره با همین ترکیب", rematch, { kind: "primary", icon: "play", cls: "block", id: "result-rematch" });
-      bottom += `<div class="row"><div class="grow">${btn("ادامهٔ بازی", reopen, { kind: "secondary", icon: "undo", cls: "block sm", id: "result-reopen" })}</div><div class="grow">${btn("خانه", () => resetTo(HomeScreen()), { kind: "secondary", icon: "home", cls: "block sm", id: "result-home" })}</div></div>`;
+      const league = s.leagueId ? repo.league(s.leagueId) : null;
+      const backToLeague = () => resetTo(HomeScreen(), LeaguesScreen(), LeagueScreen(s.leagueId));
+      let bottom;
+      if (league) {
+        const match = leagueMatchOf(league, s.id);
+        const ms = match ? LeagueEngine.state(league, match, getSession) : null;
+        if (ms && ms.ready && !ms.decided && ms.openGame == null) {
+          bottom = btn("بازی بعدی همین تیم‌ها در لیگ", () => {
+            resetTo(HomeScreen(), LeaguesScreen(), LeagueScreen(league.id));
+            const fresh = repo.league(league.id);
+            const freshMatch = fresh ? fresh.matches.find((m) => m.id === match.id) : null;
+            if (fresh && freshMatch) startLeagueGame(fresh, freshMatch);
+          }, { kind: "primary", icon: "play", cls: "block", id: "result-league-next" });
+          bottom += btn("بازگشت به لیگ", backToLeague, { kind: "secondary", icon: "league", cls: "block sm", id: "result-league" });
+        } else bottom = btn("بازگشت به لیگ", backToLeague, { kind: "primary", icon: "league", cls: "block", id: "result-league" });
+      } else bottom = btn("بازی دوباره با همین ترکیب", rematch, { kind: "primary", icon: "play", cls: "block", id: "result-rematch" });
+      // A Menfi game whose hands are all played with a winner is over: it can be corrected, not extended.
+      const menfiDone = s.game === "menfi" && MenfiEngine.isComplete(GameEngine.playedHands(s), s.rules.menfi, totals) && winners.length > 0;
+      bottom += `<div class="row"><div class="grow">${btn(menfiDone ? "ویرایش دست‌ها" : "ادامهٔ بازی", reopen, { kind: "secondary", icon: menfiDone ? "edit" : "undo", cls: "block sm", id: "result-reopen" })}</div><div class="grow">${btn("خانه", () => resetTo(HomeScreen()), { kind: "secondary", icon: "home", cls: "block sm", id: "result-home" })}</div></div>`;
       return { title: "نتیجهٔ بازی " + g.title, subtitle: sessionSubtitle(s), body, bottom };
     }
   };
@@ -3209,7 +3333,7 @@ function HistoryScreen() {
         const winners = s.finished ? GameEngine.winners(s) : [];
         const order = gameOf(s.game).isTeamGame ? s.sides.map((_, i) => i) : GameEngine.ranking(s);
         const listed = order.slice(0, 4);
-        return `<div class="panel tap stack tight" role="button" tabindex="0" id="hist-${s.id}" aria-label="باز کردن بازی ${esc(gameOf(s.game).title)}" data-a="${on(() => openSession(s))}"><div class="row">${seal(s.game, 40)}<div class="grow"><div class="row" style="gap:6px;flex-wrap:wrap"><b class="goldt">${esc(gameOf(s.game).title)}</b>${s.finished ? badge("پایان‌یافته", "gold") : badge("در جریان", "solid")}${s.leagueId ? badge("لیگ", "turq") : ""}</div><span class="cap">${jdate(s.updatedAt)}</span></div>${ibtn("trash", "حذف بازی", () => confirmBox("حذف بازی", "این بازی برای همیشه از تاریخچه حذف شود؟", "حذف", true, () => { repo.delete(s.id); live.delete(s.id); if (s.leagueId) leagueSync(s.leagueId); refresh(); }), { size: "xs", id: "hist-del-" + s.id })}</div>${listed.map((i) => `<div class="row" style="gap:8px">${emblem(s.sides[i].avatar, 24)}<span class="grow${winners.includes(i) ? " goldt" : ""}" style="font-weight:700;font-size:.88rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.sides[i].name)}${winners.includes(i) ? " ♛" : ""}</span><b class="num ${hidden ? "dimt" : sc(totals[i])}">${hidden ? "•••" : sg(totals[i])}</b></div>`).join("")}${order.length > listed.length ? `<span class="cap">و ${n(order.length - listed.length)} بازیکن دیگر</span>` : ""}<span class="cap dimt">${n(GameEngine.playedHands(s))} دست  •  ${dur(s.elapsedMs)}  •  ${esc(sessionSubtitle(s))}</span></div>`;
+        return `<div class="panel tap stack tight" role="button" tabindex="0" id="hist-${s.id}" aria-label="باز کردن بازی ${esc(gameOf(s.game).title)}" data-a="${on(() => openSession(s))}"><div class="row">${seal(s.game, 40)}<div class="grow"><div class="row" style="gap:6px;flex-wrap:wrap"><b class="goldt">${esc(gameOf(s.game).title)}</b>${s.finished ? badge("پایان‌یافته", "gold") : badge("در جریان", "solid")}${s.leagueId && !canAddToLeague(s) ? badge("لیگ", "turq") : ""}</div><span class="cap">${jdate(s.updatedAt)}</span></div>${canAddToLeague(s) ? ibtn("league", "افزودن به لیگ", () => addToLeague(s, refresh), { size: "xs", id: "hist-league-" + s.id }) : ""}${ibtn("trash", "حذف بازی", () => confirmBox("حذف بازی", "این بازی برای همیشه از تاریخچه حذف شود؟", "حذف", true, () => { repo.delete(s.id); live.delete(s.id); if (s.leagueId) leagueSync(s.leagueId); refresh(); }), { size: "xs", id: "hist-del-" + s.id })}</div>${listed.map((i) => `<div class="row" style="gap:8px">${emblem(s.sides[i].avatar, 24)}<span class="grow${winners.includes(i) ? " goldt" : ""}" style="font-weight:700;font-size:.88rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.sides[i].name)}${winners.includes(i) ? " ♛" : ""}</span><b class="num ${hidden ? "dimt" : sc(totals[i])}">${hidden ? "•••" : sg(totals[i])}</b></div>`).join("")}${order.length > listed.length ? `<span class="cap">و ${n(order.length - listed.length)} بازیکن دیگر</span>` : ""}<span class="cap dimt">${n(GameEngine.playedHands(s))} دست  •  ${dur(s.elapsedMs)}  •  ${esc(sessionSubtitle(s))}</span></div>`;
       }).join("");
       if (all.length) body += btn("پاک‌کردن کل تاریخچه", () => confirmBox("پاک‌کردن تاریخچه", "تمام بازی‌های ذخیره‌شده برای همیشه حذف شوند؟", "حذف همه", true, () => { repo.clearHistory(); live.clear(); refresh(); }), { kind: "danger", icon: "trash", id: "hist-clear" });
       return { title: "تاریخچهٔ بازی‌ها", subtitle: n(all.length) + " بازی ذخیره‌شده", body };
@@ -3309,6 +3433,25 @@ const RulesText = {
         : `برد: حاکم ${sg(m.shelemContractor)} و حریف ${sg(m.shelemOpponent)}. باخت: حاکم ${sg(-m.shelemContractor)} و حریف ${sg(m.shelemOpponent)}.`,
       m.doubleShelemMode === 1 ? "شلم دوبل: همهٔ امتیازهای شلم دو برابر می‌شود." : `شلم دوبل: برد ${sg(m.doubleShelemWin)} و باخت ${sg(m.doubleShelemLose)} برای حاکم.`];
     if (m.maxBidIsShelem) shelem.push(`خواندن ${max} به‌صورت خودکار شلم محاسبه می‌شود.`);
+    if (ShalamEngine.isPositiveOnly(r)) {
+      const ex = (bid, took) => {
+        const o = ShalamEngine.scoreHand(bid, m.maxPoints - took, r);
+        return `حاکم ${n(bid)} خوانده و ${n(took)} گرفته: حاکم ${n(o.contractor)}، حریف ${n(o.opponent)}.`;
+      };
+      return [
+        { title: "هدف و پایان بازی", lines: end.concat(["در هیچ شرایطی امتیاز منفی ثبت نمی‌شود و از جمع قبلی هیچ تیمی کم نمی‌شود."]) },
+        { title: "قانون اصلی بدون منفی", lines: [
+          "اگر تیم حاکم به امتیاز خوانده‌شده برسد یا بیشتر بگیرد، همان امتیاز خوانده‌شده برایش ثبت می‌شود.",
+          "اگر تیم حاکم به امتیاز خوانده‌شده نرسد (بسوزد)، امتیاز آن دور برایش صفر است.",
+          "تیم حریف همیشه امتیاز واقعی برگ‌ها و دست‌هایی را که گرفته دریافت می‌کند.",
+          "دوبل و جریمهٔ منفی وجود ندارد؛ سوختن حاکم فقط امتیاز همان دور را صفر می‌کند."] },
+        { title: "مثال امتیازدهی", lines: [ex(120, 130), ex(120, 120), ex(120, 115), ex(130, 80)] },
+        { title: "شلم کامل", lines: [
+          `اگر تیم حاکم همهٔ دست‌ها و مجموع ${max} امتیاز را بگیرد، شلم کامل است و ${n(base)} امتیاز می‌گیرد؛ حریف صفر.`,
+          `شلم خوانده‌شده: برد ${n(base)} (شلم دوبل ${n(base * 2)}) برای حاکم؛ باخت صفر برای حاکم و حریف امتیاز گرفته‌شدهٔ خودش را می‌گیرد.`] },
+        { title: "ثبت، ویرایش و حذف", lines: ["هر دست قابل ویرایش و حذف است و جمع‌ها همیشه دوباره محاسبه می‌شوند.", "بازی پس از هر دست خودکار ذخیره می‌شود و از تاریخچه قابل ادامه است."] }
+      ];
+    }
     const out = [
       { title: "هدف و پایان بازی", lines: end },
       { title: "امتیاز هر دست", lines: [`هر دست ${max} امتیاز دارد` + (m.maxPoints === 165 ? ": هر دست‌برد ۵ امتیاز (۱۳ × ۵ = ۶۵)، هر آس و هر ده ۱۰ امتیاز و هر پنج ۵ امتیاز." : "."), "امتیازها همیشه مضرب ۵ هستند."] },
@@ -3589,6 +3732,77 @@ function syncLeagueObj(l) {
   if (changed) { l.updatedAt = Date.now(); repo.saveLeague(l); }
   return l;
 }
+/** Starts the next game of a league match between its two teams (team A first). */
+function startLeagueGame(l, m) {
+  const ms = LeagueEngine.state(l, m, getSession);
+  if (ms.teamA == null || ms.teamB == null) return;
+  const id = repo.newSessionId();
+  const title = LeagueEngine.stageTitle(l, m.stage, n);
+  const s = mkSession(id, l.game, [l.teams[ms.teamA], l.teams[ms.teamB]], [], clone(l.rules), {
+    updatedAt: id, leagueId: l.id, label: l.name + " • " + title + (ms.isDecider ? " • فینال" : "")
+  });
+  live.set(id, s);
+  repo.save(s);
+  m.games.push(id);
+  l.updatedAt = Date.now();
+  repo.saveLeague(l);
+  push(boardFor(id));
+}
+/** The league match a saved game belongs to, if any. */
+function leagueMatchOf(l, sid) { return l.matches.find((m) => m.games.includes(sid)) || null; }
+/** A two-team game that is not (or no longer) part of an existing league can be added to one. */
+function canAddToLeague(s) { return gameOf(s.game).isTeamGame && (!s.leagueId || !repo.league(s.leagueId)); }
+/**
+ * Adds a game that was played outside the league (finished or still running) to a league match:
+ * pick the league, the match and which side is which team. A finished game counts at once;
+ * a running one stays open and can be continued from the league.
+ */
+function addToLeague(s, onDone) {
+  if (s.leagueId && repo.league(s.leagueId)) { toast("این بازی از قبل در لیگ است"); return; }
+  if (!gameOf(s.game).isTeamGame || s.sides.length !== 2) { toast("فقط بازی‌های دو تیمی شلم و منفی به لیگ اضافه می‌شوند"); return; }
+  const title = gameOf(s.game).title;
+  const leagues = repo.leagues().map(syncLeagueObj).filter((l) => l.game === s.game && LeagueEngine.openMatches(l, getSession).length > 0);
+  if (!leagues.length) {
+    openModal({ title: "لیگی برای این بازی نیست", message: `لیگ ${title} با رویارویی آماده وجود ندارد. ابتدا از بخش «لیگ‌ها» یک لیگ ${title} بسازید.`,
+      actions: [{ label: "لیگ‌ها", kind: "primary", fn: () => push(LeaguesScreen()), id: "atl-leagues" }, { label: "بستن", id: "atl-close" }] });
+    return;
+  }
+  function chooseSides(l, ms) {
+    const a = l.teams[ms.teamA], b = l.teams[ms.teamB];
+    const apply = (teamAFirst) => {
+      if (s.leagueId) s.leagueId = 0;
+      if (!LeagueEngine.attach(l, ms.match.id, s, teamAFirst, getSession)) { toast("افزودن به لیگ ممکن نشد"); return; }
+      if (!s.finished && !s.rounds.length) s.updatedAt = Date.now();
+      repo.save(s);
+      live.set(s.id, s);
+      repo.saveLeague(l);
+      syncLeagueObj(l);
+      toast(s.finished ? `بازی به ${l.name} اضافه شد و نتیجه‌اش حساب شد` : `بازی به ${l.name} اضافه شد؛ از لیگ هم ادامه می‌یابد`);
+      if (onDone) onDone();
+    };
+    const s0 = s.sides[0].name, s1 = s.sides[1].name;
+    if (s0 === a.name && s1 === b.name) apply(true);
+    else if (s0 === b.name && s1 === a.name) apply(false);
+    else openModal({ title: "کدام تیم، کدام است؟", message: "نام تیم‌های این بازی با تیم‌های لیگ فرق دارد؛ نام و نشان تیم‌های لیگ روی بازی قرار می‌گیرد.",
+      actions: [
+        { label: `«${s0}» = ${a.name}  •  «${s1}» = ${b.name}`, kind: "primary", fn: () => apply(true), id: "atl-side-a" },
+        { label: `«${s0}» = ${b.name}  •  «${s1}» = ${a.name}`, kind: "primary", fn: () => apply(false), id: "atl-side-b" },
+        { label: "انصراف", id: "atl-cancel" }
+      ] });
+  }
+  function chooseMatch(l) {
+    const names = new Set(s.sides.map((x) => x.name));
+    // Matches between the same two teams come first.
+    const hits = (ms) => [ms.teamA, ms.teamB].filter((t) => t != null && names.has(l.teams[t].name)).length;
+    const sorted = LeagueEngine.openMatches(l, getSession).map((ms, k) => ({ ms, k })).sort((x, y) => (hits(y.ms) - hits(x.ms)) || (x.k - y.k)).map((x) => x.ms);
+    if (sorted.length === 1) { chooseSides(l, sorted[0]); return; }
+    openModal({ title: "کدام رویارویی؟", message: l.name + " • بازی به این رویارویی اضافه می‌شود.",
+      actions: sorted.map((ms, k) => ({ label: `${LeagueEngine.stageTitle(l, ms.match.stage, n)}: ${l.teams[ms.teamA].name} – ${l.teams[ms.teamB].name}  (${n(ms.winsA)}–${n(ms.winsB)})`, fn: () => chooseSides(l, ms), id: "atl-match-" + k }))
+        .concat([{ label: "انصراف", id: "atl-cancel" }]) });
+  }
+  if (leagues.length === 1) chooseMatch(leagues[0]);
+  else openModal({ title: "افزودن به کدام لیگ؟", actions: leagues.map((l, k) => ({ label: l.name, kind: "primary", fn: () => chooseMatch(l), id: "atl-league-" + k })).concat([{ label: "انصراف", id: "atl-cancel" }]) });
+}
 function LeaguesScreen() {
   return {
     name: "leagues",
@@ -3659,17 +3873,7 @@ function LeagueScreen(lid) {
   function playMatch(l, m) {
     const ms = LeagueEngine.state(l, m, getSession);
     if (ms.openGame != null && getSession(ms.openGame)) { push(boardFor(ms.openGame)); return; }
-    const id = repo.newSessionId();
-    const title = LeagueEngine.stageTitle(l, m.stage, n);
-    const s = mkSession(id, l.game, [l.teams[ms.teamA], l.teams[ms.teamB]], [], clone(l.rules), {
-      updatedAt: id, leagueId: l.id, label: l.name + " • " + title + (ms.isDecider ? " • فینال" : "")
-    });
-    live.set(id, s);
-    repo.save(s);
-    m.games.push(id);
-    l.updatedAt = Date.now();
-    repo.saveLeague(l);
-    push(boardFor(id));
+    startLeagueGame(l, m);
   }
   function matchCard(l, m) {
     const ms = LeagueEngine.state(l, m, getSession);
@@ -3689,7 +3893,7 @@ function LeagueScreen(lid) {
     let h = `<div class="panel ${ms.isDecider ? "raised" : "flat"} match" id="match-${m.id}"><div class="vs">${side(a, ms.winsA, false, ms.teamA)}<span class="w num${ms.winsA > ms.winsB ? " goldt" : ""}">${n(ms.winsA)}</span><span class="dash">–</span><span class="w num${ms.winsB > ms.winsA ? " goldt" : ""}">${n(ms.winsB)}</span>${side(b, ms.winsB, true, ms.teamB)}</div>`;
     if (badges.length) h += `<div class="chips" style="align-items:center">${badges.join("")}</div>`;
     const games = m.games.map((gid) => getSession(gid)).filter(Boolean);
-    if (games.length) h += `<div class="stack tight">${games.map((s, k) => { const t = GameEngine.totals(s); return `<button type="button" class="panel flat tap rrow" style="padding:4px 8px 6px" id="match-${m.id}-game-${k}" data-a="${on(() => openSession(s))}"><span class="idx plain" style="width:24px;height:24px;font-size:.72rem">${n(k + 1)}</span><span class="rbody rscores" style="font-size:.85rem">${s.game === "menfi" && s.rules.menfi.hidden && !s.finished ? '<span class="dimt">•••</span>' : `<span class="${sc(t[0])}">${sg(t[0])}</span><span class="sep">|</span><span class="${sc(t[1])}">${sg(t[1])}</span>`}</span>${s.finished ? badge("پایان", "gold") : badge("در جریان", "solid")}</button>`; }).join("")}</div>`;
+    if (games.length) h += `<div class="stack tight">${games.map((s, k) => { const t0 = GameEngine.totals(s), ia = LeagueEngine.sideOfTeam(l, s, ms.teamA, ms.teamB), t = [t0[ia] || 0, t0[1 - ia] || 0]; return `<button type="button" class="panel flat tap rrow" style="padding:4px 8px 6px" id="match-${m.id}-game-${k}" data-a="${on(() => openSession(s))}"><span class="idx plain" style="width:24px;height:24px;font-size:.72rem">${n(k + 1)}</span><span class="rbody rscores" style="font-size:.85rem">${s.game === "menfi" && s.rules.menfi.hidden && !s.finished ? '<span class="dimt">•••</span>' : `<span class="${sc(t[0])}">${sg(t[0])}</span><span class="sep">|</span><span class="${sc(t[1])}">${sg(t[1])}</span>`}</span>${s.finished ? badge("پایان", "gold") : badge("در جریان", "solid")}</button>`; }).join("")}</div>`;
     if (ms.ready && !ms.decided && ms.teamB != null) {
       const label = ms.openGame != null ? "ادامهٔ بازی" : ms.isDecider ? "شروع بازی فینال" : "شروع بازی " + n(ms.played + 1);
       h += btn(label, () => playMatch(l, m), { kind: ms.openGame != null ? "success" : "primary", icon: "play", cls: "block sm", id: "match-play-" + m.id });
@@ -3747,11 +3951,11 @@ function DeckScreen() {
           body += stepperRow("deck-next", "بسته‌های بعدی", null, d.nextPacket, 1, 20, 1, (v) => { d.nextPacket = v; saveSettings(); });
         }
         body += stepperRow("deck-short", "کمبود قابل جبران از زیر دسته", null, d.shortAllowance, 0, 20, 1, (v) => { d.shortAllowance = v; saveSettings(); });
-        const ORD = ["اول", "دوم", "سوم", "چهارم", "پنجم", "ششم", "هفتم", "هشتم", "نهم", "دهم"];
-        const dealLine = `پخش در ${n(deal.rounds)} دور: ` + deal.packets.map((x, i) => `دور ${ORD[i] || n(i + 1) + "‌ام"} ${n(x)} برگ`).join("، ");
+        const ORD = ["اول", "دوم", "سوم", "چهارم", "پنجم", "ششم", "هفتم", "هشتم", "نهم", "دهم", "یازدهم", "دوازدهم", "سیزدهم", "چهاردهم", "پانزدهم"];
+        const dealLine = `پخش در ${n(deal.rounds)} دور: ` + deal.packets.map((x, i) => `دور ${ORD[i] || n(i + 1) + "اُم"} ${n(x)} برگ`).join("، ");
         let verdict;
         if (deal.mode === "fits") verdict = `<div class="panel success" id="deck-verdict"><b class="pos">ورق کافی است</b><p class="cap">پس از پخش ${n(deal.stock)} برگ در دسته می‌ماند.</p></div>`;
-        else if (deal.mode === "bottom") verdict = `<div class="panel" style="border-color:var(--gold)" id="deck-verdict"><p><b class="goldt">${n(deal.short)} برگ کم می‌آید:</b> ${n(deal.takeFromBottom)} کارت از زیر دسته بردارید، خوب بُر بزنید و پخش را کامل کنید.</p></div>`;
+        else if (deal.mode === "bottom") verdict = `<div class="panel" style="border-color:var(--gold)" id="deck-verdict"><p><b class="goldt">${n(deal.short)} برگ کم می‌آید:</b> همین ${n(deal.takeFromBottom)} کارت را از زیر دسته بردارید، خوب بُر بزنید و پخش را کامل کنید.</p></div>`;
         else if (deal.mode === "reduced") {
           const need = deal.custom ? `برای دست کامل ${n(deal.preferred)} برگی دست‌کم ${n(deal.needCards)} برگ لازم است.` : `برای دست کامل ${n(deal.preferred)} برگی ${n(deal.decksNeeded)} دسته ورق لازم است.`;
           verdict = `<div class="panel" style="border-color:var(--gold)" id="deck-verdict"><p><b class="goldt">با این تعداد ورق به هر نفر ${n(deal.handSize)} برگ بدهید.</b> ${need}</p><p class="cap">پس از پخش ${n(deal.stock)} برگ در دسته می‌ماند.</p></div>`;
