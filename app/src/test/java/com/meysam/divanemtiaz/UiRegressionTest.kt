@@ -148,6 +148,7 @@ class UiRegressionTest {
         val c = Robolectric.buildActivity(MainActivity::class.java).setup()
         val a = c.get()
         val settings = GameCodec.encodeSettings(a.settings).toString()
+        val gamesBefore = a.repo.sessions().associate { it.id to GameCodec.encodeSession(it).toString() }
         val screens = listOf<Screen>(HomeScreen(a), HistoryScreen(a), PlayersScreen(a),
             SettingsScreen(a), RulesScreen(a, null), LeagueListScreen(a),
             DeckCalcScreen(a), RankingScreen(a), BackupScreen(a))
@@ -165,7 +166,7 @@ class UiRegressionTest {
             assertEquals(rules, GameCodec.encodeRules(s.rules).toString())
         }
         assertEquals(settings, GameCodec.encodeSettings(a.settings).toString())
-        assertTrue(a.repo.sessions().isEmpty())
+        assertEquals(gamesBefore, a.repo.sessions().associate { it.id to GameCodec.encodeSession(it).toString() })
         c.pause().stop().destroy()
     }
 

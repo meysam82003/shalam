@@ -61,7 +61,7 @@ jobs:
           arch: x86_64
           disable-animations: true
           script: |
-            gradle --no-daemon connectedDebugAndroidTest
+            gradle --no-daemon -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true connectedDebugAndroidTest
             adb pull /sdcard/Android/data/com.meysam.divanemtiaz.debug/files/smoke-previews app/build/emulator-previews
       - name: Upload emulator evidence
         if: always()
