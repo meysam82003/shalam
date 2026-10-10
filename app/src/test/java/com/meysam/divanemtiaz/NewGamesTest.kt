@@ -139,6 +139,57 @@ class NewGamesTest {
         assertEquals(2, LeagueEngine.champion(league, lookup))
     }
 
+    @Test fun gamesPlayedOutsideCanJoinALeagueMatchInEitherOrder() {
+        val teams = listOf(Side("شیرها", 1), Side("عقاب‌ها", 2))
+        val league = League(9L, "لیگ", GameType.SHALAM, teams, GameRules(), LeagueFormat.KNOCKOUT, LeagueSettings(winsNeeded = 2))
+        LeagueEngine.start(league, listOf(0, 1), Random(3))
+        val games = mutableMapOf<Long, GameSession>()
+        val lookup: (Long) -> GameSession? = { games[it] }
+        val match = league.matches.single()
+        val st0 = LeagueEngine.state(league, match, lookup)
+        val teamA = st0.teamA!!
+        // A normal game «ما – اونا» that «اونا» won; «اونا» is league team A.
+        val g1 = GameSession(200L, GameType.SHALAM, listOf(Side("ما", 0), Side("اونا", 3)), rules = GameRules(), finished = true)
+        g1.rounds += Round(RoundKind.FIXED, listOf(100, 600))
+        games[g1.id] = g1
+        assertEquals(1, LeagueEngine.openMatches(league, lookup).size)
+        assertTrue(LeagueEngine.attach(league, match.id, g1, teamAFirst = false, lookup = lookup))
+        assertEquals(league.id, g1.leagueId)
+        assertEquals(league.teams[teamA].name, g1.sides[1].name)
+        assertEquals(1, LeagueEngine.sideOfTeam(league, g1, teamA, 1 - teamA))
+        val st1 = LeagueEngine.state(league, league.matches.single(), lookup)
+        assertEquals(1, st1.winsA)
+        assertEquals(0, st1.winsB)
+        assertEquals(600, st1.pointsA)
+        // Cannot add the same game twice.
+        assertFalse(LeagueEngine.attach(league, match.id, g1, teamAFirst = true, lookup = lookup))
+        // A running game joins as the open game and is continued from the league.
+        val g2 = GameSession(201L, GameType.SHALAM, listOf(Side("ما", 0), Side("اونا", 3)), rules = GameRules())
+        games[g2.id] = g2
+        assertTrue(LeagueEngine.attach(league, match.id, g2, teamAFirst = true, lookup = lookup))
+        val st2 = LeagueEngine.state(league, league.matches.single(), lookup)
+        assertEquals(201L, st2.openGame)
+        assertEquals(1, st2.played)
+        g2.rounds += Round(RoundKind.FIXED, listOf(700, 50))
+        g2.finished = true
+        val st3 = LeagueEngine.state(league, league.matches.single(), lookup)
+        assertEquals(2, st3.winsA)
+        assertEquals(teamA, st3.winner)
+        assertTrue(LeagueEngine.advance(league, lookup))
+        assertEquals(teamA, LeagueEngine.champion(league, lookup))
+        // A Menfi game cannot join a Shalam league.
+        val menfi = GameSession(202L, GameType.MENFI, teams, rules = GameRules())
+        assertFalse(LeagueEngine.attach(league, match.id, menfi, true, lookup))
+    }
+
+    @Test fun menfiWithAWinnerAfterAllHandsIsCompleteAndRematchStartsClean() {
+        val rules = MenfiRules(hands = 2, extraHands = 2)
+        val totalsTied = listOf(3, 3)
+        assertFalse(MenfiEngine.isComplete(4, totalsTied, rules))
+        assertTrue(MenfiEngine.isComplete(4, listOf(5, 3), rules))
+        assertFalse(MenfiEngine.isComplete(3, listOf(5, 3), rules))
+    }
+
     @Test fun knockoutWithOddTeamsGivesOneByeAndNeverTwiceInARow() {
         val league = League(2L, "لیگ", GameType.SHALAM, players(5), GameRules(), LeagueFormat.KNOCKOUT, LeagueSettings(winsNeeded = 1))
         LeagueEngine.start(league, listOf(0, 1, 2, 3, 4), Random(7))
@@ -226,9 +277,13 @@ class NewGamesTest {
         assertEquals(listOf(6, 4, 4), DeckCalc.splitPackets(14))
         assertEquals(listOf(4, 4, 4), DeckCalc.splitPackets(12))
         assertEquals(listOf(5, 4, 4), DeckCalc.splitPackets(13))
-        assertEquals(listOf(4, 3, 3), DeckCalc.splitPackets(10))
-        assertEquals(listOf(4, 3), DeckCalc.splitPackets(7))
+        assertEquals(listOf(6, 4), DeckCalc.splitPackets(10))
+        assertEquals(listOf(7), DeckCalc.splitPackets(7))
         assertEquals(listOf(3), DeckCalc.splitPackets(3))
+        assertEquals(listOf(6, 4, 4, 4), DeckCalc.splitPackets(18))
+        assertEquals(listOf(4, 4, 4, 4, 4), DeckCalc.splitPackets(20))
+        assertEquals(listOf(5, 3, 3, 3, 3), DeckCalc.splitPackets(17, 3))
+        assertEquals(17, DeckCalc.splitPackets(17, 3).sum())
         val nine = DeckCalc.hezarAuto(9, DeckSettings(decks = 2, jokers = 6))
         assertEquals(110, nine.totalCards)
         assertEquals(DealMode.REDUCED, nine.mode)
@@ -243,6 +298,12 @@ class NewGamesTest {
         val bottom = DeckCalc.hezarAuto(4, DeckSettings(decks = 1, jokers = 0))
         assertEquals(DealMode.BOTTOM, bottom.mode)
         assertEquals(4, bottom.short)
+        assertEquals(4, bottom.takeFromBottom)
+        val two = DeckCalc.hezarAuto(4, DeckSettings(customTotalEnabled = true, customTotal = 54))
+        assertEquals(DealMode.BOTTOM, two.mode)
+        assertEquals(2, two.takeFromBottom)
+        assertEquals(2, DeckCalc.hezar(4, 1, 2, DeckSettings(), CardValues()).short)
+        assertTrue(DeckCalc.hezar(4, 1, 2, DeckSettings(), CardValues()).fixableFromBottom)
         val custom = DeckCalc.hezarAuto(5, DeckSettings(customTotalEnabled = true, customTotal = 80))
         assertEquals(80, custom.totalCards)
         assertEquals(14, custom.handSize)

@@ -119,6 +119,28 @@ class ScoreEngineTest {
         assertFalse(ShalamEngine.isComplete(listOf(500, 300), byDiff))
     }
 
+    @Test fun positiveOnlyTwelveCardsNeverGoesNegative() {
+        val r = noJoker.copy(dealType = DealType.TWELVE_POSITIVE_ONLY, doubleType = DoubleType.NEGATIVE)
+        fun hand(bid: Int, took: Int) = ShalamEngine.scoreHand(bid, 165 - took, r).let { listOf(it.contractor, it.opponent) }
+        assertEquals(listOf(120, 35), hand(120, 130))
+        assertEquals(listOf(120, 45), hand(120, 120))
+        assertEquals(listOf(0, 50), hand(120, 115))
+        assertEquals(listOf(0, 85), hand(130, 80))
+        assertEquals(listOf(0, 120), hand(160, 45))
+        assertFalse(ShalamEngine.isDoubleHand(160, 120, r))
+        assertEquals(listOf(330, 0), hand(120, 165))
+        assertEquals(330, ShalamEngine.scoreShelem(false, 0, r).contractor)
+        assertEquals(listOf(0, 10), ShalamEngine.scoreShelem(false, 10, r).let { listOf(it.contractor, it.opponent) })
+        val session = GameSession(9L, GameType.SHALAM, listOf(Side("ما", 0), Side("اونا", 1)), rules = GameRules(shalam = r))
+        session.rounds += Round(RoundKind.SHALAM_HAND, emptyList(), contractTeam = 0, bid = 120, taken = 35)
+        session.rounds += Round(RoundKind.SHALAM_HAND, emptyList(), contractTeam = 0, bid = 130, taken = 85)
+        session.rounds += Round(RoundKind.SHALAM_HAND, emptyList(), contractTeam = 1, bid = 150, taken = 60)
+        GameEngine.recompute(session)
+        assertEquals(listOf(listOf(120, 35), listOf(0, 85), listOf(60, 0)), session.rounds.map { it.scores })
+        assertEquals(listOf(180, 120), GameEngine.totals(session))
+        assertTrue(session.rounds.all { round -> round.scores.all { it >= 0 } })
+    }
+
     @Test fun recomputeAppliesLimitWithRunningTotals() {
         val rules = GameRules(shalam = noJoker.copy(highLimitEnabled = true, highLimit = 100))
         val session = GameSession(1L, GameType.SHALAM, listOf(Side("الف", 0), Side("ب", 1)), rules = rules)

@@ -71,8 +71,10 @@ abstract class BoardScreen(host: MainActivity, val session: GameSession) : Scree
             dialog.show()
         }
 
-    protected fun commonMenu(): List<Pair<String, () -> Unit>> = listOf(
+    protected fun commonMenu(): List<Pair<String, () -> Unit>> = listOfNotNull(
         "نمودار بازی" to { gameChartDialog(session) },
+        if (session.game.isTeamGame && (session.leagueId == 0L || host.repo.league(session.leagueId) == null))
+            "افزودن این بازی به لیگ" to { addToLeague(session) { host.refresh() } } else null,
         "اشتراک تصویر وضعیت بازی" to { shareSession(session) },
         "ثبت تقلب / جریمه" to { penaltyDialog(session) { afterChange() } },
         "ویرایش جمع امتیازها" to { adjustTotalsDialog(session) { afterChange() } },

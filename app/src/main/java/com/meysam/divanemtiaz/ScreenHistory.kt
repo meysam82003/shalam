@@ -17,13 +17,29 @@ class ResultScreen(host: MainActivity, private val session: GameSession) : Scree
             title = "نتیجهٔ بازی ${session.game.title}",
             subtitle = sessionSubtitle(session),
             bottom = kit.vertical().apply {
-                if (session.leagueId != 0L && host.repo.league(session.leagueId) != null) {
-                    addView(kit.button("بازگشت به لیگ", ButtonKind.PRIMARY, RoyalIcon.TROPHY) { backToLeague() }, kit.spaced(8))
+                val league = session.leagueId.takeIf { it != 0L }?.let { host.repo.league(it) }
+                if (league != null) {
+                    val match = leagueMatchOf(league, session.id)
+                    val st = match?.let { LeagueEngine.state(league, it) { id -> host.repo.session(id) } }
+                    if (match != null && st != null && st.ready && !st.decided && st.openGame == null) {
+                        addView(kit.button("بازی بعدی همین تیم‌ها در لیگ", ButtonKind.PRIMARY, RoyalIcon.PLAY) {
+                            host.resetTo(HomeScreen(host), LeagueListScreen(host), LeagueScreen(host, league.id))
+                            val fresh = host.repo.league(league.id)
+                            val freshMatch = fresh?.matches?.firstOrNull { it.id == match.id }
+                            if (fresh != null && freshMatch != null) host.current?.startLeagueGame(fresh, freshMatch)
+                        }, kit.spaced(8))
+                        addView(kit.button("بازگشت به لیگ", ButtonKind.SECONDARY, RoyalIcon.TROPHY, 46) { backToLeague() }, kit.spaced(8))
+                    } else {
+                        addView(kit.button("بازگشت به لیگ", ButtonKind.PRIMARY, RoyalIcon.TROPHY) { backToLeague() }, kit.spaced(8))
+                    }
                 } else {
                     addView(kit.button("بازی دوباره با همین ترکیب", ButtonKind.PRIMARY, RoyalIcon.PLAY) { rematch() }, kit.spaced(8))
                 }
+                // A Menfi game whose hands are all played with a winner is over: it can be corrected, not extended.
+                val menfiDone = session.game == GameType.MENFI &&
+                    MenfiEngine.isComplete(GameEngine.playedHands(session), totals, session.rules.menfi) && winners.isNotEmpty()
                 addView(kit.horizontal().apply {
-                    addView(kit.weight(kit.button("ادامهٔ بازی", ButtonKind.SECONDARY, RoyalIcon.UNDO, 48) { reopen() }))
+                    addView(kit.weight(kit.button(if (menfiDone) "ویرایش دست‌ها" else "ادامهٔ بازی", ButtonKind.SECONDARY, if (menfiDone) RoyalIcon.EDIT else RoyalIcon.UNDO, 48) { reopen() }))
                     addView(kit.hgap(8))
                     addView(kit.weight(kit.button("خانه", ButtonKind.SECONDARY, RoyalIcon.HOME, 48) { host.resetTo(HomeScreen(host)) }))
                 })
@@ -90,6 +106,9 @@ class ResultScreen(host: MainActivity, private val session: GameSession) : Scree
                 kit.button("اشتراک تصویر نتیجه", ButtonKind.GHOST, RoyalIcon.SHARE, 42) { shareSession(session) },
                 kit.button("کارنامه و رتبه‌ها", ButtonKind.GHOST, RoyalIcon.TROPHY, 42) { host.push(RankingScreen(host)) }
             ), 8), kit.spaced(8))
+            if (session.game.isTeamGame && (session.leagueId == 0L || host.repo.league(session.leagueId) == null)) {
+                addView(kit.button("افزودن این بازی به لیگ", ButtonKind.GHOST, RoyalIcon.LEAGUE, 42) { addToLeague(session) { host.refresh() } }, kit.spaced(8))
+            }
             if (session.game == GameType.SHALAM) {
                 addView(kit.button("آمار کامل بازی", ButtonKind.GHOST, RoyalIcon.CHART, 42) { shalamStatsDialog(session) }, kit.spaced(10))
             }
@@ -143,7 +162,8 @@ class ResultScreen(host: MainActivity, private val session: GameSession) : Scree
 
     private fun rematch() {
         val id = host.repo.newSessionId()
-        val fresh = GameSession(id, session.game, session.sides.toList(), rules = session.rules, updatedAt = id, label = session.label)
+        val rules = session.rules.copy(menfi = session.rules.menfi.copy(extraHands = 0))
+        val fresh = GameSession(id, session.game, session.sides.toList(), rules = rules, updatedAt = id, label = session.label)
         host.resetTo(HomeScreen(host), host.boardFor(fresh))
     }
 }
@@ -242,6 +262,13 @@ class HistoryScreen(host: MainActivity) : Screen(host) {
                     })
                     addView(kit.text(JalaliDate.format(session.updatedAt, settings.general.persianDigits), TextStyle.CAPTION, Royal.muted))
                 }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                if (session.game.isTeamGame && (session.leagueId == 0L || host.repo.league(session.leagueId) == null)) {
+                    addView(kit.iconButton(RoyalIcon.LEAGUE, "افزودن به لیگ", ButtonKind.CHIP, 44) { addToLeague(session) { host.refresh() } })
+                    addView(kit.hgap(6))
+                } else if (session.leagueId != 0L) {
+                    addView(kit.badge("لیگ", Royal.turquoise))
+                    addView(kit.hgap(6))
+                }
                 addView(kit.iconButton(RoyalIcon.TRASH, "حذف بازی", ButtonKind.CHIP, 44) {
                     kit.confirm("حذف بازی", "این بازی برای همیشه از تاریخچه حذف شود؟", "حذف", true) {
                         host.repo.delete(session.id)

@@ -50,13 +50,10 @@ class DeckCalcScreen(host: MainActivity, initialGame: GameType = GameType.HEZART
         host.refresh()
     }
 
-    private fun ordinal(i: Int): String = when (i) {
-        0 -> "اول"
-        1 -> "دوم"
-        2 -> "سوم"
-        3 -> "چهارم"
-        4 -> "پنجم"
-        else -> kit.n(i + 1) + "م"
+    private fun ordinal(i: Int): String {
+        val names = listOf("اول", "دوم", "سوم", "چهارم", "پنجم", "ششم", "هفتم", "هشتم", "نهم", "دهم",
+            "یازدهم", "دوازدهم", "سیزدهم", "چهاردهم", "پانزدهم")
+        return names.getOrElse(i) { kit.n(i + 1) + "اُم" }
     }
 
     private fun autoResult(parent: android.widget.LinearLayout, d: AutoDeal) {
@@ -79,7 +76,7 @@ class DeckCalcScreen(host: MainActivity, initialGame: GameType = GameType.HEZART
             addView(kit.gap(6))
             val message = when (d.mode) {
                 DealMode.FITS -> "ورق کافی است. " + d.packets.mapIndexed { i, p -> "دور ${ordinal(i)} ${kit.n(p)} برگ" }.joinToString("، ") + " به هر نفر بدهید."
-                DealMode.BOTTOM -> "${kit.n(d.short)} برگ کم می‌آید: ${kit.n(d.takeFromBottom)} کارت از زیر دسته بردارید، خوب بُر بزنید و پخش را کامل کنید."
+                DealMode.BOTTOM -> "${kit.n(d.short)} برگ کم می‌آید: همین ${kit.n(d.takeFromBottom)} کارت را از زیر دسته بردارید، خوب بُر بزنید و پخش را کامل کنید."
                 DealMode.REDUCED -> "با این تعداد ورق به هر نفر ${kit.n(d.handSize)} برگ بدهید. " +
                     if (settings.deck.customTotalEnabled) "برای دست کامل ${kit.n(d.preferredHand)} برگی دست‌کم ${kit.n(d.cardsNeeded)} برگ لازم است."
                     else "برای دست کامل ${kit.n(d.preferredHand)} برگی ${kit.n(d.decksNeeded)} دسته ورق لازم است."
@@ -104,7 +101,7 @@ class DeckCalcScreen(host: MainActivity, initialGame: GameType = GameType.HEZART
             addView(kit.gap(6))
             val message = when {
                 stock >= 0 -> "ورق کافی است."
-                -stock <= deck.shortAllowance -> "${kit.n(-stock)} برگ کم می‌آید: ${kit.n(deck.shortAllowance)} کارت از زیر دسته بردارید، خوب بُر بزنید و پخش را کامل کنید."
+                -stock <= deck.shortAllowance -> "${kit.n(-stock)} برگ کم می‌آید: همین ${kit.n(-stock)} کارت را از زیر دسته بردارید، خوب بُر بزنید و پخش را کامل کنید."
                 else -> "${kit.n(-stock)} برگ کم است؛ به هر نفر حداکثر ${kit.n(total / hezarPlayers.coerceAtLeast(1))} برگ می‌رسد."
             }
             addView(kit.text(message, TextStyle.BODY_BOLD, if (stock >= 0) Royal.turquoiseLight else Royal.ivory, Gravity.CENTER))

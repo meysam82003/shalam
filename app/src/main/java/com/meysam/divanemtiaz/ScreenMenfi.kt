@@ -11,6 +11,13 @@ class MenfiBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(h
 
     private val hiddenNow: Boolean get() = rules.hidden && !revealed
 
+    private fun finishGame() {
+        session.finished = true
+        session.endedAt = System.currentTimeMillis()
+        SessionOps.commit(host, session)
+        host.replace(ResultScreen(host, session))
+    }
+
     override fun build(): View {
         val totals = GameEngine.totals(session)
         val played = GameEngine.playedHands(session)
@@ -34,9 +41,13 @@ class MenfiBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(h
             actions = actions,
             bottom = kit.horizontal().apply {
                 val tied = MenfiEngine.tiedAtEnd(played, totals, rules)
-                addView(kit.weight(kit.button(if (tied) "تساوی: انتخاب دست اضافه" else "ثبت دست ${kit.n(played + 1)}", ButtonKind.PRIMARY, RoyalIcon.PLUS) {
-                    if (tied) menfiTieDialog(session) { afterChange() } else host.push(MenfiHandScreen(host, session, null))
-                }))
+                val complete = MenfiEngine.isComplete(played, totals, rules)
+                when {
+                    // All hands are played and there is a winner: the game is over, no hand ${'$'}{played + 1}.
+                    complete -> addView(kit.weight(kit.button("پایان بازی و نتیجه", ButtonKind.SUCCESS, RoyalIcon.TROPHY) { finishGame() }))
+                    tied -> addView(kit.weight(kit.button("تساوی: انتخاب دست اضافه", ButtonKind.PRIMARY, RoyalIcon.PLUS) { menfiTieDialog(session) { afterChange() } }))
+                    else -> addView(kit.weight(kit.button("ثبت دست ${kit.n(played + 1)}", ButtonKind.PRIMARY, RoyalIcon.PLUS) { host.push(MenfiHandScreen(host, session, null)) }))
+                }
                 addView(kit.hgap(8))
                 addView(kit.iconButton(RoyalIcon.UNDO, "حذف دست آخر", ButtonKind.SECONDARY, 52) {
                     if (session.rounds.isEmpty()) kit.toast("هنوز دستی ثبت نشده است")
@@ -56,6 +67,14 @@ class MenfiBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(h
                 }
             })
             addView(statusRow("دست ${kit.n(played)} از ${menfiHandsText(rules)}"))
+            if (MenfiEngine.isComplete(played, totals, rules)) {
+                addView(kit.panel(PanelStyle.SUCCESS, 12).apply {
+                    layoutParams = kit.spaced(8)
+                    gravity = Gravity.CENTER_HORIZONTAL
+                    addView(kit.text("همهٔ ${menfiHandsText(rules)} دست بازی شد", TextStyle.HEADING, Royal.turquoiseLight, Gravity.CENTER))
+                    addView(kit.text("بازی تمام است و دست دیگری ثبت نمی‌شود؛ دست‌ها هنوز قابل ویرایش‌اند.", TextStyle.LABEL, Royal.ivory, Gravity.CENTER))
+                })
+            }
             if (MenfiEngine.tiedAtEnd(played, totals, rules)) {
                 addView(kit.panel(PanelStyle.RAISED, 12).apply {
                     layoutParams = kit.spaced(8)

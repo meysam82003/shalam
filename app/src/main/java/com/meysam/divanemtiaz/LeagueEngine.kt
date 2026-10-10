@@ -60,13 +60,14 @@ object LeagueEngine {
                 return@forEach
             }
             played++
+            val ia = sideOfTeam(league, s, a, b)
             val totals = GameEngine.totals(s)
             val sign = if (GameEngine.highWins(s)) 1 else -1
-            pointsA += totals.getOrElse(0) { 0 } * sign
-            pointsB += totals.getOrElse(1) { 0 } * sign
+            pointsA += totals.getOrElse(ia) { 0 } * sign
+            pointsB += totals.getOrElse(1 - ia) { 0 } * sign
             when (GameEngine.winners(s).singleOrNull()) {
-                0 -> winsA++
-                1 -> winsB++
+                ia -> winsA++
+                1 - ia -> winsB++
                 else -> draws++
             }
         }
@@ -79,6 +80,41 @@ object LeagueEngine {
         }
         val decided = if (league.format == LeagueFormat.ROUND_ROBIN && !match.isFinal) played >= 1 else winner != null
         return MatchState(match, a, b, winsA, winsB, draws, played, pointsA, pointsB, winner, decided, open)
+    }
+
+    /**
+     * Which side of a saved game is league team [team]. Games started from the league put team A first;
+     * a game added later may have the teams the other way round, so the side is matched by name.
+     */
+    fun sideOfTeam(league: League, s: GameSession, teamA: Int?, teamB: Int?): Int {
+        val a = teamA?.let { league.teams.getOrNull(it)?.name } ?: return 0
+        val b = teamB?.let { league.teams.getOrNull(it)?.name } ?: return 0
+        return if (s.sides.getOrNull(0)?.name == b && s.sides.getOrNull(1)?.name == a) 1 else 0
+    }
+
+    /** Matches a finished or running game can be added to: both teams known and not yet decided. */
+    fun openMatches(league: League, lookup: (Long) -> GameSession?): List<MatchState> =
+        league.matches.filter { !it.isBye }.map { state(league, it, lookup) }.filter { it.ready && !it.decided }
+
+    /**
+     * Adds an existing game to a match: its sides take the league team names and avatars
+     * ([teamAFirst] tells which game side is team A), and its result counts from now on.
+     */
+    fun attach(league: League, matchId: Int, session: GameSession, teamAFirst: Boolean, lookup: (Long) -> GameSession?): Boolean {
+        val index = league.matches.indexOfFirst { it.id == matchId }
+        if (index < 0 || session.leagueId != 0L || session.game != league.game || session.sides.size != 2) return false
+        val st = state(league, league.matches[index], lookup)
+        val a = st.teamA ?: return false
+        val b = st.teamB ?: return false
+        val teamA = league.teams[a]
+        val teamB = league.teams[b]
+        session.sides[0] = if (teamAFirst) teamA else teamB
+        session.sides[1] = if (teamAFirst) teamB else teamA
+        session.leagueId = league.id
+        session.label = "${league.name} • ${stageTitle(league, league.matches[index].stage)}"
+        league.matches[index] = league.matches[index].let { it.copy(games = it.games + session.id) }
+        league.updatedAt = System.currentTimeMillis()
+        return true
     }
 
     fun winnerOf(league: League, matchId: Int, lookup: (Long) -> GameSession?): Int? =
@@ -191,13 +227,14 @@ object LeagueEngine {
             val b = m.teamB
             if (a < 0 || b < 0) return@forEach
             m.games.mapNotNull(lookup).filter { it.finished }.forEach { s ->
+                val ia = sideOfTeam(league, s, a, b)
                 val totals = GameEngine.totals(s)
                 val sign = if (GameEngine.highWins(s)) 1 else -1
-                val pa = totals.getOrElse(0) { 0 } * sign
-                val pb = totals.getOrElse(1) { 0 } * sign
+                val pa = totals.getOrElse(ia) { 0 } * sign
+                val pb = totals.getOrElse(1 - ia) { 0 } * sign
                 val w = GameEngine.winners(s).singleOrNull()
-                rows[a] = add(rows.getValue(a), pa, pb, w == 0, w == 1, cfg)
-                rows[b] = add(rows.getValue(b), pb, pa, w == 1, w == 0, cfg)
+                rows[a] = add(rows.getValue(a), pa, pb, w == ia, w == 1 - ia, cfg)
+                rows[b] = add(rows.getValue(b), pb, pa, w == 1 - ia, w == ia, cfg)
             }
         }
         return rows.values.sortedWith(

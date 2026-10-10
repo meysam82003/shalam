@@ -40,9 +40,25 @@ object ShalamEngine {
     fun isValidTaken(taken: Int, mode: ShalamModeRules): Boolean = taken >= 0 && taken < mode.maxPoints
 
     fun isDoubleHand(bid: Int, taken: Int, rules: ShalamRules): Boolean =
-        bid + taken > rules.mode.maxPoints && taken >= rules.mode.doubleLimit && rules.doubleType != DoubleType.DISABLED
+        !isPositiveOnly(rules) && bid + taken > rules.mode.maxPoints && taken >= rules.mode.doubleLimit && rules.doubleType != DoubleType.DISABLED
+
+    /** «شلم ۱۲ برگ بدون منفی»: no score is ever negative and no total ever goes down. */
+    fun isPositiveOnly(rules: ShalamRules): Boolean = rules.dealType == DealType.TWELVE_POSITIVE_ONLY
+
+    /**
+     * Positive-only hand: a contractor who reaches the bid gets exactly the bid, otherwise zero;
+     * the opponents always get the points they actually took. Taking everything is a full shelem (2 × 165).
+     */
+    private fun scorePositiveOnly(bid: Int, taken: Int, rules: ShalamRules): ShalamOutcome {
+        val mode = rules.mode
+        val actual = mode.maxPoints - taken
+        if (taken <= 0) return ShalamOutcome(mode.maxPoints * 2, 0, ShalamResult.SUCCESS, actual, collectedAll = true)
+        return if (bid + taken <= mode.maxPoints) ShalamOutcome(bid, taken, ShalamResult.SUCCESS, actual)
+        else ShalamOutcome(0, taken, ShalamResult.FAIL, actual)
+    }
 
     fun scoreHand(bid: Int, taken: Int, rules: ShalamRules, double: Int = DoubleChoice.AUTO): ShalamOutcome {
+        if (isPositiveOnly(rules)) return scorePositiveOnly(bid, taken, rules)
         val mode = rules.mode
         val actual = mode.maxPoints - taken
         if (bid + taken <= mode.maxPoints) {
@@ -76,6 +92,12 @@ object ShalamEngine {
     fun scoreShelem(doubleShelem: Boolean, taken: Int, rules: ShalamRules): ShalamOutcome {
         val mode = rules.mode
         val won = taken <= 0
+        if (isPositiveOnly(rules)) {
+            // A won shelem is 330 (660 when doubled) and the opponents get nothing; a lost one is zero for the contractor.
+            val win = if (doubleShelem) mode.maxPoints * 4 else mode.maxPoints * 2
+            return if (won) ShalamOutcome(win, 0, ShalamResult.SHELEM_WIN, mode.maxPoints)
+            else ShalamOutcome(0, taken, ShalamResult.SHELEM_LOSE, mode.maxPoints - taken)
+        }
         val base = mode.maxPoints * 2
         var contractor = 0
         var opponent = taken
@@ -117,7 +139,8 @@ object ShalamEngine {
     /** A team at or above the limit earns opponent points only when the contractor fails (if allowed). */
     fun limitedOpponentScore(contractor: Int, opponent: Int, opponentTotalBefore: Int, rules: ShalamRules): Int {
         if (rules.highLimitEnabled && opponentTotalBefore >= rules.highLimit) {
-            if (!(rules.loserPointsAboveLimit && contractor < 0)) return 0
+            val failed = contractor < 0 || (isPositiveOnly(rules) && contractor == 0)
+            if (!(rules.loserPointsAboveLimit && failed)) return 0
         }
         return opponent
     }
@@ -341,17 +364,15 @@ object DeckCalc {
         )
     }
 
-    /** Deal in about three rounds; the first round takes the remainder (14 → 6 + 4 + 4). */
-    fun splitPackets(hand: Int): List<Int> {
+    /**
+     * Every dealing round in packets of [packet] cards; the first round also takes the remainder
+     * (14 → 6 + 4 + 4, 18 → 6 + 4 + 4 + 4, 20 → 4 + 4 + 4 + 4 + 4).
+     */
+    fun splitPackets(hand: Int, packet: Int = 4): List<Int> {
         if (hand <= 0) return emptyList()
-        val rounds = when {
-            hand >= 9 -> 3
-            hand >= 4 -> 2
-            else -> 1
-        }
-        val base = hand / rounds
-        val rem = hand % rounds
-        return List(rounds) { if (it == 0) base + rem else base }
+        val size = packet.coerceAtLeast(1)
+        val rounds = (hand / size).coerceAtLeast(1)
+        return List(rounds) { if (it == 0) hand - size * (rounds - 1) else size }
     }
 
     /** Works out the hand size and dealing plan from players and the cards available. */
@@ -375,12 +396,12 @@ object DeckCalc {
             players = p,
             preferredHand = preferred,
             handSize = hand,
-            packets = splitPackets(hand),
+            packets = splitPackets(hand, deck.nextPacket),
             dealt = dealt,
             stock = (total - dealt).coerceAtLeast(0),
             short = if (mode == DealMode.BOTTOM) need - total else 0,
             mode = mode,
-            takeFromBottom = allowance,
+            takeFromBottom = if (mode == DealMode.BOTTOM) need - total else 0,
             cardsNeeded = need,
             decksNeeded = decksNeeded
         )

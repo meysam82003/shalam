@@ -278,7 +278,8 @@ class LeagueScreen(host: MainActivity, private val leagueId: Long) : Screen(host
                 addView(kit.gap(4))
                 addView(kit.flow(games.mapIndexed { k, s ->
                     val totals = GameEngine.totals(s)
-                    val label = if (s.finished) "بازی ${kit.n(k + 1)}: ${kit.signed(totals[0])} \u200F|\u200F ${kit.signed(totals[1])}" else "بازی ${kit.n(k + 1)}: در جریان"
+                    val ia = LeagueEngine.sideOfTeam(league, s, st.teamA, st.teamB)
+                    val label = if (s.finished) "بازی ${kit.n(k + 1)}: ${kit.signed(totals[ia])} \u200F|\u200F ${kit.signed(totals[1 - ia])}" else "بازی ${kit.n(k + 1)}: در جریان"
                     kit.chip(label, !s.finished) { host.openSession(s) }.apply { setPadding(kit.dp(8), kit.dp(3), kit.dp(8), kit.dp(5)) }
                 }, 5))
             }
@@ -297,24 +298,7 @@ class LeagueScreen(host: MainActivity, private val leagueId: Long) : Screen(host
 
     private fun play(league: League, match: LeagueMatch, st: MatchState) {
         st.openGame?.let { id -> lookup(id)?.let { host.openSession(it); return } }
-        val a = st.teamA ?: return
-        val b = st.teamB ?: return
-        val id = host.repo.newSessionId()
-        val session = GameSession(
-            id = id,
-            game = league.game,
-            sides = listOf(league.teams[a], league.teams[b]),
-            rules = league.rules,
-            updatedAt = id,
-            label = "${league.name} • ${LeagueEngine.stageTitle(league, match.stage)}",
-            leagueId = league.id
-        )
-        host.repo.save(session)
-        val index = league.matches.indexOfFirst { it.id == match.id }
-        league.matches[index] = match.copy(games = match.games + id)
-        league.updatedAt = System.currentTimeMillis()
-        host.repo.saveLeague(league)
-        host.push(host.boardFor(session))
+        startLeagueGame(league, match)
     }
 
     private fun shareLeague(league: League) {
@@ -381,4 +365,108 @@ class LeagueScreen(host: MainActivity, private val leagueId: Long) : Screen(host
         dialog = kit.dialog("گزینه‌های لیگ", null, list, listOf(DialogAction("بستن")))
         dialog.show()
     }
+}
+
+/** Starts the next game of a league match between its two teams (team A first). */
+fun Screen.startLeagueGame(league: League, match: LeagueMatch) {
+    val lookup: (Long) -> GameSession? = { host.repo.session(it) }
+    val st = LeagueEngine.state(league, match, lookup)
+    val a = st.teamA ?: return
+    val b = st.teamB ?: return
+    val id = host.repo.newSessionId()
+    val session = GameSession(
+        id = id,
+        game = league.game,
+        sides = listOf(league.teams[a], league.teams[b]),
+        rules = league.rules,
+        updatedAt = id,
+        label = "${league.name} • ${LeagueEngine.stageTitle(league, match.stage)}",
+        leagueId = league.id
+    )
+    host.repo.save(session)
+    val index = league.matches.indexOfFirst { it.id == match.id }
+    league.matches[index] = league.matches[index].copy(games = league.matches[index].games + id)
+    league.updatedAt = System.currentTimeMillis()
+    host.repo.saveLeague(league)
+    host.push(host.boardFor(session))
+}
+
+/** The league match a saved game belongs to, if any. */
+fun leagueMatchOf(league: League, sessionId: Long): LeagueMatch? = league.matches.firstOrNull { sessionId in it.games }
+
+/**
+ * Adds a game that was played outside the league (finished or still running) to a league match:
+ * pick the league, the match and which side is which team. A finished game counts at once;
+ * a running one stays open and can be continued from the league.
+ */
+fun Screen.addToLeague(session: GameSession, onDone: () -> Unit) {
+    if (session.leagueId != 0L && host.repo.league(session.leagueId) != null) {
+        kit.toast("این بازی از قبل در لیگ است")
+        return
+    }
+    if (!session.game.isTeamGame || session.sides.size != 2) {
+        kit.toast("فقط بازی‌های دو تیمی شلم و منفی به لیگ اضافه می‌شوند")
+        return
+    }
+    val lookup: (Long) -> GameSession? = { host.repo.session(it) }
+    val leagues = host.repo.leagues().filter { it.game == session.game && LeagueEngine.openMatches(it, lookup).isNotEmpty() }
+    if (leagues.isEmpty()) {
+        kit.dialog(
+            "لیگی برای این بازی نیست",
+            "لیگ ${session.game.title} با رویارویی آماده وجود ندارد. ابتدا از بخش «لیگ‌ها» یک لیگ ${session.game.title} بسازید.",
+            null,
+            listOf(DialogAction("لیگ‌ها", ButtonKind.PRIMARY) { host.push(LeagueListScreen(host)) }, DialogAction("بستن"))
+        ).show()
+        return
+    }
+    fun chooseSides(league: League, st: MatchState) {
+        val a = league.teams[st.teamA ?: return]
+        val b = league.teams[st.teamB ?: return]
+        fun apply(teamAFirst: Boolean) {
+            if (session.leagueId != 0L) session.leagueId = 0L
+            if (!LeagueEngine.attach(league, st.match.id, session, teamAFirst, lookup)) {
+                kit.toast("افزودن به لیگ ممکن نشد")
+                return
+            }
+            if (!session.finished && session.rounds.isEmpty()) session.updatedAt = System.currentTimeMillis()
+            host.repo.save(session)
+            LeagueEngine.advance(league, lookup)
+            host.repo.saveLeague(league)
+            kit.toast(if (session.finished) "بازی به ${league.name} اضافه شد و نتیجه‌اش حساب شد" else "بازی به ${league.name} اضافه شد؛ از لیگ هم ادامه می‌یابد")
+            onDone()
+        }
+        val s0 = session.sides[0].name
+        val s1 = session.sides[1].name
+        when {
+            s0 == a.name && s1 == b.name -> apply(true)
+            s0 == b.name && s1 == a.name -> apply(false)
+            else -> kit.dialog(
+                "کدام تیم، کدام است؟",
+                "نام تیم‌های این بازی با تیم‌های لیگ فرق دارد؛ نام و نشان تیم‌های لیگ روی بازی قرار می‌گیرد.",
+                null,
+                listOf(
+                    DialogAction("«$s0» = ${a.name}  •  «$s1» = ${b.name}", ButtonKind.PRIMARY) { apply(true) },
+                    DialogAction("«$s0» = ${b.name}  •  «$s1» = ${a.name}", ButtonKind.PRIMARY) { apply(false) },
+                    DialogAction("انصراف")
+                )
+            ).show()
+        }
+    }
+    fun chooseMatch(league: League) {
+        val open = LeagueEngine.openMatches(league, lookup)
+        val names = session.sides.map { it.name }.toSet()
+        // Matches between the same two teams come first.
+        val sorted = open.sortedByDescending { st -> listOfNotNull(st.teamA, st.teamB).count { league.teams[it].name in names } }
+        if (sorted.size == 1) return chooseSides(league, sorted[0])
+        kit.dialog(
+            "کدام رویارویی؟",
+            "${league.name} • بازی به این رویارویی اضافه می‌شود.",
+            null,
+            sorted.map { st ->
+                DialogAction("${LeagueEngine.stageTitle(league, st.match.stage)}: ${league.teams[st.teamA!!].name} – ${league.teams[st.teamB!!].name}  (${kit.n(st.winsA)}–${kit.n(st.winsB)})") { chooseSides(league, st) }
+            } + DialogAction("انصراف")
+        ).show()
+    }
+    if (leagues.size == 1) chooseMatch(leagues[0])
+    else kit.dialog("افزودن به کدام لیگ؟", null, null, leagues.map { l -> DialogAction(l.name, ButtonKind.PRIMARY) { chooseMatch(l) } } + DialogAction("انصراف")).show()
 }
