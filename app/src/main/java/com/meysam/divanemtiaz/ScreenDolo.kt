@@ -230,12 +230,12 @@ class DoloHandScreen(host: MainActivity, private val session: GameSession, priva
                     addView(kit.avatar(session.sides[i].avatar, 28))
                     addView(kit.hgap(8))
                     addView(kit.weight(kit.text(session.sides[i].name, TextStyle.LABEL_BOLD, Royal.ivory, maxLines = 1)))
-                    addView(kit.iconButton(RoyalIcon.PLUS, "افزایش", ButtonKind.CHIP, 32) {
+                    addView(kit.iconButton(RoyalIcon.PLUS, "افزایش", ButtonKind.CHIP, 36) {
                         declared[i] = declared.getValue(i) + 1
                         host.refresh()
                     })
                     addView(value, LinearLayout.LayoutParams(kit.dp(40), ViewGroup.LayoutParams.WRAP_CONTENT))
-                    addView(kit.iconButton(RoyalIcon.MINUS, "کاهش", ButtonKind.CHIP, 32) {
+                    addView(kit.iconButton(RoyalIcon.MINUS, "کاهش", ButtonKind.CHIP, 36) {
                         if (declared.getValue(i) > minimum) declared[i] = declared.getValue(i) - 1 else kit.toast("کمتر از حداقل مجاز نیست")
                         host.refresh()
                     })

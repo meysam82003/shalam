@@ -242,7 +242,7 @@ class HistoryScreen(host: MainActivity) : Screen(host) {
                     })
                     addView(kit.text(JalaliDate.format(session.updatedAt, settings.general.persianDigits), TextStyle.CAPTION, Royal.muted))
                 }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-                addView(kit.iconButton(RoyalIcon.TRASH, "حذف بازی", ButtonKind.CHIP, 38) {
+                addView(kit.iconButton(RoyalIcon.TRASH, "حذف بازی", ButtonKind.CHIP, 44) {
                     kit.confirm("حذف بازی", "این بازی برای همیشه از تاریخچه حذف شود؟", "حذف", true) {
                         host.repo.delete(session.id)
                         host.refresh()

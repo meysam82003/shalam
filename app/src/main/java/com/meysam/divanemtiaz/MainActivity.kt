@@ -46,7 +46,7 @@ abstract class Screen(val host: MainActivity) {
             minimumHeight = kit.dp(50)
         }
         if (showBack) {
-            bar.addView(kit.iconButton(RoyalIcon.BACK, "بازگشت", ButtonKind.SECONDARY, 38) { host.onBackPressedCompat() })
+            bar.addView(kit.iconButton(RoyalIcon.BACK, "بازگشت", ButtonKind.SECONDARY, 44) { host.onBackPressedCompat() })
             bar.addView(kit.hgap(8))
         }
         bar.addView(kit.vertical().apply {

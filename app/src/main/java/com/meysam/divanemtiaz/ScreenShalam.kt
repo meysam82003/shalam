@@ -57,7 +57,7 @@ abstract class BoardScreen(host: MainActivity, val session: GameSession) : Scree
     }
 
     protected fun menuButton(items: List<Pair<String, () -> Unit>>): View =
-        kit.iconButton(RoyalIcon.MENU, "گزینه‌های بازی", ButtonKind.SECONDARY, 42) {
+        kit.iconButton(RoyalIcon.MENU, "گزینه‌های بازی", ButtonKind.SECONDARY, 46) {
             lateinit var dialog: android.app.Dialog
             val list = kit.vertical().apply {
                 items.forEach { (label, action) ->

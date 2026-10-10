@@ -40,11 +40,11 @@ class PlayersScreen(host: MainActivity) : Screen(host) {
                     }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
                     isClickable = true
                     setOnClickListener { kit.tap(it); host.push(ProfileScreen(host, entry.name, entry.isTeam)) }
-                    addView(kit.iconButton(RoyalIcon.CHART, "کارنامهٔ ${entry.name}", ButtonKind.CHIP, 38) { host.push(ProfileScreen(host, entry.name, entry.isTeam)) })
+                    addView(kit.iconButton(RoyalIcon.CHART, "کارنامهٔ ${entry.name}", ButtonKind.CHIP, 44) { host.push(ProfileScreen(host, entry.name, entry.isTeam)) })
                     addView(kit.hgap(6))
-                    addView(kit.iconButton(RoyalIcon.EDIT, "ویرایش ${entry.name}", ButtonKind.CHIP, 38) { edit(entry) })
+                    addView(kit.iconButton(RoyalIcon.EDIT, "ویرایش ${entry.name}", ButtonKind.CHIP, 44) { edit(entry) })
                     addView(kit.hgap(6))
-                    addView(kit.iconButton(RoyalIcon.TRASH, "حذف ${entry.name}", ButtonKind.CHIP, 38) {
+                    addView(kit.iconButton(RoyalIcon.TRASH, "حذف ${entry.name}", ButtonKind.CHIP, 44) {
                         kit.confirm("حذف از فهرست", "«${entry.name}» از فهرست حذف شود؟ بازی‌های ثبت‌شده تغییری نمی‌کنند.", "حذف", true) {
                             host.repo.saveRoster(host.repo.roster().filterNot { it.id == entry.id })
                             host.refresh()

@@ -238,7 +238,7 @@ class ProfileScreen(host: MainActivity, private val name: String, private val is
         return scaffold(
             title = name,
             subtitle = if (isTeam) "کارنامهٔ تیم" else "کارنامهٔ بازیکن",
-            actions = if (p != null) listOf(kit.iconButton(RoyalIcon.SHARE, "اشتراک تصویر کارنامه", ButtonKind.SECONDARY, 38) { shareProfile(p, place) }) else emptyList()
+            actions = if (p != null) listOf(kit.iconButton(RoyalIcon.SHARE, "اشتراک تصویر کارنامه", ButtonKind.SECONDARY, 44) { shareProfile(p, place) }) else emptyList()
         ) {
             addView(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
                 background = PanelDrawable(kit.density, PanelStyle.RAISED, 20f)

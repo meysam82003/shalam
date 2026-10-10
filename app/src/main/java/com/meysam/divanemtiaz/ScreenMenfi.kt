@@ -17,7 +17,7 @@ class MenfiBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(h
         val leader = if (hiddenNow) null else GameEngine.winners(session).singleOrNull()
         val actions = mutableListOf<View>()
         if (rules.hidden) {
-            actions += kit.iconButton(if (revealed) RoyalIcon.EYE_OFF else RoyalIcon.EYE, if (revealed) "پنهان کردن جمع" else "نمایش جمع", ButtonKind.SECONDARY, 42) {
+            actions += kit.iconButton(if (revealed) RoyalIcon.EYE_OFF else RoyalIcon.EYE, if (revealed) "پنهان کردن جمع" else "نمایش جمع", ButtonKind.SECONDARY, 46) {
                 if (revealed) {
                     revealed = false
                     host.refresh()
@@ -430,7 +430,7 @@ class HezarRoundScreen(host: MainActivity, private val session: GameSession, pri
                     addView(kit.text(side.name, TextStyle.LABEL_BOLD, Royal.goldLight, maxLines = 1))
                     addView(preview)
                 }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-                addView(kit.iconButton(RoyalIcon.CHART, "ماشین‌حساب کارت ${side.name}", ButtonKind.CHIP, 36) {
+                addView(kit.iconButton(RoyalIcon.CHART, "ماشین‌حساب کارت ${side.name}", ButtonKind.CHIP, 40) {
                     cardCalculator(side.name) { points ->
                         negative[i] = points < 0
                         values[i] = kotlin.math.abs(points).toString()
@@ -497,9 +497,9 @@ fun Screen.cardCalculator(name: String, onResult: (Int) -> Unit) {
             addView(kit.horizontal().apply {
                 layoutParams = kit.spaced(6)
                 addView(kit.weight(kit.text(label, TextStyle.LABEL, Royal.ivory)))
-                addView(kit.iconButton(RoyalIcon.PLUS, "افزایش", ButtonKind.CHIP, 34) { counts[i]++; count.text = kit.n(counts[i]); update() })
+                addView(kit.iconButton(RoyalIcon.PLUS, "افزایش", ButtonKind.CHIP, 38) { counts[i]++; count.text = kit.n(counts[i]); update() })
                 addView(count, LinearLayout.LayoutParams(kit.dp(40), ViewGroup.LayoutParams.WRAP_CONTENT))
-                addView(kit.iconButton(RoyalIcon.MINUS, "کاهش", ButtonKind.CHIP, 34) {
+                addView(kit.iconButton(RoyalIcon.MINUS, "کاهش", ButtonKind.CHIP, 38) {
                     if (counts[i] > 0) counts[i]--
                     count.text = kit.n(counts[i])
                     update()

@@ -672,7 +672,7 @@ class RoleSealView(context: Context, glyph: MafiaGlyph, base: Int) : View(contex
         val cx = width / 2f
         val cy = height / 2f - r * 0.04f
         Emblems.drawMedallion(canvas, cx, cy, r, if (hidden) 0xFF23367A.toInt() else base, paint)
-        Emblems.drawRelief(canvas, if (hidden) MafiaArt.glyph(MafiaGlyph.QUESTION) else MafiaArt.glyph(glyph), cx, cy, r, paint)
+        Emblems.drawRelief(canvas, if (hidden) MafiaArt.glyph(MafiaGlyph.QUESTION) else MafiaArt.glyph(glyph), cx, cy, r, paint, 1.32f)
         Emblems.drawGloss(canvas, cx, cy, r * 0.83f, paint)
         if (dead) {
             paint.style = Paint.Style.FILL

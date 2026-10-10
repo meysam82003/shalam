@@ -2,6 +2,7 @@ package com.meysam.divanemtiaz
 
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.DashPathEffect
 import android.graphics.LinearGradient
 import android.graphics.Paint
@@ -93,6 +94,7 @@ class LineChartView(
                     close()
                 }
                 paint.style = Paint.Style.FILL
+                paint.color = Color.BLACK
                 paint.shader = LinearGradient(0f, top, 0f, bottom, Royal.alpha(s.color, 0.35f), 0, Shader.TileMode.CLAMP)
                 canvas.drawPath(area, paint)
                 paint.shader = null

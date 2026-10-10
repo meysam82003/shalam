@@ -101,7 +101,7 @@ class SetupScreen(host: MainActivity, private val game: GameType) : Screen(host)
             }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
             if (sides.size > game.minSides) {
                 addView(kit.hgap(6))
-                addView(kit.iconButton(RoyalIcon.TRASH, "حذف بازیکن", ButtonKind.CHIP, 34) {
+                addView(kit.iconButton(RoyalIcon.TRASH, "حذف بازیکن", ButtonKind.CHIP, 38) {
                     sides.removeAt(index)
                     host.refresh()
                 })
@@ -144,7 +144,7 @@ class SetupScreen(host: MainActivity, private val game: GameType) : Screen(host)
             }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
             addView(kit.hgap(8))
             addView(kit.vertical(Gravity.CENTER).apply {
-                addView(kit.iconButton(RoyalIcon.USER, "انتخاب از فهرست", ButtonKind.CHIP, 40) {
+                addView(kit.iconButton(RoyalIcon.USER, "انتخاب از فهرست", ButtonKind.CHIP, 44) {
                     rosterPicker(game.isTeamGame) { entry ->
                         sides[index] = Side(entry.name, entry.avatar)
                         host.refresh()

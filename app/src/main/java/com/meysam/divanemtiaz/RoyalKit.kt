@@ -24,16 +24,16 @@ import kotlin.math.max
 import kotlin.math.min
 
 enum class TextStyle(val sp: Float, val bold: Boolean) {
-    DISPLAY(26f, true),
-    TITLE(19f, true),
-    HEADING(16f, true),
-    BODY(14f, false),
-    BODY_BOLD(14f, true),
-    LABEL(12.5f, false),
-    LABEL_BOLD(12.5f, true),
-    CAPTION(11f, false),
-    NUMBER_L(21f, true),
-    NUMBER_XL(27f, true)
+    DISPLAY(30f, true),
+    TITLE(19.5f, true),
+    HEADING(17f, true),
+    BODY(15f, false),
+    BODY_BOLD(15f, true),
+    LABEL(13.5f, false),
+    LABEL_BOLD(13.5f, true),
+    CAPTION(12f, false),
+    NUMBER_L(23f, true),
+    NUMBER_XL(29f, true)
 }
 
 data class DialogAction(val label: String, val kind: ButtonKind = ButtonKind.SECONDARY, val dismiss: Boolean = true, val onClick: () -> Unit = {})
@@ -43,15 +43,11 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
     val settings: AppSettings get() = settingsProvider()
     private val metrics get() = context.resources.displayMetrics
 
-    /** Interface scale: the «اندازهٔ نمایش» setting, slightly reduced on narrow phones. */
+    /** Interface scale: the «اندازهٔ نمایش» setting, reduced only on very narrow phones. */
     val scale: Float
         get() {
             val widthDp = metrics.widthPixels / metrics.density
-            val narrow = when {
-                widthDp < 340f -> 0.88f
-                widthDp < 380f -> 0.94f
-                else -> 1f
-            }
+            val narrow = if (widthDp < 340f) 0.92f else 1f
             return settings.general.uiScale.coerceIn(70, 140) / 100f * narrow
         }
 
@@ -148,7 +144,7 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
         label: String,
         kind: ButtonKind = ButtonKind.PRIMARY,
         icon: RoyalIcon? = null,
-        height: Int = 46,
+        height: Int = 50,
         onClick: () -> Unit
     ): LinearLayout = horizontal(Gravity.CENTER).apply {
         background = ButtonDrawable(density, kind)
@@ -157,7 +153,7 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
         isFocusable = true
         val color = ButtonDrawable.textColor(kind)
         if (icon != null) {
-            addView(icon(icon, color, 18))
+            addView(icon(icon, color, 20))
             addView(hgap(6))
         }
         addView(text(label, TextStyle.BODY_BOLD, color, Gravity.CENTER, 2))
@@ -171,7 +167,7 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
             layoutParams = LinearLayout.LayoutParams(dp(size), dp(size))
             isClickable = true
             contentDescription = description
-            addView(IconView(context, icon, ButtonDrawable.textColor(kind)), FrameLayout.LayoutParams(dp(size / 2), dp(size / 2), Gravity.CENTER).apply {
+            addView(IconView(context, icon, ButtonDrawable.textColor(kind)), FrameLayout.LayoutParams(dp(size * 6 / 11), dp(size * 6 / 11), Gravity.CENTER).apply {
                 bottomMargin = dp(1)
             })
             setOnClickListener { tap(it); onClick() }
@@ -180,8 +176,8 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
     fun chip(label: String, selected: Boolean, selectedKind: ButtonKind = ButtonKind.CHIP_SELECTED, onClick: () -> Unit): TextView =
         text(label, TextStyle.LABEL_BOLD, ButtonDrawable.textColor(if (selected) selectedKind else ButtonKind.CHIP), Gravity.CENTER, 2).apply {
             background = ButtonDrawable(density, if (selected) selectedKind else ButtonKind.CHIP, 12f)
-            minHeight = dp(40)
-            minWidth = dp(40)
+            minHeight = dp(44)
+            minWidth = dp(44)
             isClickable = true
             contentDescription = label
             setOnClickListener { tap(it); onClick() }
@@ -279,9 +275,9 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
             onChange(current)
         }
         val control = horizontal().apply {
-            addView(iconButton(RoyalIcon.PLUS, "افزایش $title", ButtonKind.CHIP, 34) { set(current + step) })
+            addView(iconButton(RoyalIcon.PLUS, "افزایش $title", ButtonKind.CHIP, 38) { set(current + step) })
             addView(label, LinearLayout.LayoutParams(dp(68), dp(36)))
-            addView(iconButton(RoyalIcon.MINUS, "کاهش $title", ButtonKind.CHIP, 34) { set(current - step) })
+            addView(iconButton(RoyalIcon.MINUS, "کاهش $title", ButtonKind.CHIP, 38) { set(current - step) })
         }
         label.setOnClickListener {
             numberPrompt(title, current, min < 0, "از ${n(min)} تا ${n(max)}") { set(it) }

@@ -7,17 +7,14 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 
-const val APP_VERSION_LABEL = "نسخهٔ ۴.۱.۰"
+const val APP_VERSION_LABEL = "نسخهٔ ۴.۲.۰"
 
 class SplashScreen(host: MainActivity) : Screen(host) {
     override fun build(): View = FrameLayout(host).apply {
-        addView(CrestView(host), FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(300), Gravity.TOP).apply {
-            topMargin = kit.dp(70)
-        })
         addView(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
-            addView(GameSealView(host, null), LinearLayout.LayoutParams(kit.dp(128), kit.dp(128)))
-            addView(kit.gap(18))
-            addView(kit.text("دیوان امتیاز", TextStyle.DISPLAY, Royal.goldLight, Gravity.CENTER))
+            addView(HeroCrestView(host), LinearLayout.LayoutParams(kit.dp(280), kit.dp(215)))
+            addView(kit.gap(6))
+            addView(kit.text("دیوان امتیاز", TextStyle.DISPLAY, Royal.goldLight, Gravity.CENTER).apply { textSize = kit.textSize(34f) })
             addView(kit.text("داور و دفتر امتیاز شاهانه", TextStyle.BODY, Royal.muted, Gravity.CENTER))
             addView(kit.gap(10))
             addView(kit.divider(), LinearLayout.LayoutParams(kit.dp(220), kit.dp(18)))
@@ -84,16 +81,14 @@ class HomeScreen(host: MainActivity) : Screen(host) {
 
     private fun hero(): View = FrameLayout(host).apply {
         layoutParams = kit.spaced(6)
-        addView(CrestView(host), FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(172)))
         addView(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
-            setPadding(0, kit.dp(18), 0, kit.dp(6))
-            addView(GameSealView(host, null), LinearLayout.LayoutParams(kit.dp(70), kit.dp(70)))
-            addView(kit.gap(4))
+            setPadding(0, kit.dp(14), 0, kit.dp(6))
+            addView(HeroCrestView(host), LinearLayout.LayoutParams(kit.dp(250), kit.dp(192)).apply { bottomMargin = -kit.dp(6) })
             addView(kit.text("دیوان امتیاز", TextStyle.DISPLAY, Royal.goldLight, Gravity.CENTER))
             addView(kit.text("داوری، دفتر امتیاز و تاریخچهٔ بازی‌ها", TextStyle.LABEL, Royal.muted, Gravity.CENTER))
-        }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(172)))
-        addView(kit.iconButton(RoyalIcon.SETTINGS, "تنظیمات", ButtonKind.SECONDARY, 38) { host.push(SettingsScreen(host)) },
-            FrameLayout.LayoutParams(kit.dp(38), kit.dp(38), Gravity.TOP or Gravity.LEFT).apply { topMargin = kit.dp(6) })
+        }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        addView(kit.iconButton(RoyalIcon.SETTINGS, "تنظیمات", ButtonKind.SECONDARY, 44) { host.push(SettingsScreen(host)) },
+            FrameLayout.LayoutParams(kit.dp(44), kit.dp(44), Gravity.TOP or Gravity.LEFT).apply { topMargin = kit.dp(6) })
     }
 
     private fun continueCard(session: GameSession): View {
@@ -101,7 +96,7 @@ class HomeScreen(host: MainActivity) : Screen(host) {
         return kit.panel(PanelStyle.SELECTED, 12).apply {
             layoutParams = kit.spaced(6).apply { topMargin = kit.dp(4) }
             addView(kit.horizontal().apply {
-                addView(GameSealView(host, session.game), LinearLayout.LayoutParams(kit.dp(42), kit.dp(42)))
+                addView(GameSealView(host, session.game), LinearLayout.LayoutParams(kit.dp(48), kit.dp(48)))
                 addView(kit.hgap(10))
                 addView(kit.vertical().apply {
                     addView(kit.text("ادامهٔ بازی ${session.game.title}", TextStyle.BODY_BOLD, Royal.turquoiseLight))
@@ -113,22 +108,22 @@ class HomeScreen(host: MainActivity) : Screen(host) {
                 }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             })
             addView(kit.gap(8))
-            addView(kit.button("ادامهٔ داوری", ButtonKind.SUCCESS, RoyalIcon.PLAY, 42) { host.openSession(session) })
+            addView(kit.button("ادامهٔ داوری", ButtonKind.SUCCESS, RoyalIcon.PLAY, 48) { host.openSession(session) })
         }
     }
 
     private fun gameCard(game: GameType): View = kit.horizontal().apply {
         background = PanelDrawable(kit.density, PanelStyle.RAISED, 18f)
-        setPadding(kit.dp(12), kit.dp(9), kit.dp(12), kit.dp(12))
-        addView(GameSealView(host, game), LinearLayout.LayoutParams(kit.dp(56), kit.dp(56)))
-        addView(kit.hgap(10))
+        setPadding(kit.dp(14), kit.dp(12), kit.dp(14), kit.dp(15))
+        addView(GameSealView(host, game), LinearLayout.LayoutParams(kit.dp(70), kit.dp(70)))
+        addView(kit.hgap(12))
         addView(kit.vertical().apply {
-            addView(kit.text(game.title, TextStyle.HEADING, Royal.goldLight))
+            addView(kit.text(game.title, TextStyle.TITLE, Royal.goldLight))
             addView(kit.text(game.subtitle, TextStyle.CAPTION, Royal.muted, maxLines = 2))
-            addView(kit.gap(3))
+            addView(kit.gap(4))
             addView(kit.badge(gameSummary(game), Royal.turquoise))
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        addView(kit.icon(RoyalIcon.NEXT, Royal.gold, 20))
+        addView(kit.icon(RoyalIcon.NEXT, Royal.gold, 24))
         isClickable = true
         contentDescription = "شروع ${game.title}"
         setOnClickListener { kit.tap(it); host.push(SetupScreen(host, game)) }
@@ -144,8 +139,8 @@ class HomeScreen(host: MainActivity) : Screen(host) {
     private fun tile(icon: RoyalIcon, title: String, caption: String, onClick: () -> Unit): View =
         kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
             background = PanelDrawable(kit.density, PanelStyle.NORMAL, 16f)
-            setPadding(kit.dp(6), kit.dp(9), kit.dp(6), kit.dp(11))
-            addView(kit.icon(icon, Royal.gold, 24))
+            setPadding(kit.dp(6), kit.dp(13), kit.dp(6), kit.dp(15))
+            addView(kit.icon(icon, Royal.gold, 30))
             addView(kit.gap(4))
             addView(kit.text(title, TextStyle.BODY_BOLD, Royal.ivory, Gravity.CENTER, 1))
             addView(kit.text(caption, TextStyle.CAPTION, Royal.muted, Gravity.CENTER, 2))

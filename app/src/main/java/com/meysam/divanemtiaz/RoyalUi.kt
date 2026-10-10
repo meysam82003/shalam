@@ -89,23 +89,41 @@ class BackdropDrawable(private val density: Float) : SimpleDrawable() {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private var tile: Bitmap? = null
 
+    private var cache: Bitmap? = null
+
+    /** The sky is rendered once per size; scrolling then only blits one bitmap instead of five full-screen gradients. */
     override fun draw(canvas: Canvas) {
         val b = bounds
         if (b.isEmpty) return
-        val w = b.width().toFloat()
-        val h = b.height().toFloat()
+        val cached = cache?.takeIf { it.width == b.width() && it.height == b.height() } ?: render(b.width(), b.height())
+        canvas.drawBitmap(cached, b.left.toFloat(), b.top.toFloat(), null)
+    }
+
+    private fun render(width: Int, height: Int): Bitmap {
+        cache?.recycle()
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val w = width.toFloat()
+        val h = height.toFloat()
+        val rect = RectF(0f, 0f, w, h)
+        paint.color = Color.BLACK
         paint.shader = LinearGradient(0f, 0f, 0f, h, intArrayOf(0xFF060D22.toInt(), 0xFF0A1734.toInt(), 0xFF0F2048.toInt()), floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
-        canvas.drawRect(b, paint)
+        canvas.drawRect(rect, paint)
+        paint.color = Color.BLACK
         paint.shader = BitmapShader(patternTile(), Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
-        paint.alpha = 255
-        canvas.drawRect(b, paint)
+        canvas.drawRect(rect, paint)
+        paint.color = Color.BLACK
         paint.shader = RadialGradient(w / 2f, -h * 0.06f, w * 0.9f, intArrayOf(Royal.alpha(0xFF3A63C8.toInt(), 0.45f), Royal.alpha(0xFF1D3B7C.toInt(), 0.18f), 0), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
-        canvas.drawRect(b, paint)
+        canvas.drawRect(rect, paint)
+        paint.color = Color.BLACK
         paint.shader = RadialGradient(w / 2f, h * 1.05f, w * 0.9f, intArrayOf(Royal.alpha(Royal.turquoise, 0.10f), 0), null, Shader.TileMode.CLAMP)
-        canvas.drawRect(b, paint)
+        canvas.drawRect(rect, paint)
+        paint.color = Color.BLACK
         paint.shader = RadialGradient(w / 2f, h * 0.45f, maxOf(w, h) * 0.75f, intArrayOf(0, 0, 0x88000000.toInt()), floatArrayOf(0f, 0.6f, 1f), Shader.TileMode.CLAMP)
-        canvas.drawRect(b, paint)
+        canvas.drawRect(rect, paint)
         paint.shader = null
+        cache = bitmap
+        return bitmap
     }
 
     private fun patternTile(): Bitmap {
@@ -328,6 +346,7 @@ class ProgressDrawable(private val density: Float, var fraction: Float, var fill
         val f = fraction.coerceIn(0f, 1f)
         if (f > 0f) {
             val right = b.left + b.width() * f
+            paint.color = Color.BLACK
             paint.shader = LinearGradient(b.left.toFloat(), 0f, right, 0f, Royal.mix(fill, 0xFF000000.toInt(), 0.25f), fill, Shader.TileMode.CLAMP)
             canvas.drawRoundRect(RectF(b.left.toFloat(), b.top.toFloat(), maxOf(right, b.left + b.height().toFloat()), b.bottom.toFloat()), r, r, paint)
             paint.shader = null

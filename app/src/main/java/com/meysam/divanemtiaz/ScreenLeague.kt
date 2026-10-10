@@ -131,7 +131,7 @@ class LeagueSetupScreen(host: MainActivity) : Screen(host) {
         }))
         if (teams.size > 2) {
             addView(kit.hgap(6))
-            addView(kit.iconButton(RoyalIcon.TRASH, "حذف تیم", ButtonKind.CHIP, 34) {
+            addView(kit.iconButton(RoyalIcon.TRASH, "حذف تیم", ButtonKind.CHIP, 38) {
                 teams.removeAt(i)
                 host.refresh()
             })
@@ -181,7 +181,7 @@ class LeagueScreen(host: MainActivity, private val leagueId: Long) : Screen(host
         return scaffold(
             title = league.name,
             subtitle = "${league.game.title} • ${formatTitle(league.format)} • ${kit.n(league.teams.size)} تیم",
-            actions = listOf(kit.iconButton(RoyalIcon.MENU, "گزینه‌های لیگ", ButtonKind.SECONDARY, 38) { menu(league) })
+            actions = listOf(kit.iconButton(RoyalIcon.MENU, "گزینه‌های لیگ", ButtonKind.SECONDARY, 44) { menu(league) })
         ) {
             if (champion != null) {
                 addView(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {

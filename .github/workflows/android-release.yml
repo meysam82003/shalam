@@ -37,9 +37,11 @@ jobs:
           if [ -n "$DIVAN_KEYSTORE_BASE64" ]; then
             echo "$DIVAN_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/divan-release.jks"
             echo "DIVAN_KEYSTORE_FILE=$RUNNER_TEMP/divan-release.jks" >> "$GITHUB_ENV"
+            echo "RELEASE_SIGNED=true" >> "$GITHUB_ENV"
             echo "Release key found; APK is signed with the fixed release key."
           else
-            echo "No DIVAN_KEYSTORE_BASE64 secret; APK is signed with the runner debug key."
+            echo "RELEASE_SIGNED=false" >> "$GITHUB_ENV"
+            echo "::warning::No DIVAN_KEYSTORE_BASE64 secret; APK is signed with the runner debug key and is NOT published as a release (Cafe Bazaar rejects debug-signed APKs)."
           fi
 
       - name: Test and build signed APK
@@ -66,8 +68,15 @@ jobs:
             Divan-Emtiaz-Web-v${{ env.VERSION }}.html
             SHA256SUMS.txt
 
+      - name: Verify release signature
+        if: env.RELEASE_SIGNED == 'true'
+        run: |
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          "$APKSIGNER" verify --print-certs "Divan-Emtiaz-v$VERSION.apk" | tee cert.txt
+          if grep -qi "CN=Android Debug" cert.txt; then echo "::error::APK is debug-signed"; exit 1; fi
+
       - name: Publish GitHub Release
-        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+        if: env.RELEASE_SIGNED == 'true' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.VERSION }}
@@ -79,6 +88,11 @@ jobs:
             دانلود:
             - اپ اندروید: فایل `Divan-Emtiaz-v${{ env.VERSION }}.apk` (روی نسخهٔ قبلی نصب می‌شود و داده‌ها حفظ می‌شوند)
             - نسخهٔ تحت وب: https://meysam82003.github.io/shalam/ یا فایل `Divan-Emtiaz-Web-v${{ env.VERSION }}.html` (بدون نصب، در هر مرورگری باز می‌شود)
+
+            تازه‌های نسخهٔ ۴.۲:
+            - رابط اپ هم‌اندازه و هم‌رنگ نسخهٔ وب: متن‌ها، دکمه‌ها و نشان‌ها بزرگ‌تر و پررنگ‌تر
+            - اسکرول روان: پس‌زمینه و نشان‌ها یک بار کشیده و ذخیره می‌شوند
+            - امضای انتشار ثابت، مناسب بارگذاری در کافه‌بازار
 
             تازه‌های نسخهٔ ۴.۱:
             - ماشین‌حساب هزارتایی: فقط تعداد نفرات و ورق‌ها را بدهید؛ برنامه خودش ورق هر نفر و پخش دور اول، دوم و سوم را تعیین می‌کند (مثلاً ۶/۴/۴)
