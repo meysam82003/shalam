@@ -7,6 +7,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import org.junit.Assert.*
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
@@ -21,6 +22,13 @@ import java.time.Duration
 @Config(sdk = [28], qualifiers = "w360dp-h800dp-xhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class UiRegressionTest {
+    @Before fun isolateRepositoryFromOtherTestCases() {
+        GameStore::class.java.getDeclaredField("instance").apply {
+            isAccessible = true
+            set(null, null)
+        }
+    }
+
     private fun descendants(v: View): List<View> = listOf(v) + if (v is ViewGroup)
         (0 until v.childCount).flatMap { descendants(v.getChildAt(it)) } else emptyList()
 
@@ -40,6 +48,7 @@ class UiRegressionTest {
         layout(a)
     }
     private fun capture(a: MainActivity, name: String) {
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(200))
         val v = layout(a)
         val b = Bitmap.createBitmap(v.width, v.height, Bitmap.Config.ARGB_8888)
         v.draw(Canvas(b))
@@ -83,6 +92,22 @@ class UiRegressionTest {
         assertEquals(GameEngine.totals(s), GameEngine.totals(stored))
         assertEquals(s.rounds, stored.rounds)
         capture(a, "shalam-board")
+
+        a.push(ShalamHandScreen(a, s, 0))
+        layout(a)
+        click(a, "حاکم اونا")
+        click(a, "۱۴۰")
+        click(a, "دل")
+        click(a, "مرحلهٔ بعد: امتیاز حریف")
+        click(a, "۵")
+        click(a, "ذخیرهٔ تغییرات")
+        assertEquals(1, s.rounds.size)
+        assertEquals(140, s.rounds.single().bid)
+        assertEquals(5, s.rounds.single().taken)
+        assertEquals(Suit.HEART, s.rounds.single().suit)
+        assertEquals(1, s.rounds.single().contractTeam)
+        assertEquals(rulesBefore, GameCodec.encodeRules(s.rules).toString())
+        assertEquals(s.rounds, a.repo.session(s.id)!!.rounds)
         c.pause().stop().destroy()
     }
 
