@@ -1,13 +1,19 @@
 package com.meysam.divanemtiaz
 
 import android.graphics.Bitmap
-import android.test.ActivityInstrumentationTestCase2
+import android.content.Intent
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import org.junit.Assert.*
+import org.junit.Test
+import org.junit.runner.RunWith
 import android.view.View
 import android.view.ViewGroup
 import java.io.File
 
-@Suppress("DEPRECATION")
-class NativeSmokeTest : ActivityInstrumentationTestCase2<MainActivity>(MainActivity::class.java) {
+@RunWith(AndroidJUnit4::class)
+class NativeSmokeTest {
+    private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private fun findAction(v: View, label: String): View? {
         if (v.isClickable && v.contentDescription?.toString() == label) return v
         if (v is ViewGroup) for (i in 0 until v.childCount) {
@@ -26,8 +32,11 @@ class NativeSmokeTest : ActivityInstrumentationTestCase2<MainActivity>(MainActiv
         bitmap.recycle()
     }
 
-    fun testNativeNavigationAndGameCreation() {
-        val a = activity
+    @Test fun nativeNavigationAndGameCreation() {
+        val intent = Intent(instrumentation.targetContext, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        val a = instrumentation.startActivitySync(intent) as MainActivity
         Thread.sleep(500)
         instrumentation.waitForIdleSync()
         assertTrue(a.current is HomeScreen)
@@ -52,5 +61,6 @@ class NativeSmokeTest : ActivityInstrumentationTestCase2<MainActivity>(MainActiv
         instrumentation.runOnMainSync { a.resetTo(HomeScreen(a), SettingsScreen(a)) }
         capture(a, "settings")
         assertEquals(originalSettings, GameCodec.encodeSettings(a.settings).toString())
+        instrumentation.runOnMainSync { a.finish() }
     }
 }
