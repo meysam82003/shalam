@@ -209,4 +209,36 @@ class MafiaScenarioTest {
         MafiaFlow.applyCard(g, MafiaCardState(MafiaLastCard.MIRROR).apply { this.holder = holder.id }, listOf(target.id), null)
         assertEquals(before, holder.role)
     }
+
+    @Test fun secretArmyRules() {
+        val g = MafiaGame(5L)
+        val roles = listOf(MafiaRole.CURTIS, MafiaRole.PARTISAN, MafiaRole.PARTISAN, MafiaRole.PASCAL, MafiaRole.PILOT,
+            MafiaRole.KESSLER, MafiaRole.REINHART, MafiaRole.GESTAPO, MafiaRole.CUSTOMER, MafiaRole.CUSTOMER)
+        roles.forEachIndexed { i, r -> g.players += MafiaPlayer(i + 1, "p${i + 1}", 0).apply { role = r }; g.roleCounts[r] = (g.roleCounts[r] ?: 0) + 1 }
+        MafiaScenarios.applyTo(g, s("secret_army"))
+        MafiaFlow.start(g, MafiaSettings(), Random(1))
+        SecretArmy.sync(g)
+        fun p(r: MafiaRole, n: Int = 0) = g.holders(r)[n]
+        assertEquals(1, SecretArmy.narratorGuns(g))
+        assertEquals(6, g.players.count { SecretArmy.armed(it) })
+        // Gestapo cannot arm the pilot; rescue can arm a customer, who joins the rescue.
+        assertEquals(SecretArmy.GunAnswer.NOT_ALLOWED, SecretArmy.requestGun(g, p(MafiaRole.GESTAPO), p(MafiaRole.PILOT)))
+        assertEquals(SecretArmy.GunAnswer.NOT_ALLOWED, SecretArmy.requestGun(g, p(MafiaRole.CURTIS), p(MafiaRole.PASCAL)))
+        assertEquals(SecretArmy.GunAnswer.APPROVED, SecretArmy.requestGun(g, p(MafiaRole.CURTIS), p(MafiaRole.CUSTOMER)))
+        assertEquals(SecretArmy.Faction.RESCUE, SecretArmy.faction(p(MafiaRole.CUSTOMER)))
+        assertEquals(SecretArmy.GunAnswer.NO_GUN, SecretArmy.requestGun(g, p(MafiaRole.KESSLER), p(MafiaRole.CUSTOMER, 1)))
+        // Vest on the first shot of Kessler; one shot per player.
+        assertEquals(SecretArmy.ShotState.VEST, SecretArmy.shoot(g, p(MafiaRole.PARTISAN), p(MafiaRole.KESSLER)))
+        assertNotNull(SecretArmy.canShoot(g, p(MafiaRole.PARTISAN)))
+        // The pilot survives his first vote.
+        MafiaFlow.exit(g, p(MafiaRole.PILOT).id, MafiaDeath.VOTE)
+        SecretArmy.sync(g)
+        assertTrue(p(MafiaRole.PILOT).alive)
+        // Gun of an armed player who leaves goes back to the narrator.
+        MafiaFlow.exit(g, p(MafiaRole.GESTAPO).id, MafiaDeath.VOTE)
+        SecretArmy.sync(g)
+        assertEquals(1, SecretArmy.narratorGuns(g))
+        assertFalse(SecretArmy.reinhartGuess(g, p(MafiaRole.CURTIS), MafiaRole.PILOT))
+        assertNotNull(SecretArmy.reinhartReady(g))
+    }
 }

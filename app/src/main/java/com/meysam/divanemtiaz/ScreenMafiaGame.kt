@@ -64,6 +64,7 @@ abstract class MafiaScreen(host: MainActivity, val gameId: Long) : Screen(host) 
 class MafiaGameScreen(host: MainActivity, gameId: Long) : MafiaScreen(host, gameId) {
     override fun build(): View {
         if (!load()) return missing()
+        if (SecretArmy.sync(g).isNotEmpty()) store()
         if (g.finished) return finished()
         return if (g.isDay) day() else night()
     }
@@ -200,6 +201,7 @@ class MafiaGameScreen(host: MainActivity, gameId: Long) : MafiaScreen(host, game
             addView(kit.text(it, TextStyle.LABEL, Royal.ivory), kit.spaced(8))
         }
         addView(kit.section("مراحل روز", RoyalIcon.FLAG))
+        if (SecretArmy.active(g)) addView(step("میز ارتش سری", null, false, true, "اسلحه، گفتگوی خصوصی، شلیک، راینهارت و استعلام") { host.push(MafiaSecretArmyScreen(host, gameId)) })
         val d = g.day
         val interrogation = !g.extra["interrogate"].isNullOrBlank()
         if (interrogation) addView(step("بازپرسی", MafiaCues.DEFENCE, "interrogation" in d.done, true, MafiaDay.interrogated(g).joinToString("، ") { it.name }) {
