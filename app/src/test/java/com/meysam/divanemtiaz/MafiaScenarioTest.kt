@@ -148,4 +148,46 @@ class MafiaScenarioTest {
         assertTrue(s("molagh").names.isEmpty())
         MafiaScenarios.builtin.forEach { assertNotNull(it.id, MafiaScenarios.status[it.id]) }
     }
+
+    private fun table(n: Int): MafiaGame {
+        val g = MafiaGame(1L)
+        val roles = listOf(MafiaRole.GODFATHER, MafiaRole.GOOD_MAN, MafiaRole.MATADOR, MafiaRole.NOSTRADAMUS, MafiaRole.DOCTOR, MafiaRole.PROFESSIONAL, MafiaRole.CITIZEN, MafiaRole.CITIZEN)
+        (0 until n).forEach { i -> val r = roles[i % roles.size]; g.players += MafiaPlayer(i + 1, "p${i + 1}", 0).apply { role = r }; g.roleCounts[r] = (g.roleCounts[r] ?: 0) + 1 }
+        MafiaFlow.start(g, MafiaSettings(), Random(1))
+        return g
+    }
+
+    @Test fun introDayComesFirstAndStarterMovesTwoSeatsEachDay() {
+        val g = table(8)
+        assertEquals("pending", g.extra["introDay"])
+        assertEquals(1, MafiaManual.speakingOrder(g).first().id)
+        g.night = 1; g.isDay = true
+        assertEquals(3, MafiaManual.speakingOrder(g).first().id)
+        g.night = 2
+        assertEquals(5, MafiaManual.speakingOrder(g).first().id)
+        g.player(7)!!.alive = false
+        g.night = 3
+        assertEquals(8, MafiaManual.speakingOrder(g).first().id)
+        // Narrator's choice today; the next day continues two seats on from it.
+        MafiaManual.setStarter(g, 2)
+        assertEquals(2, MafiaManual.speakingOrder(g).first().id)
+        g.night = 4
+        assertEquals(4, MafiaManual.speakingOrder(g).first().id)
+        MafiaManual.move(g, 4, -1)
+        assertEquals(4, MafiaManual.speakingOrder(g).first().id)
+    }
+
+    @Test fun nostradamusWakesFirstPicksThreeAndTwoMafiaForceTheMafiaSide() {
+        val g = table(8)
+        val jobs = MafiaNight.jobs(g)
+        assertEquals(MafiaRole.NOSTRADAMUS, jobs.first().role)
+        val job = jobs.first()
+        assertEquals(3, job.modes[0].min); assertEquals(3, job.modes[0].max)
+        fun id(r: MafiaRole) = g.holders(r).first().id
+        // Godfather counts as a citizen: Godfather + Saul + Leon = one mafia, side is free.
+        assertFalse(MafiaNight.nostradamusForced(g, listOf(id(MafiaRole.GODFATHER), id(MafiaRole.GOOD_MAN), id(MafiaRole.PROFESSIONAL))))
+        assertTrue(MafiaNight.nostradamusForced(g, listOf(id(MafiaRole.MATADOR), id(MafiaRole.GOOD_MAN), id(MafiaRole.PROFESSIONAL))))
+        val r = MafiaNight.perform(g, job, job.modes[0], listOf(id(MafiaRole.MATADOR), id(MafiaRole.GOOD_MAN), id(MafiaRole.DOCTOR)), null, 0, "مافیا")
+        assertTrue(r.contains("باید با مافیا"))
+    }
 }

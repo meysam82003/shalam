@@ -7,8 +7,13 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import kotlin.random.Random
 
-/** «صحبت»: each alive player in seat order with his own timer and an optional challenger. */
-class MafiaSpeakingScreen(host: MainActivity, gameId: Long) : MafiaScreen(host, gameId) {
+/**
+ * «صحبت»: each alive player in seat order with his own timer and an optional challenger. [intro] is the intro day
+ * (one round, no challenge). Seats and the starter are arranged right here («ترتیب نشستن»).
+ */
+class MafiaSpeakingScreen(host: MainActivity, gameId: Long, private val intro: Boolean = false) : MafiaScreen(host, gameId) {
+    private var seats = false
+    private var seatsChanged = false
     private val timers = ArrayList<MafiaTimer>()
     private val challengers = HashMap<Int, Int>()
     private var cuePlayed = false
@@ -26,17 +31,19 @@ class MafiaSpeakingScreen(host: MainActivity, gameId: Long) : MafiaScreen(host, 
         timers.forEach { it.stop() }
         timers.clear()
         val s = mafiaSettings
-        return scaffold("صحبت", "زمان صحبت ${kit.n(s.speakTime)}" + if (g.extra["noChallenge"] == "1") " • بدون چالش" else " • چالش ${kit.n(s.challengeTime)} ثانیه",
+        val noChallenge = intro || g.extra["noChallenge"] == "1"
+        if (seats) return seatsPage()
+        return scaffold(if (intro) "روز معارفه" else "صحبت", "زمان صحبت ${kit.n(s.speakTime)}" + if (noChallenge) " • بدون چالش" else " • چالش ${kit.n(s.challengeTime)} ثانیه",
             actions = listOf(
-                kit.iconButton(RoyalIcon.SWAP, "ترتیب نشستن", ButtonKind.SECONDARY, 44) { host.push(MafiaSeatingScreen(host, gameId)) },
+                kit.iconButton(RoyalIcon.SWAP, "ترتیب نشستن", ButtonKind.SECONDARY, 44) { timers.forEach { it.stop() }; seats = true; host.refresh() },
                 kit.iconButton(RoyalIcon.UNDO, "بازنشانی", ButtonKind.SECONDARY, 44) { challengers.clear(); host.refresh() }
             ),
-            bottom = kit.button("پایان", ButtonKind.PRIMARY, RoyalIcon.CHECK, 52) { finish() }) {
-            addView(narration("صحبت‌ها به ترتیب نشستن؛ بازیکن اول سر صحبت است.", MafiaCues.SPEAKING, PanelStyle.NORMAL))
+            bottom = kit.button(if (intro) "پایان روز معارفه" else "پایان", ButtonKind.PRIMARY, RoyalIcon.CHECK, 52) { finish() }) {
+            addView(narration(if (intro) "روز معارفه: هر بازیکن یک دور خودش را معرفی می‌کند؛ روز معارفه چالش ندارد." else "صحبت‌ها به ترتیب نشستن؛ بازیکن اول سر صحبت است.", MafiaCues.SPEAKING, PanelStyle.NORMAL))
             MafiaManual.speakingOrder(g).forEachIndexed { i, p ->
                 val challenger = challengers[p.id]?.let { g.player(it) }
                 // Scenarios without challenge (e.g. اسکام) hide the challenge row.
-                val extra = if (g.extra["noChallenge"] == "1") null else kit.horizontal().apply {
+                val extra = if (noChallenge) null else kit.horizontal().apply {
                     if (challenger == null) {
                         addView(kit.chip("چالش به …", false) { pickChallenger(p) }.apply { setPadding(kit.dp(12), kit.dp(4), kit.dp(12), kit.dp(6)) })
                     } else {
@@ -66,8 +73,48 @@ class MafiaSpeakingScreen(host: MainActivity, gameId: Long) : MafiaScreen(host, 
         }
     }
 
+    /** Seat order and starter, arranged in place; the starter then moves two seats on after every night. */
+    private fun seatsPage(): View {
+        val starter = MafiaManual.speakingOrder(g).firstOrNull()?.id
+        return scaffold("ترتیب نشستن", "به ترتیبی که بازیکنان نشسته‌اند بچینید",
+            bottom = kit.button("تایید ترتیب", ButtonKind.PRIMARY, RoyalIcon.CHECK, 52) {
+                if (seatsChanged) { MafiaManual.seatLog(g); store() }
+                seats = false; seatsChanged = false; host.refresh()
+            }) {
+            addView(kit.text("با فلش‌ها جای هر نفر را عوض کنید و با «سر صحبت» شروع‌کنندهٔ امروز را مشخص کنید. از روز بعد، سر صحبت خودکار دو نفر جلوتر می‌رود (اگر بیرون باشد نفر بعدی).", TextStyle.LABEL, Royal.muted), kit.spaced(8))
+            g.players.forEachIndexed { i, p ->
+                addView(kit.horizontal().apply {
+                    background = PanelDrawable(kit.density, if (p.id == starter) PanelStyle.SELECTED else if (p.alive) PanelStyle.FLAT else PanelStyle.GHOST, 14f)
+                    setPadding(kit.dp(8), kit.dp(6), kit.dp(8), kit.dp(8))
+                    layoutParams = kit.spaced(5)
+                    addView(kit.badge(kit.n(i + 1), Royal.gold, true))
+                    addView(kit.hgap(6))
+                    addView(kit.avatar(p.avatar, 38))
+                    addView(kit.hgap(6))
+                    addView(kit.vertical().apply {
+                        addView(kit.text(p.name, TextStyle.BODY_BOLD, if (p.alive) Royal.ivory else Royal.dim, maxLines = 1))
+                        addView(kit.text(if (!p.alive) MafiaDeath.title(p.deathType) else if (p.id == starter) "سر صحبت" else "در بازی", TextStyle.CAPTION, if (p.id == starter) Royal.turquoiseLight else Royal.muted, maxLines = 1))
+                    }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                    if (p.alive && p.id != starter) addView(kit.chip("سر صحبت", false) { MafiaManual.setStarter(g, p.id); seatsChanged = true; store(); host.refresh() }.apply { setPadding(kit.dp(8), kit.dp(4), kit.dp(8), kit.dp(6)) })
+                    addView(kit.hgap(4))
+                    addView(kit.iconButton(RoyalIcon.NEXT, "بالاتر ${p.name}", ButtonKind.CHIP, 36) { MafiaManual.move(g, p.id, -1); seatsChanged = true; store(); host.refresh() }.apply { rotation = 90f })
+                    addView(kit.hgap(4))
+                    addView(kit.iconButton(RoyalIcon.NEXT, "پایین‌تر ${p.name}", ButtonKind.CHIP, 36) { MafiaManual.move(g, p.id, 1); seatsChanged = true; store(); host.refresh() }.apply { rotation = -90f })
+                })
+            }
+        }
+    }
+
     private fun finish() {
         timers.forEach { it.stop() }
+        if (intro) {
+            g.extra["introDay"] = "done"
+            g.log += MafiaLog("روز معارفه", "روز معارفه انجام شد؛ شب معارفه آغاز شد")
+            store()
+            playCue(MafiaCues.NIGHT_START)
+            host.pop()
+            return
+        }
         val fire = MafiaDay.fireback(g)
         if (fire.isNotEmpty()) {
             kit.dialog("تفنگ جنگی", "بازیکن از تفنگ جنگی خود استفاده نکرده است\n" + fire.joinToString("، ") { it.name }, null, listOf(

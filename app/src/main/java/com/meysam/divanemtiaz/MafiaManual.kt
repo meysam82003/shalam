@@ -10,21 +10,42 @@ object MafiaManual {
     // ------------------------------------------------------------------ seating
 
     /** Alive players in seat order, starting from the chosen first speaker («سر صحبت»). */
-    fun speakingOrder(g: MafiaGame): List<MafiaPlayer> {
-        val alive = g.alive
-        val start = g.extra["starter"]?.toIntOrNull()?.let { id -> alive.indexOfFirst { it.id == id } } ?: -1
-        return if (start <= 0) alive else alive.drop(start) + alive.take(start)
+    /**
+     * Seat (index in table order) that opens today's talk. The intro day starts at the first seat; after every
+     * night it moves two seats on (1 → 3 → 5 …), counted from the narrator's last choice.
+     */
+    fun starterSeat(g: MafiaGame): Int {
+        val n = g.players.size
+        if (n == 0) return 0
+        val base = g.extra["starterBase"]?.split("@")
+        val seat = base?.getOrNull(0)?.toIntOrNull() ?: 0
+        val night = base?.getOrNull(1)?.toIntOrNull() ?: 0
+        return Math.floorMod(seat + 2 * (g.night - night), n)
     }
 
-    fun setStarter(g: MafiaGame, id: Int) { g.extra["starter"] = id.toString() }
+    /** Alive players in seat order from today's starter; an absent starter passes to the next seat. */
+    fun speakingOrder(g: MafiaGame): List<MafiaPlayer> {
+        val seats = g.players
+        if (seats.isEmpty()) return emptyList()
+        val start = starterSeat(g)
+        return (seats.drop(start) + seats.take(start)).filter { it.alive }
+    }
+
+    fun setStarter(g: MafiaGame, id: Int) {
+        val i = g.players.indexOfFirst { it.id == id }
+        if (i >= 0) g.extra["starterBase"] = "$i@${g.night}"
+    }
 
     /** Moves a player one seat up (−1) or down (+1) in the whole table order. */
     fun move(g: MafiaGame, id: Int, delta: Int) {
         val i = g.players.indexOfFirst { it.id == id }
         val j = i + delta
         if (i < 0 || j !in g.players.indices) return
+        val starter = speakingOrder(g).firstOrNull()?.id
         val p = g.players.removeAt(i)
         g.players.add(j, p)
+        // Today's starter stays the same person after the seats change.
+        starter?.let { setStarter(g, it) }
     }
 
     fun seatLog(g: MafiaGame) = log(g, "ترتیب نشستن: " + g.players.joinToString("، ") { it.name })

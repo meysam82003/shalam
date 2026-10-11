@@ -77,9 +77,11 @@ object MafiaNight {
             pendingCard(g, c)?.let { st -> out += cardJob(g, st) }
         }
         if (g.night == 0) {
+            // Nostradamus wakes first, before the intro night.
+            if (g.inGame(MafiaRole.NOSTRADAMUS)) roleJob(g, MafiaRole.NOSTRADAMUS)?.let { out += it }
             out += NightJob(INTRO, "معارفه", null, null, MafiaGlyph.MASK, "شب معارفه: نقش‌ها خود را به راوی معرفی می‌کنند", listOf(JobMode("", TargetPool.NONE, 0, 0)), emptyList())
             introNightRoles.forEach { r ->
-                if (!g.inGame(r)) return@forEach
+                if (!g.inGame(r) || r == MafiaRole.NOSTRADAMUS) return@forEach
                 if (r == MafiaRole.MASON && g.optionInt(r, "اجبار به انتخاب در شب معارفه", 1) == 0) return@forEach
                 roleJob(g, r)?.let { out += it }
             }
@@ -180,7 +182,7 @@ object MafiaNight {
             MafiaRole.INVESTIGATOR, MafiaRole.FRAUD, MafiaRole.YAKUZA, MafiaRole.WITCHER, MafiaRole.MATADOR, MafiaRole.ILLUSIONIST ->
                 listOf(JobMode("", TargetPool.NON_MAFIA, 1, 1))
             MafiaRole.CORONA -> if (n == 0) listOf(JobMode("", TargetPool.ALIVE_OTHERS, 1, g.optionInt(r, "انتخاب شب معارفه", 1).coerceAtLeast(1))) else return null
-            MafiaRole.NOSTRADAMUS -> if (n == 0) listOf(JobMode("", TargetPool.ALIVE_OTHERS, 1, g.optionInt(r, "تعداد انتخاب", 3).coerceIn(1, (g.alive.size - 1).coerceAtLeast(1)))) else return null
+            MafiaRole.NOSTRADAMUS -> if (n == 0) g.optionInt(r, "تعداد انتخاب", 3).coerceIn(1, (g.alive.size - 1).coerceAtLeast(1)).let { k -> listOf(JobMode("", TargetPool.ALIVE_OTHERS, k, k)) } else return null
             MafiaRole.CONSTANTINE -> listOf(JobMode("", TargetPool.OUT, 1, 1))
             MafiaRole.WRECKER -> listOf(JobMode("", TargetPool.ALIVE_OTHERS, 1, 2))
             MafiaRole.SHERLOCK_HOLMES -> listOf(JobMode("", TargetPool.ALIVE_OTHERS, 1, 1, guessRole = true))
@@ -267,6 +269,13 @@ object MafiaNight {
             else -> false
         }
     }
+
+    /** Mafia among Nostradamus's picks; the Godfather counts as a citizen here. */
+    fun nostradamusCount(g: MafiaGame, targets: List<Int>): Int =
+        targets.mapNotNull { g.player(it) }.count { it.side == MafiaSide.MAFIA && it.role != MafiaRole.GODFATHER }
+
+    /** Two or more mafia among the picks: Nostradamus must play with the mafia. */
+    fun nostradamusForced(g: MafiaGame, targets: List<Int>): Boolean = nostradamusCount(g, targets) >= 2
 
     // ------------------------------------------------------------------ blocking
 
@@ -416,8 +425,9 @@ object MafiaNight {
                 else -> "نقش: ${t.role?.faName}\n" + actionOf(g, t)
             }
             MafiaRole.NOSTRADAMUS -> {
-                val count = targets.mapNotNull { g.player(it) }.count { it.side == MafiaSide.MAFIA && it.role != MafiaRole.GODFATHER }
-                "تعداد مافیا های انتخابی ${PersianText.digits(count)} نفر است\nنوستراداموس با شهر بازی میکند یا با مافیا"
+                val count = nostradamusCount(g, targets)
+                "تعداد مافیا های انتخابی ${PersianText.digits(count)} نفر است\n" +
+                    if (count >= 2) "نوستراداموس باید با مافیا بازی کند" else "نوستراداموس می‌تواند با شهر یا با مافیا بازی کند"
             }
             MafiaRole.SABA -> t?.let { "صبا نقش ${it.name} را گرفت: ${it.role?.faName}" } ?: ""
             MafiaRole.CAST_AWAY -> if (t != null && t.side == MafiaSide.MAFIA && t.role != MafiaRole.THIEF) "شخص انتخابی مافیا است و دور افتاده با مافیا بیدار خواهد شد" else "استعلام دور افتاده نادرست است"

@@ -70,7 +70,7 @@ class MafiaGameScreen(host: MainActivity, gameId: Long) : MafiaScreen(host, game
 
     override fun onShow() {
         if (mafiaSettings.keepScreenOn) host.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        if (ready && !g.isDay && !g.finished && !host.audio().musicPlaying && mafiaSettings.nightMusic.isSet) startNightMusic()
+        if (ready && !g.isDay && !g.finished && !introDayPending() && !host.audio().musicPlaying && mafiaSettings.nightMusic.isSet) startNightMusic()
     }
 
     override fun onHide() {
@@ -109,7 +109,23 @@ class MafiaGameScreen(host: MainActivity, gameId: Long) : MafiaScreen(host, game
 
     // ------------------------------------------------------------------ night
 
-    private fun night(): View = scaffold("شب : ${MafiaText.ordinal(g.night)}", counts(), actions = listOf(toolsButton(), menuButton()),
+    /** Intro day before the intro night: one round of talk, no challenge. */
+    private fun introDayPending(): Boolean = g.night == 0 && !g.isDay && g.extra["introDay"] == "pending" && g.records.isEmpty()
+
+    private fun introDay(): View = scaffold("روز معارفه", counts(), actions = listOf(toolsButton(), menuButton()),
+        bottom = kit.button("شروع شب معارفه", ButtonKind.PRIMARY, RoyalIcon.NEXT, 52) {
+            kit.confirm("شب معارفه", "روز معارفه تمام شود و شب معارفه شروع شود؟", "شب می‌شود") {
+                g.extra["introDay"] = "done"
+                g.log += MafiaLog("روز معارفه", "راوی روز معارفه را به پایان رساند")
+                store(); playCue(MafiaCues.NIGHT_START); host.refresh()
+            }
+        }) {
+        addView(header(MafiaGlyph.CROWN, "روز معارفه", "هر بازیکن یک دور خودش را معرفی می‌کند؛ روز معارفه چالش ندارد. بعد از آن شب معارفه شروع می‌شود.", listOf(MafiaCues.DAY_START)))
+        addView(kit.button("صحبت روز معارفه", ButtonKind.SECONDARY, RoyalIcon.TIMER, 50) { host.push(MafiaSpeakingScreen(host, gameId, intro = true)) }, kit.spaced(8))
+        addView(kit.text("ترتیب نشستن و سر صحبت را در صفحهٔ صحبت با دکمهٔ ⇄ تنظیم کنید.", TextStyle.LABEL, Royal.muted, Gravity.CENTER))
+    }
+
+    private fun night(): View = if (introDayPending()) introDay() else scaffold("شب : ${MafiaText.ordinal(g.night)}", counts(), actions = listOf(toolsButton(), menuButton()),
         bottom = kit.button(if (g.night == 0) "پایان شب معارفه" else "پایان شب", ButtonKind.PRIMARY, RoyalIcon.NEXT, 52) { endNight() }) {
         addView(header(MafiaGlyph.MOON, if (g.night == 0) "شب معارفه" else "شب می‌شود", "نقش‌ها را به ترتیب بیدار کنید؛ ترتیب پیشنهادی از راست به چپ است.",
             listOf(MafiaCues.NIGHT_START, MafiaCues.ALL_SLEEP)))
@@ -147,7 +163,12 @@ class MafiaGameScreen(host: MainActivity, gameId: Long) : MafiaScreen(host, game
             contentDescription = job.title
             setOnClickListener {
                 kit.tap(it)
-                if (job.key == MafiaNight.INTRO) host.push(MafiaIntroScreen(host, gameId)) else host.push(MafiaJobScreen(host, gameId, job.key))
+                val nostraPending = job.key == MafiaNight.INTRO && MafiaNight.jobs(g).any { it.role == MafiaRole.NOSTRADAMUS && it.key !in g.records }
+                when {
+                    nostraPending -> kit.confirm("نوستراداموس", "ابتدا نوستراداموس بیدار می‌شود و بعد شب معارفه شروع می‌شود.\nبه تشخیص راوی معارفه الان شروع شود؟", "شروع معارفه") { host.push(MafiaIntroScreen(host, gameId)) }
+                    job.key == MafiaNight.INTRO -> host.push(MafiaIntroScreen(host, gameId))
+                    else -> host.push(MafiaJobScreen(host, gameId, job.key))
+                }
             }
         }
     }
@@ -480,6 +501,7 @@ class MafiaJobScreen(host: MainActivity, gameId: Long, private val key: String) 
     private var guess: MafiaRole? = null
     private var number = 0
     private var word = ""
+    private var nostraPicked = false
     private val types = HashMap<Int, String>()
     private var wakePlayed = false
     /** The narrator chose to run a blocked job anyway. */
@@ -579,7 +601,7 @@ class MafiaJobScreen(host: MainActivity, gameId: Long, private val key: String) 
             }
             if (mode.pool != TargetPool.NONE) {
                 val candidates = MafiaNight.candidates(g, job, mode)
-                addView(kit.section(if (mode.max > 1) "انتخاب ${kit.n(mode.min)} تا ${kit.n(mode.max)} نفر" else "انتخاب یک نفر", RoyalIcon.USER))
+                addView(kit.section(when { mode.max > 1 && mode.min == mode.max -> "انتخاب ${kit.n(mode.max)} نفر"; mode.max > 1 -> "انتخاب ${kit.n(mode.min)} تا ${kit.n(mode.max)} نفر"; else -> "انتخاب یک نفر" }, RoyalIcon.USER))
                 if (candidates.isEmpty()) addView(kit.text("بازیکنی برای انتخاب نیست", TextStyle.LABEL, Royal.muted, Gravity.CENTER))
                 addView(kit.grid(3, candidates.map { p ->
                     val i = chosen.indexOf(p.id)
@@ -616,9 +638,17 @@ class MafiaJobScreen(host: MainActivity, gameId: Long, private val key: String) 
                 }, kit.spaced(8))
             }
             if (job.role == MafiaRole.NOSTRADAMUS) {
-                addView(kit.choiceRow("نوستراداموس با شهر بازی میکند یا با مافیا", null, listOf(0 to "شهر", 1 to "مافیا"), if (word == "مافیا") 1 else if (word == "شهر") 0 else -1) { i ->
-                    word = if (i == 0) "شهر" else "مافیا"
-                })
+                val count = MafiaNight.nostradamusCount(g, chosen.toList())
+                if (chosen.size >= mode.min && count >= 2) {
+                    word = "مافیا"
+                    addView(narration("${kit.n(count)} مافیا در انتخاب‌هاست (پدرخوانده شهروند حساب می‌شود)\nنوستراداموس باید با مافیا بازی کند", null, PanelStyle.SELECTED))
+                } else {
+                    if (word == "مافیا" && chosen.size >= mode.min && count < 2 && !nostraPicked) word = ""
+                    addView(kit.choiceRow("نوستراداموس با شهر بازی میکند یا با مافیا", if (chosen.size >= mode.min) "${kit.n(count)} مافیا در انتخاب‌ها؛ انتخاب ساید آزاد است" else null,
+                        listOf(0 to "شهر", 1 to "مافیا"), if (word == "مافیا") 1 else if (word == "شهر") 0 else -1) { i ->
+                        word = if (i == 0) "شهر" else "مافیا"; nostraPicked = true
+                    })
+                }
             }
         }
     }
@@ -634,6 +664,7 @@ class MafiaJobScreen(host: MainActivity, gameId: Long, private val key: String) 
         if (mode.pool != TargetPool.NONE && chosen.size < mode.min) { kit.toast("دست‌کم ${kit.n(mode.min)} نفر را انتخاب کنید"); return }
         if (mode.guessRole && guess == null) { kit.toast("نقش را برای حدس انتخاب کنید"); return }
         if (mode.number != null && number !in mode.number) { kit.toast("عدد را انتخاب کنید"); return }
+        if (job.role == MafiaRole.NOSTRADAMUS && MafiaNight.nostradamusForced(g, chosen.toList())) word = "مافیا"
         if (job.role == MafiaRole.NOSTRADAMUS && word.isBlank()) { kit.toast("سمت نوستراداموس را انتخاب کنید"); return }
         val text = if (mode.typed.isNotEmpty()) chosen.joinToString(",") { types[it] ?: mode.typed.first() } else word.trim()
         val result = MafiaNight.perform(g, job, mode, chosen.toList(), guess, number, text)
