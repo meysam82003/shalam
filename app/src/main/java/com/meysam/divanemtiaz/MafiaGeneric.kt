@@ -93,7 +93,7 @@ object MafiaGeneric {
     }
 
     private fun convertible(t: MafiaPlayer): Boolean =
-        (t.role == MafiaRole.CITIZEN || t.role == MafiaRole.SUSPECT || t.role == MafiaRole.ROYALIST) && !t.has("chaplin") && !t.has("smith")
+        (t.role == MafiaRole.CITIZEN || t.role == MafiaRole.SUSPECT || t.role == MafiaRole.ROYALIST || (t.role == MafiaRole.ARMORED && t.armor <= 0)) && !t.has("chaplin") && !t.has("smith")
 
     /** How a role looks to inquiries: its fixed look when set, or null for the normal rule. */
     fun look(g: MafiaGame, p: MafiaPlayer): Boolean? {
@@ -105,6 +105,10 @@ object MafiaGeneric {
             else -> null
         }
     }
+
+    /** Tonight's inquiry of this player is reversed by a data-defined «معکوس کردن استعلام». */
+    fun inverted(g: MafiaGame, p: MafiaPlayer): Boolean =
+        g.records.values.any { r -> !r.void && p.id in r.targets && abilityOfRecord(g, r) == MafiaAbility.INVERT }
 
     /** The ability a stored night record used (for data-defined roles and mafia-turn modes). */
     fun abilityOfRecord(g: MafiaGame, r: NightRecord): MafiaAbility? {

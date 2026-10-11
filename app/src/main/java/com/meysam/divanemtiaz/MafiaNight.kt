@@ -476,6 +476,7 @@ object MafiaNight {
         }
         val charlatan = g.records[MafiaRole.CHARLATAN.name]
         if (charlatan != null && !charlatan.void && subject.id in charlatan.targets) positive = !positive
+        if (MafiaGeneric.inverted(g, subject)) positive = !positive
         return positive
     }
 
