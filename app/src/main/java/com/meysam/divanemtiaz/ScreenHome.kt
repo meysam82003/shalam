@@ -140,7 +140,7 @@ class HomeScreen(host: MainActivity) : Screen(host) {
             addView(kit.text("گردانندگی شب و روز، نقش‌ها، رأی‌گیری و کارت حرکت آخر", TextStyle.CAPTION, Royal.muted, maxLines = 2))
             addView(kit.gap(4))
             val live = host.mafia.latestUnfinished()
-            addView(kit.badge(if (live != null) "بازی در جریان — ${live.phaseTitle}" else "${kit.n(MafiaRole.values().size)} نقش • ${kit.n(MafiaLastCard.values().size)} کارت", Royal.turquoise))
+            addView(kit.badge(if (live != null) "بازی در جریان — ${live.phaseTitle}" else "${kit.n(MafiaRoleRegistry.available().size)} نقش • ${kit.n(MafiaLastCard.values().size)} کارت", Royal.turquoise))
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         addView(kit.icon(RoyalIcon.NEXT, Royal.gold, 24))
         isClickable = true

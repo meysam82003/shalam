@@ -51,6 +51,7 @@ object MafiaDay {
         val sacrifice = g.aliveHolder(MafiaRole.SACRIFICE)
         if (sacrifice != null && sacrifice.counter("once") > 0 && todaysDayDead(g).isNotEmpty())
             out += DayAction(SACRIFICE, "فدایی", MafiaRole.SACRIFICE, "فدایی به جای یکی از خارج‌شده‌های امروز بیرون می‌رود", sacrificeBlocked(g))
+        out += MafiaGeneric.dayActions(g)
         return out
     }
 

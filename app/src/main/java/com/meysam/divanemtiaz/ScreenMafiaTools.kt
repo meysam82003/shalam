@@ -133,7 +133,15 @@ class MafiaToolsScreen(host: MainActivity, gameId: Long) : MafiaScreen(host, gam
         }
         if (p.role != null) {
             chip("تغییر نقش") {
-                rolePicker("نقش جدید ${p.name}", MafiaRole.values().toList()) { r -> MafiaManual.setRole(g, p.id, r); store(); host.refresh() }
+                rolePicker("نقش جدید ${p.name}", MafiaRoleRegistry.available()) { r -> MafiaManual.setRole(g, p.id, r); store(); host.refresh() }
+            }
+            chip("تغییر ساید") {
+                val sides = MafiaSide.values().toList()
+                optionPicker("ساید ${p.name} (الان: ${p.side?.title ?: "-"})", listOf("ساید خود نقش") + sides.map { it.title }, p.side?.let { s -> if (p.flags.any { it.startsWith("side:") }) sides.indexOf(s) + 1 else 0 } ?: 0) { i ->
+                    MafiaManual.setSide(g, p.id, if (i == 0) null else sides[i - 1])
+                    MafiaFlow.checkWin(g)
+                    store(); host.refresh()
+                }
             }
             if (p.alive) chip(if (MafiaFlow.silenced(p) != null) "برداشتن سکوت" else "ساکت کردن") { MafiaManual.toggleSilence(g, p.id); store(); host.refresh() }
             chip(if (p.revealed) "پنهان کردن نقش" else "اعلام نقش") { MafiaManual.toggleReveal(g, p.id); store(); host.refresh() }

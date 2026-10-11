@@ -81,7 +81,8 @@ class MafiaPlayer(val id: Int, var name: String, var avatar: Int) {
     fun counter(key: String): Int = counters[key] ?: 0
     fun has(flag: String): Boolean = flag in flags
 
-    val side: MafiaSide? get() = if (has("converted")) MafiaSide.MAFIA else role?.side
+    val side: MafiaSide? get() = flags.firstOrNull { it.startsWith("side:") }?.let { f -> MafiaSide.values().firstOrNull { it.name == f.removePrefix("side:") } }
+        ?: if (has("converted")) MafiaSide.MAFIA else role?.side
 
     /** The role to show for this player (his current one, or the one he handed over). */
     val shownRole: MafiaRole? get() = role ?: formerRole
@@ -451,11 +452,34 @@ class MafiaRepository(private val kv: KeyValueStore) {
 
     fun latestUnfinished(): MafiaGame? = games().firstOrNull { it.started && !it.finished }
 
+    /** The narrator's own scenarios and his saved edits of built-in ones. */
+    fun scenarios(): List<MafiaScenario> = kv.get(KEY_SCENARIOS)?.let { raw ->
+        runCatching { JSONArray(raw).let { a -> List(a.length()) { a.optJSONObject(it) }.mapNotNull { o -> o?.let { j -> runCatching { MafiaScenario.fromJson(j) }.getOrNull() } } } }.getOrNull()
+    } ?: emptyList()
+
+    fun saveScenarios(list: List<MafiaScenario>) = kv.write(mapOf(KEY_SCENARIOS to JSONArray(list.map { it.toJson() }).toString()))
+
+    fun saveScenario(s: MafiaScenario) = saveScenarios(scenarios().filterNot { it.id == s.id } + s)
+
+    fun deleteScenario(id: String) = saveScenarios(scenarios().filterNot { it.id == id })
+
+    fun scenario(id: String?): MafiaScenario? = MafiaScenarios.find(id, scenarios())
+
+    /** Role rules the narrator edited or created (also loaded into [MafiaRoleRegistry.user]). */
+    fun roleDefs(): Map<MafiaRole, MafiaRoleDef> = MafiaRoleRegistry.decode(kv.get(KEY_ROLE_DEFS))
+
+    fun saveRoleDefs(m: Map<MafiaRole, MafiaRoleDef>) {
+        kv.write(mapOf(KEY_ROLE_DEFS to MafiaRoleRegistry.encode(m)))
+        MafiaRoleRegistry.user = m
+    }
+
     companion object {
         const val KEY_SETTINGS = "mafia_settings"
         const val KEY_INDEX = "mafia_index"
         const val KEY_GAME = "mafia_game_"
         const val KEY_GROUPS = "mafia_groups"
         const val KEY_DRAFT = "mafia_draft"
+        const val KEY_SCENARIOS = "mafia_scenarios"
+        const val KEY_ROLE_DEFS = "mafia_role_defs"
     }
 }

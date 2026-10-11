@@ -11,20 +11,28 @@ class MafiaDesignScreen(host: MainActivity, private var tab: Int = 0) : Screen(h
     /** Re-read on every build: the reveal screen saves «دیدم» into the stored draft. */
     private var draft: MafiaGame = host.mafia.draft()
     private var side = MafiaSide.CITY
+    private var showAll = false
+    private var scenario: MafiaScenario? = null
 
     private fun save() { host.mafia.saveDraft(draft); host.refresh() }
 
     override fun build(): View {
         draft = host.mafia.draft()
+        scenario = host.mafia.scenario(draft.extra["scenario"])
+        MafiaRoleRegistry.activate(scenario)
         val (ok, message) = MafiaFlow.validate(draft.players.size, draft.roleCounts, draft.deck.map { it.card })
-        return scaffold("طراحی بازی", "${kit.n(draft.players.size)} بازیکن  •  ${kit.n(draft.roleCounts.values.sum())} نقش  •  ${kit.n(draft.deck.size)} کارت",
-            actions = listOf(kit.iconButton(RoyalIcon.SAVE, "ذخیره به عنوان گروه", ButtonKind.SECONDARY, 44) { saveGroup() }),
+        return scaffold("طراحی بازی", (scenario?.let { it.name + "  •  " } ?: "") + "${kit.n(draft.players.size)} بازیکن  •  ${kit.n(draft.roleCounts.values.sum())} نقش  •  ${kit.n(draft.deck.size)} کارت",
+            actions = listOf(kit.iconButton(RoyalIcon.RULES, "تغییر سناریو", ButtonKind.SECONDARY, 44) { host.push(MafiaScenarioListScreen(host)) },
+                kit.iconButton(RoyalIcon.SAVE, "ذخیره به عنوان گروه", ButtonKind.SECONDARY, 44) { saveGroup() }),
             bottom = kit.button("توزیع نقش", if (ok) ButtonKind.PRIMARY else ButtonKind.SECONDARY, RoyalIcon.CARDS, 52) {
                 val go = {
                     // Narrator's call: missing roles are filled with simple citizens.
                     val missing = draft.players.size - draft.roleCounts.values.sum()
                     if (missing > 0) draft.roleCounts[MafiaRole.CITIZEN] = (draft.roleCounts[MafiaRole.CITIZEN] ?: 0) + missing
                     draft.players.forEach { it.role = null; it.seen = false }
+                    // «ذهن زیبا» only for the special role that is in this game.
+                    val keep = MafiaScenarios.matchMind(draft.deck.map { it.card }, draft.roleCounts.filter { it.value > 0 }.keys)
+                    draft.deck.removeAll { it.card !in keep }
                     host.mafia.saveDraft(draft)
                     host.push(MafiaDistributeScreen(host))
                 }
@@ -122,13 +130,41 @@ class MafiaDesignScreen(host: MainActivity, private var tab: Int = 0) : Screen(h
         parent.addView(kit.grid(3, listOf(MafiaSide.CITY to c, MafiaSide.MAFIA to m, MafiaSide.INDEPENDENT to i).map { (s, n) ->
             kit.chip("${s.title}  ${kit.n(n)}", side == s, ButtonKind.CHIP_GOLD) { side = s; host.refresh() }
         }, 6), kit.spaced(8))
+        val sc = scenario?.takeIf { it.id != MafiaScenarios.FREE }
+        if (sc != null) {
+            val ref = sc.lineup(draft.players.size)
+            parent.addView(kit.panel(PanelStyle.FLAT, 10).apply {
+                layoutParams = kit.spaced(8)
+                addView(kit.text("سناریو: ${sc.name}", TextStyle.BODY_BOLD, Royal.goldLight))
+                addView(kit.text(if (ref != null) "ترکیب مرجع ${kit.n(draft.players.size)} نفره فقط پیشنهاد است؛ هر نقشی را می‌توانید کم، اضافه یا جایگزین کنید."
+                    else "برای ترکیب مرجع ابتدا بازیکنان را انتخاب کنید.", TextStyle.CAPTION, Royal.muted))
+                addView(kit.gap(6))
+                addView(kit.horizontal().apply {
+                    if (ref != null) {
+                        addView(kit.weight(kit.button("ترکیب مرجع", ButtonKind.SECONDARY, RoyalIcon.CARDS, 40) {
+                            draft.roleCounts.clear(); draft.options.clear(); draft.roleCounts.putAll(ref); save()
+                        }))
+                        addView(kit.hgap(6))
+                    }
+                    addView(kit.weight(kit.button("ذخیره در سناریو", ButtonKind.SECONDARY, RoyalIcon.SAVE, 40) { saveToScenario(sc) }))
+                })
+            })
+            if (sc.pool.isNotEmpty()) parent.addView(kit.grid(2, listOf(
+                kit.chip("نقش‌های سناریو", !showAll, ButtonKind.CHIP_GOLD) { showAll = false; host.refresh() },
+                kit.chip("همهٔ نقش‌ها", showAll, ButtonKind.CHIP_GOLD) { showAll = true; host.refresh() }
+            ), 6), kit.spaced(8))
+        }
         val selected = draft.roleCounts.filter { it.value > 0 }.keys
         if (selected.isNotEmpty()) {
             parent.addView(kit.flow(selected.map { r ->
                 kit.badge("${r.faName}${if ((draft.roleCounts[r] ?: 0) > 1) " ×" + kit.n(draft.roleCounts[r]!!) else ""}", r.side.textColor())
             }, 4), kit.spaced(8))
         }
-        parent.addView(kit.grid(3, MafiaRole.values().filter { it.side == side }.map { r ->
+        val pool = sc?.pool?.takeIf { it.isNotEmpty() && !showAll }
+        val shown = (pool?.let { p -> (p + selected).distinct() } ?: MafiaRoleRegistry.available()).filter { it.side == side }
+        if (shown.isEmpty()) parent.addView(kit.text("در این سناریو نقشی از این ساید نیست؛ «همهٔ نقش‌ها» را بزنید.", TextStyle.LABEL, Royal.muted, Gravity.CENTER), kit.spaced(8))
+        parent.addView(kit.button("ساخت نقش جدید", ButtonKind.GHOST, RoyalIcon.PLUS, 40) { host.push(MafiaRoleEditScreen(host, null)) }, kit.spaced(8))
+        parent.addView(kit.grid(3, shown.map { r ->
             val count = draft.roleCounts[r] ?: 0
             FrameLayout(host).apply {
                 background = PanelDrawable(kit.density, if (count > 0) PanelStyle.SELECTED else PanelStyle.GHOST, 14f)
@@ -179,8 +215,23 @@ class MafiaDesignScreen(host: MainActivity, private var tab: Int = 0) : Screen(h
                 draft.roleCounts.remove(role); draft.options.remove(role); save()
             }
         }
+        actions += DialogAction("ویرایش قوانین نقش") { host.push(MafiaRoleEditScreen(host, role)) }
         actions += DialogAction("لغو")
         kit.dialog(role.faName, null, body, actions).show()
+    }
+
+    /** Saves the current roles as this scenario's reference line-up for this many players, and the cards as its deck. */
+    private fun saveToScenario(sc: MafiaScenario) {
+        val n = draft.players.size
+        val roles = LinkedHashMap(draft.roleCounts.filter { it.value > 0 })
+        if (roles.isEmpty()) { kit.toast("هنوز نقشی انتخاب نشده است"); return }
+        val count = if (n > 0) n else roles.values.sum()
+        kit.confirm("ذخیره در سناریو", "این نقش‌ها به عنوان ترکیب مرجع ${kit.n(count)} نفره و کارت‌های فعلی به عنوان کارت‌های مرجع «${sc.name}» ذخیره شود؟", "ذخیره") {
+            host.mafia.saveScenario(sc.copy(presets = sc.presets + (count to roles), pool = (sc.pool + roles.keys).distinct(),
+                cards = draft.deck.map { it.card }.ifEmpty { sc.cards }))
+            kit.toast("در سناریو ذخیره شد")
+            host.refresh()
+        }
     }
 
     // ------------------------------------------------------------------ cards
@@ -196,6 +247,14 @@ class MafiaDesignScreen(host: MainActivity, private var tab: Int = 0) : Screen(h
             addView(kit.hgap(6))
             addView(kit.weight(kit.button("حذف همه", ButtonKind.GHOST, RoyalIcon.CLOSE, 42) { draft.deck.clear(); save() }))
         })
+        scenario?.takeIf { it.cards.isNotEmpty() }?.let { sc ->
+            parent.addView(kit.button("کارت‌های مرجع سناریو", ButtonKind.SECONDARY, RoyalIcon.CARDS, 42) {
+                draft.deck.clear()
+                val roles = draft.roleCounts.filter { it.value > 0 }.keys
+                (if (roles.isEmpty()) sc.cards else MafiaScenarios.matchMind(sc.cards, roles)).forEach { draft.deck += MafiaCardState(it) }
+                save()
+            }, kit.spaced(8))
+        }
         parent.addView(kit.grid(3, MafiaLastCard.values().map { c ->
             val on = draft.deck.any { it.card == c }
             FrameLayout(host).apply {
@@ -291,6 +350,7 @@ class MafiaDistributeScreen(host: MainActivity) : Screen(host) {
         g.roleCounts.putAll(draft.roleCounts)
         draft.options.forEach { (r, m) -> g.options[r] = HashMap(m) }
         draft.deck.forEach { g.deck += MafiaCardState(it.card) }
+        MafiaScenarios.KEYS.forEach { k -> draft.extra[k]?.let { g.extra[k] = it } }
         MafiaFlow.start(g, mafiaSettings)
         host.mafia.save(g)
         draft.players.forEach { it.role = null; it.seen = false }

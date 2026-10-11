@@ -78,7 +78,7 @@ class MafiaSettingsScreen(host: MainActivity, private var tab: Int = 0) : Screen
         MafiaCues.general.forEach { (key, title) -> parent.addView(soundRow(title, null, s.cue(key), key = key)) }
         parent.addView(kit.section("صدای نقش‌ها", RoyalIcon.PLAYERS))
         parent.addView(kit.grid(3, MafiaSide.values().map { sd -> kit.chip(sd.title, side == sd, ButtonKind.CHIP_GOLD) { side = sd; host.refresh() } }, 6), kit.spaced(8))
-        MafiaRole.values().filter { it.side == side }.forEach { r ->
+        MafiaRoleRegistry.available().filter { it.side == side }.forEach { r ->
             val keys = listOf(MafiaCues.wake(r), MafiaCues.done(r), MafiaCues.sleep(r))
             val setCount = keys.count { s.cue(it)?.isSet == true }
             parent.addView(kit.horizontal().apply {
@@ -221,7 +221,7 @@ class MafiaSettingsScreen(host: MainActivity, private var tab: Int = 0) : Screen
             kit.chip("کارت‌ها", cardsTab, ButtonKind.CHIP_GOLD) { cardsTab = true; host.refresh() }, 6), kit.spaced(8))
         val pics = mafiaSettings.rolePictures
         val cells: List<View> = if (cardsTab) MafiaLastCard.values().map { c -> pictureCell(lastCard(c), "CARD_" + c.name, c.faName, pics) }
-            else MafiaRole.values().filter { it.side == side }.map { r -> pictureCell(roleCard(r), r.name, r.faName, pics) }
+            else MafiaRoleRegistry.available().filter { it.side == side }.map { r -> pictureCell(roleCard(r), r.name, r.faName, pics) }
         parent.addView(kit.grid(3, cells, 8))
     }
 

@@ -115,6 +115,7 @@ class MainActivity : Activity() {
         repo = GameStore.open(this)
         settings = repo.settings()
         kit = RoyalKit(this) { settings }
+        MafiaRoleRegistry.user = mafia.roleDefs()
         val root = FrameLayout(this).apply {
             background = BackdropDrawable(resources.displayMetrics.density)
             layoutDirection = View.LAYOUT_DIRECTION_RTL

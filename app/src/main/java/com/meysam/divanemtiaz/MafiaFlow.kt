@@ -38,7 +38,11 @@ object MafiaFlow {
             p.counters.clear(); p.flags.clear(); p.marks.clear()
             MafiaRoleOptions.of(r).filter { !it.isSwitch && !it.label.startsWith("تعداد ${r.faName}") }.forEach { o -> p.counters[o.label] = g.optionInt(r, o.label, 0) }
             p.counters["once"] = 1; p.counters["poison"] = 1; p.counters["buy"] = 1; p.counters["trade"] = 1
-            p.armor = when (r) {
+            // Day action the narrator gave to an original role.
+            MafiaRoleRegistry.user[r]?.takeIf { !r.isGeneric && (it.dayAbility ?: MafiaDayAbility.NONE) != MafiaDayAbility.NONE }?.let {
+                p.counters[MafiaGenericRoles.DAY_USES] = it.dayUses?.takeIf { u -> u > 0 } ?: 1000
+            }
+            p.armor = MafiaRoleRegistry.user[r]?.armor?.takeIf { !r.isGeneric } ?: when (r) {
                 MafiaRole.DIE_HARD -> 1
                 MafiaRole.BODYGUARD -> 1
                 else -> g.optionInt(r, "تعداد زره", 0)
@@ -48,10 +52,15 @@ object MafiaFlow {
         val shuffled = g.deck.map { it.card }.shuffled(random)
         g.deck.clear(); shuffled.forEach { g.deck += MafiaCardState(it) }
         g.extra["selfKill"] = if (settings.selfKill) "1" else "0"
-        g.extra["capo"] = if (settings.capoGun) "1" else "0"
+        g.extra["capo"] = g.extra["scenarioCapo"] ?: if (settings.capoGun) "1" else "0"
         g.night = 0; g.isDay = false; g.started = true; g.introDone = false
         g.records.clear(); g.day = MafiaDayState(); g.log.clear(); g.snapshots.clear()
         g.extra["lineup"] = g.players.joinToString("|") { "${it.id}:${it.role?.name}" }
+        if (g.extra["noNight"] == "1") {
+            // Scenario without a night phase: straight to the first day.
+            g.night = 1; g.isDay = true; g.introDone = true
+            g.lastReport = listOf("این سناریو فاز شب ندارد")
+        }
         snapshot(g)
     }
 
@@ -61,7 +70,8 @@ object MafiaFlow {
         val out = ArrayList<IntroStep>()
         val mafia = g.players.filter { it.role?.side == MafiaSide.MAFIA }
         val roles = g.players.mapNotNull { it.role }.distinct()
-        if (mafia.size > 1) {
+        val mafiaIntro = g.extra["noMafiaIntro"] != "1"
+        if (mafia.size > 1 && mafiaIntro) {
             val thief = g.inGame(MafiaRole.THIEF); val pablo = g.inGame(MafiaRole.PABLO)
             val text = when {
                 thief && pablo -> "گروه مافیا به جز ${MafiaRole.THIEF.faName} و ${MafiaRole.PABLO.faName} از خواب بیدار شوند"
@@ -75,7 +85,7 @@ object MafiaFlow {
         roles.filter { it.side == MafiaSide.MAFIA && it != MafiaRole.THIEF && it != MafiaRole.PABLO && it != MafiaRole.CAST_AWAY }.sortedBy { it.introOrder }.forEach { r ->
             out += IntroStep(r.name, r.faName, MafiaRoleText.intro(r), "معرفی شد", g.holders(r).map { it.id }, r.glyph, MafiaCues.wake(r))
         }
-        if (mafia.size > 1) out += IntroStep("ROLE_SLEEP", "گروه مافیا", "گروه مافیا بخوابند", "خوابیدند", emptyList(), MafiaGlyph.MOON, MafiaCues.MAFIA_SLEEP)
+        if (mafia.size > 1 && mafiaIntro) out += IntroStep("ROLE_SLEEP", "گروه مافیا", "گروه مافیا بخوابند", "خوابیدند", emptyList(), MafiaGlyph.MOON, MafiaCues.MAFIA_SLEEP)
         roles.filter { it.side != MafiaSide.MAFIA || it == MafiaRole.THIEF || it == MafiaRole.PABLO || it == MafiaRole.CAST_AWAY }.sortedBy { it.introOrder }.forEach { r ->
             out += IntroStep(r.name, r.faName, MafiaRoleText.intro(r), "مشاهده شد", g.holders(r).map { it.id }, r.glyph, MafiaCues.wake(r))
         }
@@ -141,6 +151,11 @@ object MafiaFlow {
         listOf("rouletteOn", "rouletteNumber", "rouletteCount", "voodooWord", "voodooOn", "jigsaw", "interrogate", "bombOn", "bombCode",
             "capoTrustee", "capoGun", "capoPicks", "capoStage").forEach { g.extra.remove(it) }
         snapshot(g)
+        if (g.extra["noNight"] == "1") {
+            // The scenario has no night: the next day starts at once.
+            endNight(g)
+            g.lastReport = listOf("این سناریو فاز شب ندارد")
+        }
     }
 
     // ------------------------------------------------------------------ day
@@ -169,11 +184,32 @@ object MafiaFlow {
     fun firstEdge(n: Int, s: MafiaSettings): Int = if (s.voteEdgeUp) n / 2 + 1 else n / 2
     fun secondEdge(n: Int, s: MafiaSettings): Int = if (s.voteEdgeUp) (n - 1) / 2 + 1 else (n - 1) / 2
 
+    /** The scenario may fix the vote rounding («edge» = up/down) or a defence threshold per number of players. */
+    private fun scenarioSettings(g: MafiaGame, s: MafiaSettings): MafiaSettings = when (g.extra["edge"]) {
+        "up" -> s.copy(voteEdgeUp = true)
+        "down" -> s.copy(voteEdgeUp = false)
+        else -> s
+    }
+
+    fun firstEdge(g: MafiaGame, s: MafiaSettings): Int {
+        val n = g.alive.size
+        thresholds(g)[n]?.let { return it }
+        return firstEdge(n, scenarioSettings(g, s))
+    }
+
+    fun secondEdge(g: MafiaGame, s: MafiaSettings): Int = secondEdge(g.alive.size, scenarioSettings(g, s))
+
+    fun thresholds(g: MafiaGame): Map<Int, Int> = g.extra["thresholds"]?.split(",")?.mapNotNull { e ->
+        val p = e.split(":"); if (p.size == 2) p[0].toIntOrNull()?.let { a -> p[1].toIntOrNull()?.let { a to it } } else null
+    }?.toMap() ?: emptyMap()
+
+    fun queryCount(g: MafiaGame, s: MafiaSettings): Int = g.extra["queryCount"]?.toIntOrNull() ?: s.queryCount
+
     /** Players who may receive votes (green mile excluded). */
     fun votable(g: MafiaGame): List<MafiaPlayer> = g.alive.filter { !it.has("greenMile") }
 
     fun finishFirstVote(g: MafiaGame, s: MafiaSettings) {
-        val edge = firstEdge(g.alive.size, s)
+        val edge = firstEdge(g, s)
         g.day.defenders.clear()
         g.alive.filter { !it.has("greenMile") && ((g.day.firstVotes[it.id] ?: 0) >= edge || it.has("redCarpet")) }.forEach { g.day.defenders += it.id }
         g.day.firstVoteDone = true
@@ -219,7 +255,7 @@ object MafiaFlow {
         if (d.defenders.size == 1) {
             val id = d.defenders[0]
             val v = d.secondVotes[id] ?: 0
-            return (if (v >= secondEdge(n, s) || v >= 100) listOf(id) else emptyList()) to false
+            return (if (v >= secondEdge(g, s) || v >= 100) listOf(id) else emptyList()) to false
         }
         val max = d.defenders.maxOf { d.secondVotes[it] ?: 0 }
         if (max < 1) return emptyList<Int>() to false
@@ -393,7 +429,7 @@ object MafiaFlow {
 
     // ------------------------------------------------------------------ helpers of the day
 
-    fun groupQueryAvailable(g: MafiaGame, s: MafiaSettings): Boolean = g.night >= 2 && g.queriesUsed < s.queryCount && !g.inGame(MafiaRole.DIE_HARD)
+    fun groupQueryAvailable(g: MafiaGame, s: MafiaSettings): Boolean = g.night >= 2 && g.queriesUsed < queryCount(g, s) && !g.inGame(MafiaRole.DIE_HARD)
 
     fun groupQuery(g: MafiaGame): String {
         g.queriesUsed++

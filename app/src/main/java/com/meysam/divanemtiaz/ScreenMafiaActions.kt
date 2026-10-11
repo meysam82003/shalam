@@ -133,6 +133,66 @@ class MafiaDayActionScreen(host: MainActivity, gameId: Long) : MafiaScreen(host,
                     host.refresh()
                 }
             }
+            else -> if (a.key.startsWith("G_")) generic(a)
+        }
+    }
+
+    /** Day action of a data-defined role (or a role whose rules the narrator edited). */
+    private fun generic(a: DayAction) {
+        val r = a.role
+        val holder = g.aliveHolder(r) ?: return
+        val day = MafiaGeneric.def(r)?.dayAbility ?: return
+        fun done(text: String) { MafiaGeneric.spendDay(g, r); g.log += MafiaLog(g.phaseTitle, text) }
+        when (day) {
+            MafiaDayAbility.TAKE_ALONG -> pickPlayers("${r.faName} چه کسی را با خود می‌برد؟", g.alive.filter { it.id != holder.id }, 1, 1, false) { ids ->
+                holder.revealed = true
+                done("${holder.name} (${r.faName}) ${g.player(ids.first())?.name} را با خود بیرون برد")
+                resultThenExit(r.faName, "${r.faName} و بازیکن انتخابی از بازی خارج می‌شوند", listOf(ids.first(), holder.id), MafiaDeath.MANUAL, replace = true)
+            }
+            MafiaDayAbility.DAY_SHOT -> pickPlayers("${r.faName} به چه کسی شلیک می‌کند؟", g.alive.filter { it.id != holder.id }, 1, 1, false) { ids ->
+                val t = g.player(ids.first()) ?: return@pickPlayers
+                if (t.armor > 0) {
+                    t.armor -= 1
+                    done("${holder.name} (${r.faName}) به ${t.name} شلیک کرد؛ زره او شکست")
+                    store()
+                    kit.dialog(r.faName, "شلیک به ${t.name} با زره دفع شد", null, listOf(DialogAction("باشه") { host.refresh() })).show()
+                } else {
+                    done("${holder.name} (${r.faName}) به ${t.name} شلیک کرد")
+                    resultThenExit(r.faName, "${t.name} با شلیک ${r.faName} از بازی خارج می‌شود", listOf(t.id), MafiaDeath.DAY_SHOT, replace = true)
+                }
+            }
+            MafiaDayAbility.KEEP_FROM_VOTE -> {
+                val out = MafiaDay.todaysDayDead(g)
+                if (out.isEmpty()) { kit.toast("امروز کسی با رأی خارج نشده است"); return }
+                pickPlayers("${r.faName} چه کسی را در بازی نگه می‌دارد؟", out, 1, 1, false) { ids ->
+                    MafiaManual.revive(g, ids.first())
+                    done("${holder.name} (${r.faName}) ${g.player(ids.first())?.name} را در بازی نگه داشت")
+                    store(); host.refresh()
+                }
+            }
+            MafiaDayAbility.REMOVE_FROM_DEFENCE -> {
+                val defenders = g.day.defenders.mapNotNull { g.player(it) }.filter { it.alive }
+                if (defenders.isEmpty()) { kit.toast("هنوز کسی در دفاعیه نیست"); return }
+                pickPlayers("${r.faName} چه کسی را از دفاعیه بیرون می‌آورد؟", defenders, 1, 1, false) { ids ->
+                    g.day.defenders.remove(ids.first())
+                    done("${holder.name} (${r.faName}) ${g.player(ids.first())?.name} را از دفاعیه خارج کرد")
+                    store(); host.refresh()
+                }
+            }
+            MafiaDayAbility.GUESS_EXIT -> pickPlayers("${r.faName} نقش چه کسی را حدس می‌زند؟", g.alive.filter { it.id != holder.id }, 1, 1, false) { ids ->
+                val t = g.player(ids.first()) ?: return@pickPlayers
+                rolePicker("نقش ${t.name}", g.roleCounts.keys.filter { it != MafiaRole.CITIZEN && it != MafiaRole.MAFIA }) { guess ->
+                    if (t.role == guess) {
+                        done("${holder.name} (${r.faName}) نقش ${t.name} را درست حدس زد")
+                        resultThenExit(r.faName, "حدس درست بود؛ ${t.name} از بازی خارج می‌شود", listOf(t.id), MafiaDeath.EXECUTE, replace = true)
+                    } else {
+                        done("${holder.name} (${r.faName}) نقش ${t.name} را اشتباه حدس زد")
+                        store()
+                        kit.dialog(r.faName, "حدس اشتباه بود", null, listOf(DialogAction("باشه") { host.refresh() })).show()
+                    }
+                }
+            }
+            MafiaDayAbility.NONE -> Unit
         }
     }
 }

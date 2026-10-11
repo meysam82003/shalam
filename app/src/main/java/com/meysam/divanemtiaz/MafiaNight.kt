@@ -3,7 +3,7 @@ package com.meysam.divanemtiaz
 import kotlin.random.Random
 
 /** Who a night job may choose from. */
-enum class TargetPool { NONE, ALIVE, ALIVE_OTHERS, NON_MAFIA, MAFIA_TEAM, OUT, TONIGHT_DEAD }
+enum class TargetPool { NONE, ALIVE, ALIVE_OTHERS, NON_MAFIA, MAFIA_TEAM, OUT, TONIGHT_DEAD, SELF }
 
 /** One way of doing a night job (most roles have one; the mafia group and a few roles have several). */
 data class JobMode(
@@ -61,6 +61,7 @@ object MafiaNight {
         val order = listOf(MafiaRole.GODFATHER, MafiaRole.LOVER, MafiaRole.DOCTOR_LECTOR, MafiaRole.POISON_MAKER, MafiaRole.INVESTIGATOR,
             MafiaRole.TERRORIST, MafiaRole.CHARLATAN, MafiaRole.MATADOR, MafiaRole.NATO, MafiaRole.GOOD_MAN, MafiaRole.SPY, MafiaRole.BODYGUARD)
         val team = mafiaTeam(g).filter { it.alive }
+        team.firstOrNull { p -> p.role?.let { MafiaGeneric.isTeamActor(it) && MafiaGeneric.def(it)?.ability == MafiaAbility.SHOT } == true }?.let { return it }
         order.forEach { r -> team.firstOrNull { it.role == r }?.let { return it } }
         return team.firstOrNull { it.role == MafiaRole.MAFIA } ?: team.firstOrNull()
     }
@@ -82,6 +83,7 @@ object MafiaNight {
                 if (r == MafiaRole.MASON && g.optionInt(r, "اجبار به انتخاب در شب معارفه", 1) == 0) return@forEach
                 roleJob(g, r)?.let { out += it }
             }
+            g.players.mapNotNull { it.role }.distinct().filter { MafiaGeneric.introNight(it) }.forEach { r -> MafiaGeneric.job(g, r)?.let { out += it } }
             return out
         }
         val endgame = g.alive.size <= 3 && pendingCard(g, MafiaLastCard.FACE_OFF) == null && pendingCard(g, MafiaLastCard.CARD_EXCHANGE) == null
@@ -92,7 +94,7 @@ object MafiaNight {
                 listOf(JobMode("پادزهر می‌دهد", TargetPool.NONE, 0, 0), JobMode("پادزهر نمی‌دهد", TargetPool.NONE, 0, 0)), g.holders(MafiaRole.ATTAR).map { it.id })
         }
         val roles = g.players.mapNotNull { it.role }.distinct()
-            .filter { it.wakeOrder > 0 && it !in teamActors }
+            .filter { it.wakeOrder > 0 && it !in teamActors && !MafiaGeneric.isTeamActor(it) }
             .sortedBy { it.wakeOrder }
         var groupAdded = false
         roles.forEach { r ->
@@ -134,6 +136,7 @@ object MafiaNight {
         g.aliveHolder(MafiaRole.POISON_MAKER)?.takeIf { it.counter("poison") > 0 }?.let { modes += JobMode("سم ساز", shotPool, 1, 1) }
         g.aliveHolder(MafiaRole.NATO)?.takeIf { it.counter("تعداد ناتویی") > 0 }?.let { modes += JobMode("ناتو", TargetPool.NON_MAFIA, 1, 1, guessRole = true) }
         g.aliveHolder(MafiaRole.GOOD_MAN)?.takeIf { it.counter("buy") > 0 && g.out.any { p -> p.side == MafiaSide.MAFIA } }?.let { modes += JobMode("ساول گودمن", TargetPool.NON_MAFIA, 1, 1) }
+        modes += MafiaGeneric.groupModes(g).map { it.first }
         val holder = shooter(g)
         val prompt = "گروه مافیا از خواب بیدار شوند" + (holder?.let { "\nتیر به دست ${it.role?.faName ?: ""} (${it.name})" } ?: "") +
             "\nگروه مافیا هر شب می‌تواند به یک نفر شلیک کند یا به جای شلیک از یک قابلیت ویژه استفاده کند."
@@ -143,6 +146,13 @@ object MafiaNight {
     private fun settingsSelfKill(g: MafiaGame): Boolean = g.extra["selfKill"] != "0"
 
     private fun roleJob(g: MafiaGame, r: MafiaRole): NightJob? {
+        if (r.isGeneric) return MafiaGeneric.job(g, r)
+        val job = codedJob(g, r) ?: return null
+        // The narrator's own wording of the night call.
+        return MafiaRoleRegistry.user[r]?.prompt?.takeIf { it.isNotBlank() }?.let { job.copy(prompt = it) } ?: job
+    }
+
+    private fun codedJob(g: MafiaGame, r: MafiaRole): NightJob? {
         val holders = g.holders(r)
         val holder = holders.firstOrNull()
         // A dead holder whose role was announced has no button; an unannounced one keeps it as a decoy.
@@ -245,6 +255,7 @@ object MafiaNight {
             TargetPool.MAFIA_TEAM -> g.alive.filter { it.side == MafiaSide.MAFIA }.filter { selfAllowed(g, job, it) }
             TargetPool.OUT -> g.out.filter { !it.has("noReturn") }
             TargetPool.TONIGHT_DEAD -> preview(g).dead.mapNotNull { g.player(it) }.filter { !it.has("noReturn") }
+            TargetPool.SELF -> job.holders.mapNotNull { g.player(it) }.filter { it.alive }
         }.filter { p -> !(job.role == MafiaRole.MATADOR || job.role == MafiaRole.ILLUSIONIST) || g.extra["last_${job.role.name}"] != p.id.toString() }
     }
 
@@ -287,7 +298,7 @@ object MafiaNight {
             if (!protected) return r
         }
         if (p.has("illusioned") && p.marks["illusionedNight"] == g.night - 1) return MafiaRole.ILLUSIONIST
-        return null
+        return MafiaGeneric.blockerOf(g, p)
     }
 
     private fun exhausted(g: MafiaGame, role: MafiaRole, p: MafiaPlayer): Boolean {
@@ -296,7 +307,9 @@ object MafiaNight {
     }
 
     /** The counter a role spends per use, named after its option. */
-    fun useKey(role: MafiaRole): String? = when (role) {
+    fun useKey(role: MafiaRole): String? = if (role.isGeneric) {
+        if ((MafiaRoleRegistry.def(role)?.ability ?: MafiaAbility.NONE) != MafiaAbility.NONE) MafiaGenericRoles.USES else null
+    } else when (role) {
         MafiaRole.DOCTOR, MafiaRole.DOCTOR_LECTOR -> "تعداد نجات کل"
         MafiaRole.PSYCHOLOGIST, MafiaRole.NATASHA -> "تعداد سکوت"
         MafiaRole.DETECTIVE, MafiaRole.CLEVER, MafiaRole.SPECIAL_DETECTIVE, MafiaRole.DIE_HARD -> "تعداد استعلام"
@@ -359,6 +372,7 @@ object MafiaNight {
                 "ناتو" -> g.aliveHolder(MafiaRole.NATO)?.let { it.counters["تعداد ناتویی"] = it.counter("تعداد ناتویی") - 1 }
                 "ساول گودمن" -> g.aliveHolder(MafiaRole.GOOD_MAN)?.counters?.set("buy", 0)
                 "سوداگری" -> g.aliveHolder(MafiaRole.GODFATHER)?.counters?.set("trade", 0)
+                else -> MafiaGeneric.spendGroup(g, mode.label)
             }
             result = immediateResult(g, job, mode, targets, guess, holder)
         }
@@ -377,6 +391,7 @@ object MafiaNight {
     fun cancel(g: MafiaGame, job: NightJob) {
         val rec = g.records.remove(job.key) ?: return
         if (rec.void) return
+        if (job.key == MAFIA_GROUP) { MafiaGeneric.refundGroup(g, rec.choice); return }
         val holder = job.holders.firstOrNull()?.let { g.player(it) } ?: return
         job.role?.let { r ->
             useKey(r)?.let { k -> if (k == "once") holder.counters[k] = 1 else if (holder.counter(k) < 1000) holder.counters[k] = holder.counter(k) + 1 }
@@ -387,6 +402,7 @@ object MafiaNight {
     /** Inquiry-type answers, as the source app shows them right away. */
     private fun immediateResult(g: MafiaGame, job: NightJob, mode: JobMode, targets: List<Int>, guess: MafiaRole?, holder: MafiaPlayer?): String {
         val t = targets.firstOrNull()?.let { g.player(it) }
+        if (job.role?.isGeneric == true) return MafiaGeneric.result(g, MafiaGeneric.abilityOf(job, mode), targets, guess, holder)
         return when (job.role) {
             MafiaRole.DETECTIVE -> if (t == null) "" else if (detectivePositive(g, t, holder)) "استعلام مثبت 👍 (مافیا)" else "استعلام منفی 👎"
             MafiaRole.SPECIAL_DETECTIVE -> if (t == null) "" else if (t.side == MafiaSide.INDEPENDENT) "استعلام مثبت 👍 (مستقل)" else "استعلام منفی 👎"
@@ -419,7 +435,7 @@ object MafiaNight {
                 "حس ششم" -> if (t != null && guess != null && t.role == guess) "حدس درست بود؛ بازیکن سلاخی می‌شود" else "حدس اشتباه بود"
                 "ناتو" -> if (t != null && guess != null && t.role == guess) "حدس درست بود؛ بازیکن امشب کشته می‌شود" else "حدس ناتو اشتباه بود"
                 "ساول گودمن" -> if (t != null && convertible(g, t)) "خرید موفقیت آمیز بود\nبازیکن انتخابی نقش زیر را عهده دار خواهد بود: مافیا ساده" else "خرید موفقیت آمیز نبود\nدست بازیکن به صورت صوری لمس شود"
-                else -> ""
+                else -> MafiaGeneric.groupAbility(g, mode.label)?.let { MafiaGeneric.result(g, it.second, targets, guess, holder) } ?: ""
             }
             MafiaRole.SHERLOCK_HOLMES -> if (t != null && guess != null && t.role == guess) "حدس درست بود؛ بازیکن سلاخی می‌شود و شرلوک نقش او را می‌گیرد" else "عملیات موفقیت آمیز نبود"
             MafiaRole.CHURCHILL -> if (mode.label == "سلاخی") (if (t != null && guess != null && t.role == guess) "حدس درست بود؛ بازیکن سلاخی می‌شود" else "حدس اشتباه بود") else ""
@@ -438,7 +454,9 @@ object MafiaNight {
         if (fraud != null && !fraud.void && detective != null && detective.id in fraud.targets) return false
         val witcher = g.records[MafiaRole.WITCHER.name]
         val subject = if (witcher != null && !witcher.void && detective != null && detective.id in witcher.targets) detective else t
+        val fixed = MafiaGeneric.look(g, subject)
         var positive = when {
+            fixed != null -> fixed
             subject.role == MafiaRole.SUSPECT -> true
             subject.role == MafiaRole.GODFATHER && !subject.has("taken") && subject.counter("تعداد استعلام منفی") > 0 -> {
                 if (subject.counter("تعداد استعلام منفی") < 1000) subject.counters["تعداد استعلام منفی"] = subject.counter("تعداد استعلام منفی") - 1
@@ -602,6 +620,13 @@ object MafiaNight {
         g.players.filter { it.alive && it.marks["poisonDeath"] == n }.forEach { kill(it.id, "poison") }
         g.players.filter { it.alive && it.marks["kaneDeath"] == n }.forEach { kill(it.id, "kane") }
 
+        // Data-defined roles (scenario roles and the narrator's own roles).
+        val generic = MafiaGeneric.effects(g, apply)
+        generic.shots.forEach { shoot(it, "custom") }
+        generic.kills.forEach { (id, by) -> kill(id, by) }
+        saves += generic.saves
+        report += generic.report
+
         // Saves, armour and protections.
         rec(MafiaRole.DOCTOR)?.targets?.forEach { saves += targetOf(MafiaRole.DOCTOR, it) }
         rec(MafiaRole.DOCTOR_LECTOR)?.targets?.forEach { saves += targetOf(MafiaRole.DOCTOR_LECTOR, it) }
@@ -621,7 +646,7 @@ object MafiaNight {
                     MafiaRole.FELON -> n % 2 == 1
                     MafiaRole.INHERITOR -> p.marks["benefactor"]?.let { g.player(it) }?.let { it.alive && it.side == MafiaSide.CITY } == true
                     else -> false
-                } && !p.has("taken")
+                } && !p.has("taken") || MafiaGeneric.nightImmune(p)
                 if (immune) list.clear()
                 if (p.id in saves) list.clear()
                 if (list.isNotEmpty() && p.armor > 0 && !p.has("taken")) {
@@ -649,6 +674,7 @@ object MafiaNight {
         val revived = ArrayList<Int>()
         rec(MafiaRole.SALVATION_ANGEL)?.targets?.firstOrNull()?.let { if (dead.remove(it)) revived += it }
         rec(MafiaRole.CONSTANTINE)?.targets?.firstOrNull()?.let { revived += it }
+        generic.revives.forEach { id -> if (dead.remove(id) || g.player(id)?.alive == false) revived += id }
 
         if (!apply) return Outcome(dead.toList(), report, revived)
 

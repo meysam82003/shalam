@@ -8,7 +8,9 @@ import android.widget.LinearLayout
 
 /** «راوی مافیا» start page (source: startup screen). */
 class MafiaHomeScreen(host: MainActivity) : Screen(host) {
-    override fun build(): View = scaffold("راوی مافیا", "گردانندگی بازی مافیا به سبکی نو",
+    override fun build(): View = run { MafiaRoleRegistry.activate(null); page() }
+
+    private fun page(): View = scaffold("راوی مافیا", "گردانندگی بازی مافیا به سبکی نو",
         actions = listOf(kit.iconButton(RoyalIcon.SETTINGS, "تنظیمات راوی", ButtonKind.SECONDARY, 44) { host.push(MafiaSettingsScreen(host)) })) {
         addView(hero())
         host.mafia.latestUnfinished()?.let { g ->
@@ -27,9 +29,10 @@ class MafiaHomeScreen(host: MainActivity) : Screen(host) {
                 addView(kit.button("ادامه بازی گذشته", ButtonKind.SUCCESS, RoyalIcon.PLAY, 48) { host.push(MafiaGameScreen(host, g.id)) })
             })
         }
-        addView(kit.button("شروع بازی جدید", ButtonKind.PRIMARY, RoyalIcon.PLAY, 54) { host.push(MafiaDesignScreen(host)) }, kit.spaced(10))
+        addView(kit.button("شروع بازی جدید", ButtonKind.PRIMARY, RoyalIcon.PLAY, 54) { host.push(MafiaScenarioListScreen(host)) }, kit.spaced(10))
         addView(kit.grid(2, listOf(
-            tile(MafiaGlyph.MASK, "آشنایی با نقش ها", "${kit.n(MafiaRole.values().size)} نقش با توضیح") { host.push(MafiaRolesScreen(host)) },
+            tile(MafiaGlyph.SCROLL, "سناریوها", "${kit.n(MafiaScenarios.builtin.size)} سناریو + سناریوی خودت") { host.push(MafiaScenarioListScreen(host, browse = true)) },
+            tile(MafiaGlyph.MASK, "نقش‌ها و قوانین", "${kit.n(MafiaRoleRegistry.available().size)} نقش • افزودن و ویرایش") { host.push(MafiaRolesScreen(host)) },
             tile(MafiaGlyph.CARDS, "کارت حرکت آخر", "${kit.n(MafiaLastCard.values().size)} کارت") { host.push(MafiaCardsScreen(host)) },
             tile(MafiaGlyph.SCROLL, "گروه بازی", "بازیکنان و نقش‌های ذخیره‌شده") { host.push(MafiaGroupsScreen(host)) },
             tile(MafiaGlyph.HOURGLASS, "بازی‌های گذشته", "ادامه و گزارش بازی") { host.push(MafiaGamesScreen(host)) },
@@ -62,21 +65,38 @@ class MafiaHomeScreen(host: MainActivity) : Screen(host) {
         }
 }
 
-/** «آشنایی با نقش ها»: every role card with its explanation, filtered by side. */
+/** «نقش‌ها و قوانین»: every role card with its rules, filtered by side; add a role or edit any role's rules. */
 class MafiaRolesScreen(host: MainActivity) : Screen(host) {
     private var side = MafiaSide.CITY
 
-    override fun build(): View = scaffold("آشنایی با نقش ها", "${kit.n(MafiaRole.values().size)} نقش") {
-        addView(kit.grid(3, MafiaSide.values().map { s ->
-            kit.chip("${s.title} (${kit.n(MafiaRole.values().count { it.side == s })})", side == s, ButtonKind.CHIP_GOLD) { side = s; host.refresh() }
-        }, 6), kit.spaced(10))
-        addView(kit.grid(3, MafiaRole.values().filter { it.side == side }.map { r ->
-            roleCard(r).apply {
-                isClickable = true
-                setOnClickListener { kit.tap(it); roleInfo(r) }
+    override fun build(): View {
+        MafiaRoleRegistry.activate(null)
+        val roles = MafiaRoleRegistry.available()
+        return scaffold("نقش‌ها و قوانین", "${kit.n(roles.size)} نقش  •  روی هر نقش بزنید",
+            bottom = kit.button("افزودن نقش", ButtonKind.PRIMARY, RoyalIcon.PLUS, 52) { host.push(MafiaRoleEditScreen(host, null)) }) {
+            addView(kit.grid(3, MafiaSide.values().map { s ->
+                kit.chip("${s.title} (${kit.n(roles.count { it.side == s })})", side == s, ButtonKind.CHIP_GOLD) { side = s; host.refresh() }
+            }, 6), kit.spaced(10))
+            val mine = roles.filter { it.side == side && it.isCustomSlot }
+            if (mine.isNotEmpty()) {
+                addView(kit.section("نقش‌های ساخت شما", RoyalIcon.STAR))
+                addView(grid(mine), kit.spaced(10))
+                addView(kit.section("نقش‌های برنامه", RoyalIcon.CROWN))
             }
-        }, 8))
+            addView(grid(roles.filter { it.side == side && !it.isCustomSlot }))
+        }
     }
+
+    private fun grid(list: List<MafiaRole>): View = kit.grid(3, list.map { r ->
+        android.widget.FrameLayout(host).apply {
+            addView(roleCard(r), android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            if (MafiaRoleRegistry.user.containsKey(r) && !r.isCustomSlot) addView(kit.badge("ویرایش‌شده", Royal.turquoise, true),
+                android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.LEFT))
+            isClickable = true
+            contentDescription = r.faName
+            setOnClickListener { kit.tap(it); roleInfo(r, extraActions = listOf(DialogAction("ویرایش قوانین", ButtonKind.PRIMARY) { host.push(MafiaRoleEditScreen(host, r)) })) }
+        }
+    }, 8)
 }
 
 /** «کارت حرکت آخر» catalogue. */

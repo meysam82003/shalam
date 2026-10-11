@@ -7,9 +7,9 @@ enum class MafiaSide(val title: String) { CITY("شهروند"), MAFIA("مافی�
 data class MafiaOptionDef(val label: String, val values: List<String>, val default: String, val isSwitch: Boolean = false)
 
 enum class MafiaRole(
-    val faName: String, val side: MafiaSide, val glyph: MafiaGlyph, val tagline: String,
+    private val baseName: String, private val baseSide: MafiaSide, private val baseGlyph: MafiaGlyph, private val baseTagline: String,
     /** Position in the night button list (lower first); 0 = no night button of its own. */
-    val wakeOrder: Int, val introOrder: Int, val nightSound: String
+    private val baseWake: Int, private val baseIntro: Int, val nightSound: String
 ) {
     CITIZEN("شهروند ساده", MafiaSide.CITY, MafiaGlyph.CITIZEN, "تحلیل و رأی", 0, 71, ""),
     PROFESSIONAL("حرفه ای", MafiaSide.CITY, MafiaGlyph.TARGET, "شلیک شبانه", 34, 37, "mafia_shot_sound"),
@@ -89,13 +89,224 @@ enum class MafiaRole(
     FELON("جانی", MafiaSide.INDEPENDENT, MafiaGlyph.TOMBSTONE, "شلیک مستقل", 55, 76, "mafia_shot_sound"),
     CORONA("کرونا", MafiaSide.INDEPENDENT, MafiaGlyph.VIRUS, "سرایت بیماری", 5, 79, ""),
     KILLER("قاتل", MafiaSide.INDEPENDENT, MafiaGlyph.DAGGER, "قتل بی‌دفاع", 58, 80, "mafia_shot_sound"),
-    JOKER("جوکر", MafiaSide.INDEPENDENT, MafiaGlyph.JESTER, "برد با رأی", 0, 81, "");
+    JOKER("جوکر", MafiaSide.INDEPENDENT, MafiaGlyph.JESTER, "برد با رأی", 0, 81, ""),
+    // Roles of the scenarios (rules defined as data in MafiaGenericRoles) and free slots for the narrator's own roles.
+    JUDGE("قاضی", MafiaSide.CITY, MafiaGlyph.GAVEL, "نگه داشتن در رأی", 0, 90, ""),
+    LAWYER("وکیل", MafiaSide.CITY, MafiaGlyph.BRIEFCASE, "دفاع و وکالت", 47, 91, ""),
+    HERO_N("قهرمان", MafiaSide.CITY, MafiaGlyph.HELMET, "محافظ شهر", 48, 92, ""),
+    PICKPOCKET("دست‌کج", MafiaSide.CITY, MafiaGlyph.HAND, "دست‌کجی شبانه", 46, 93, ""),
+    SORCERER_C("جادوگر شهر", MafiaSide.CITY, MafiaGlyph.WITCH, "جادوی شبانه", 49, 94, ""),
+    TOUGH("گردن‌کلفت", MafiaSide.CITY, MafiaGlyph.DUMBBELL, "یک جان اضافه", 0, 95, ""),
+    GRAVEDIGGER("گورکن", MafiaSide.CITY, MafiaGlyph.TOMBSTONE, "نقش مردگان", 60, 96, ""),
+    HITMAN("قاتل حرفه‌ای", MafiaSide.MAFIA, MafiaGlyph.DAGGER, "قتل حرفه‌ای", 22, 97, ""),
+    JALAB("جلب", MafiaSide.MAFIA, MafiaGlyph.CUFFS, "جلب شبانه", 21, 98, ""),
+    BOMBMAKER("بمب‌ساز", MafiaSide.MAFIA, MafiaGlyph.BOMB, "ساخت بمب", 20, 99, ""),
+    INJECTOR("آمپول‌زن", MafiaSide.MAFIA, MafiaGlyph.SYRINGE, "آمپول شبانه", 19, 100, ""),
+    SULTAN("سلطان", MafiaSide.MAFIA, MafiaGlyph.CROWN, "رهبر دربار", 25, 101, ""),
+    MERCENARY("مزدور", MafiaSide.MAFIA, MafiaGlyph.COINS, "پاپوش برای رعیت", 23, 102, ""),
+    EXECUTIONER("جلاد", MafiaSide.MAFIA, MafiaGlyph.KATANA, "شکار و نشان", 24, 103, ""),
+    SARBEDAR("سربدار", MafiaSide.CITY, MafiaGlyph.SHIELD, "انتقام سربداری", 0, 104, ""),
+    SCRIBE("کاتب", MafiaSide.CITY, MafiaGlyph.SCROLL, "حق وصیت", 45, 105, ""),
+    ELDER("ریش‌سفید", MafiaSide.CITY, MafiaGlyph.HEAD, "خارج کردن از دفاع", 0, 106, ""),
+    NIGHTWALKER("شب‌گرد", MafiaSide.CITY, MafiaGlyph.MOON, "یک شب دست‌نیافتنی", 30, 107, ""),
+    MASKED("نقابدار", MafiaSide.MAFIA, MafiaGlyph.MASK, "مافیای پنهان", 24, 108, ""),
+    REVENANT("رونانت", MafiaSide.CITY, MafiaGlyph.TOMBSTONE, "یک روز مهلت", 0, 109, ""),
+    WEREWOLF("ورولف", MafiaSide.INDEPENDENT, MafiaGlyph.HORNS, "زخم شب‌های زوج", 54, 110, ""),
+    POISONER("پویزنر", MafiaSide.INDEPENDENT, MafiaGlyph.FLASK, "سم با تأخیر", 55, 111, ""),
+    CONSORT("کانسورت", MafiaSide.MAFIA, MafiaGlyph.CUFFS, "مسدود کردن", 21, 112, ""),
+    JANITOR("جنیتور", MafiaSide.MAFIA, MafiaGlyph.BRIEFCASE, "حذف وصیت", 22, 113, ""),
+    SHADOW("شدو", MafiaSide.MAFIA, MafiaGlyph.EYE, "کنترل نقش", 23, 114, ""),
+    DUELMAN("دوعل‌من", MafiaSide.MAFIA, MafiaGlyph.PISTOL, "تفنگ دوئل", 20, 115, ""),
+    SILENCER("سایلنسر", MafiaSide.MAFIA, MafiaGlyph.BELL, "سکوت کامل", 19, 116, ""),
+    ROJAK("روژاک", MafiaSide.CITY, MafiaGlyph.SHIELD, "ضد جیگساو", 50, 117, ""),
+    CRUSADER("کروسایدر", MafiaSide.CITY, MafiaGlyph.CROSS, "محافظت قوی", 40, 118, ""),
+    THOUSAND_FACES("هزارچهره", MafiaSide.INDEPENDENT, MafiaGlyph.THEATER, "تصاحب نقش", 56, 119, ""),
+    DEPUTY("نایب", MafiaSide.INDEPENDENT, MafiaGlyph.BADGE, "حامی هزارچهره", 0, 120, ""),
+    WICKED("شیطان‌صفت", MafiaSide.INDEPENDENT, MafiaGlyph.SPIDER, "پیوند بازیکنان", 57, 121, ""),
+    KAFIR("کافر", MafiaSide.MAFIA, MafiaGlyph.HORNS, "رهبر کافران", 25, 122, ""),
+    ASSASSIN("قاتل کافران", MafiaSide.MAFIA, MafiaGlyph.DAGGER, "شلیک قطعی", 22, 123, ""),
+    HAFTKHAT("هفت‌خط", MafiaSide.MAFIA, MafiaGlyph.CARDS, "دو حدس نقش", 23, 124, ""),
+    SAGHI("ساقی", MafiaSide.MAFIA, MafiaGlyph.FLASK, "مست کردن", 20, 125, ""),
+    TRAITOR("خائن", MafiaSide.MAFIA, MafiaGlyph.MASK, "خیانت پنهان", 0, 126, ""),
+    GAMBLER("قمارباز", MafiaSide.MAFIA, MafiaGlyph.CARDS, "سنگ کاغذ قیچی", 24, 127, ""),
+    VILLAGE_THIEF("دزد روستا", MafiaSide.CITY, MafiaGlyph.HAND, "توقف کار شب", 31, 128, ""),
+    COMPARER("کارآگاه مقایسه‌ای", MafiaSide.CITY, MafiaGlyph.SCALES, "مقایسهٔ دو نفر", 41, 129, ""),
+    NINJA("نینجا", MafiaSide.MAFIA, MafiaGlyph.KATANA, "شلیک مافیا", 25, 130, ""),
+    BODYGUARD_C("بادیگارد شهر", MafiaSide.CITY, MafiaGlyph.SHIELD, "محافظت از هدف", 38, 131, ""),
+    TERROR_C("ترور", MafiaSide.CITY, MafiaGlyph.DYNAMITE, "ترور تا رأی دوم", 0, 132, ""),
+    SCORPION("اسکورپیون", MafiaSide.CITY, MafiaGlyph.TARGET, "شلیک به تریتور", 52, 133, ""),
+    TRAITOR_S("تریتور", MafiaSide.INDEPENDENT, MafiaGlyph.DYNAMITE, "کودتا", 8, 134, ""),
+    SPECIALIST_S("متخصص کودتا", MafiaSide.INDEPENDENT, MafiaGlyph.BADGE, "هم‌پیمان تریتور", 0, 135, ""),
+    LOBBYIST("لابی‌من", MafiaSide.MAFIA, MafiaGlyph.COINS, "لابی وضعیت", 23, 136, ""),
+    SHADOW_M("سایه", MafiaSide.MAFIA, MafiaGlyph.EYE, "سایهٔ مافیا", 24, 137, ""),
+    EXPERT("متخصص", MafiaSide.CITY, MafiaGlyph.MED_CROSS, "درمان", 39, 138, ""),
+    MARSHAL("مارشال", MafiaSide.CITY, MafiaGlyph.BADGE, "مارشال شهر", 34, 139, ""),
+    RANGER("رنجر", MafiaSide.CITY, MafiaGlyph.COMPASS, "رنجر شهر", 35, 140, ""),
+    OFFICER("آفیسر", MafiaSide.CITY, MafiaGlyph.SHIELD, "آفیسر شهر", 36, 141, ""),
+    KNIGHT("شوالیه", MafiaSide.CITY, MafiaGlyph.HELMET, "استعلام شوالیه", 41, 142, ""),
+    ROYALIST("رویالیست", MafiaSide.CITY, MafiaGlyph.CROWN, "وفادار ساده", 0, 143, ""),
+    REBEL("یاغی", MafiaSide.MAFIA, MafiaGlyph.PISTOL, "ترور پس از رئیس", 0, 144, ""),
+    HACKER_M("هکر مافیا", MafiaSide.MAFIA, MafiaGlyph.LAPTOP, "اختلال توانایی", 22, 145, ""),
+    GUIDE("راهنما", MafiaSide.CITY, MafiaGlyph.COMPASS, "بیدار کردن هدف", 43, 146, ""),
+    MINER("مین‌گذار", MafiaSide.CITY, MafiaGlyph.BOMB, "مین‌گذاری", 44, 147, ""),
+    SOLDIER("سرباز", MafiaSide.CITY, MafiaGlyph.HELMET, "سرباز", 0, 148, ""),
+    HEADMAN("کدخدا", MafiaSide.CITY, MafiaGlyph.CROWN, "بیدار کردن یک نفر", 45, 149, ""),
+    NEWSBRINGER("خبررسان", MafiaSide.CITY, MafiaGlyph.NEWSPAPER, "خبر شبانه", 46, 150, ""),
+    MILTON("جان میلتون", MafiaSide.MAFIA, MafiaGlyph.HORNS, "قبض روح", 25, 151, ""),
+    VILLAIN("شرور", MafiaSide.MAFIA, MafiaGlyph.SKULL, "تهدید", 23, 152, ""),
+    HANNIBAL("هانیبال", MafiaSide.MAFIA, MafiaGlyph.KATANA, "جذب به تیم", 24, 153, ""),
+    HENRY("هنری", MafiaSide.CITY, MafiaGlyph.MED_CROSS, "نجات", 39, 154, ""),
+    ARTHUR("آرتور", MafiaSide.CITY, MafiaGlyph.MAGNIFIER, "دو استعلام", 41, 155, ""),
+    FREDERICK("فردریگ", MafiaSide.CITY, MafiaGlyph.CARDS, "شناسایی کارت", 42, 156, ""),
+    ESCOBAR("پابلو اسکوبار", MafiaSide.MAFIA, MafiaGlyph.FEDORA, "رئیس و سلاخ", 25, 157, ""),
+    JUAN("خوآن", MafiaSide.MAFIA, MafiaGlyph.CUFFS, "گرفتن توانایی", 22, 158, ""),
+    BLANCO("بلانکو", MafiaSide.MAFIA, MafiaGlyph.COINS, "خرید شهروند", 24, 159, ""),
+    WEATHERMAN("کارشناس آب‌وهوا", MafiaSide.CITY, MafiaGlyph.WIND, "تغییر هوا", 32, 160, ""),
+    SWEEPER("رفتگر", MafiaSide.CITY, MafiaGlyph.LEAF, "محافظت از یخبندان", 33, 161, ""),
+    ELIXIR_WITCH("جادوگر بیماری", MafiaSide.MAFIA, MafiaGlyph.WITCH, "قاتل شب", 25, 162, ""),
+    REBEL_E("یاغی بیماری", MafiaSide.MAFIA, MafiaGlyph.PISTOL, "انشعاب", 24, 163, ""),
+    ASI("عاصی", MafiaSide.INDEPENDENT, MafiaGlyph.HORNS, "رقیب جادوگر", 56, 164, ""),
+    ELIXIR("اکسیر", MafiaSide.CITY, MafiaGlyph.FLASK, "درمان", 39, 165, ""),
+    CHAPAR("چاپار", MafiaSide.CITY, MafiaGlyph.WIND, "پیک شهر", 40, 166, ""),
+    BUTCHER("سلاخ", MafiaSide.MAFIA, MafiaGlyph.KATANA, "سلاخی", 24, 167, ""),
+    GANGSTER("گنگستر", MafiaSide.MAFIA, MafiaGlyph.PISTOL, "گنگستر تنها", 58, 168, ""),
+    CIRCULE("سیرکوله", MafiaSide.CITY, MafiaGlyph.EYE, "سیرکوله", 56, 169, ""),
+    INSPECTOR("بازرس", MafiaSide.CITY, MafiaGlyph.MAGNIFIER, "بازرسی", 60, 170, ""),
+    DEXTER("دکستر", MafiaSide.CITY, MafiaGlyph.DAGGER, "قاتل شهر", 33, 171, ""),
+    PRIVATE_EYE("کارآگاه خصوصی", MafiaSide.CITY, MafiaGlyph.MAGNIFIER, "استعلام خصوصی", 34, 172, ""),
+    NATALI("ناتلی", MafiaSide.MAFIA, MafiaGlyph.DAGGER, "حدس همراه شلیک", 24, 173, ""),
+    POTON("پوتون", MafiaSide.MAFIA, MafiaGlyph.ANVIL, "حدس زره", 23, 174, ""),
+    JONATHAN("جاناتان", MafiaSide.CITY, MafiaGlyph.CROSSHAIR, "کشتن یک‌باره", 36, 175, ""),
+    MONICA("مونیکا", MafiaSide.CITY, MafiaGlyph.BELL, "سکوت یا حذف رأی", 44, 176, ""),
+    HERO_P("قهرمان محافظ", MafiaSide.CITY, MafiaGlyph.HELMET, "حفاظت از سایه", 37, 177, ""),
+    ARCHITECT("معمار", MafiaSide.CITY, MafiaGlyph.ANVIL, "کارت معمار", 45, 178, ""),
+    AVENGER("انتقام‌جو", MafiaSide.CITY, MafiaGlyph.DAGGER, "انتقام", 35, 179, ""),
+    ELITE_SNIPER("اسنایپر الیت", MafiaSide.CITY, MafiaGlyph.CROSSHAIR, "شلیک دقیق", 36, 180, ""),
+    SHERIFF_W("کلانتر غرب", MafiaSide.CITY, MafiaGlyph.STAR, "مجوز اسلحه", 30, 181, ""),
+    WILSON("برادران ویلسون", MafiaSide.MAFIA, MafiaGlyph.PISTOL, "تبهکار", 0, 182, ""),
+    BOUNTY("شکارچی جایزه", MafiaSide.INDEPENDENT, MafiaGlyph.TARGET, "شکار جایزه", 0, 183, ""),
+    FRAMER("تهمت‌زن", MafiaSide.MAFIA, MafiaGlyph.COINS, "تهمت", 23, 184, ""),
+    ZAHHAK("ضحاک", MafiaSide.MAFIA, MafiaGlyph.HORNS, "رهبر اهریمن", 25, 185, ""),
+    OWL("بوف", MafiaSide.MAFIA, MafiaGlyph.WINGS, "پر زهرآلود", 24, 186, ""),
+    AFRASIAB("افراسیاب", MafiaSide.MAFIA, MafiaGlyph.KATANA, "پهلوان تورانی", 23, 187, ""),
+    RUSTAM("رستم", MafiaSide.CITY, MafiaGlyph.HELMET, "پهلوان", 36, 188, ""),
+    JAMASB("جاماسب", MafiaSide.CITY, MafiaGlyph.CRYSTAL, "استعلام خونی", 41, 189, ""),
+    SIMORGH("سیمرغ", MafiaSide.CITY, MafiaGlyph.WINGS, "پر سیمرغ", 38, 190, ""),
+    AHRIMAN("اهریمن", MafiaSide.MAFIA, MafiaGlyph.HORNS, "رهبر تاریکی", 25, 191, ""),
+    DARK("تاریک", MafiaSide.MAFIA, MafiaGlyph.MOON, "پیش‌بینی شوالیه", 23, 192, ""),
+    AHRIMAN_CHILD("بچه اهریمن", MafiaSide.MAFIA, MafiaGlyph.HORNS, "پیش‌بینی دعوت", 24, 193, ""),
+    PSYCHER("روانگر", MafiaSide.MAFIA, MafiaGlyph.HEAD, "پیش‌بینی استاد", 22, 194, ""),
+    ARCHER("تیرانداز", MafiaSide.CITY, MafiaGlyph.TARGET, "تیر شب", 35, 195, ""),
+    ROSHANA("روشنا", MafiaSide.CITY, MafiaGlyph.BULB, "دعوت به روشنایی", 45, 196, ""),
+    MASTER("استاد", MafiaSide.CITY, MafiaGlyph.BOOK, "هدف استاد", 46, 197, ""),
+    CURTIS("کرتیس", MafiaSide.CITY, MafiaGlyph.BADGE, "فرماندهٔ نجات", 0, 198, ""),
+    PARTISAN("پارتیزان", MafiaSide.CITY, MafiaGlyph.PISTOL, "مامور نجات", 0, 199, ""),
+    PASCAL("دکتر پاسکال", MafiaSide.CITY, MafiaGlyph.MED_CROSS, "دو نجات", 39, 200, ""),
+    PILOT("خلبان", MafiaSide.CITY, MafiaGlyph.WINGS, "زره و محافظ رأی", 0, 201, ""),
+    KESSLER("کسلر", MafiaSide.MAFIA, MafiaGlyph.FEDORA, "رئیس گشتاپو", 0, 202, ""),
+    REINHART("راینهارت", MafiaSide.MAFIA, MafiaGlyph.EYE, "حدس نقش پیش از رأی", 0, 203, ""),
+    GESTAPO("گشتاپو", MafiaSide.MAFIA, MafiaGlyph.MASK, "مامور گشتاپو", 0, 204, ""),
+    CUSTOMER("مشتری", MafiaSide.INDEPENDENT, MafiaGlyph.COINS, "ساید با اسلحه", 0, 205, ""),
+    KINGSLAYER("شاه‌کش", MafiaSide.MAFIA, MafiaGlyph.CROWN, "معکوس یا حدس", 23, 206, ""),
+    POLICE_CHIEF("رئیس پلیس", MafiaSide.CITY, MafiaGlyph.BADGE, "تیر پس از رأی", 0, 207, ""),
+    CUSTOM_01("نقش سفارشی 1", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_02("نقش سفارشی 2", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_03("نقش سفارشی 3", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_04("نقش سفارشی 4", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_05("نقش سفارشی 5", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_06("نقش سفارشی 6", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_07("نقش سفارشی 7", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_08("نقش سفارشی 8", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_09("نقش سفارشی 9", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_10("نقش سفارشی 10", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_11("نقش سفارشی 11", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_12("نقش سفارشی 12", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_13("نقش سفارشی 13", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_14("نقش سفارشی 14", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_15("نقش سفارشی 15", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_16("نقش سفارشی 16", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_17("نقش سفارشی 17", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_18("نقش سفارشی 18", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_19("نقش سفارشی 19", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_20("نقش سفارشی 20", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_21("نقش سفارشی 21", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_22("نقش سفارشی 22", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_23("نقش سفارشی 23", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_24("نقش سفارشی 24", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_25("نقش سفارشی 25", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_26("نقش سفارشی 26", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_27("نقش سفارشی 27", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_28("نقش سفارشی 28", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_29("نقش سفارشی 29", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_30("نقش سفارشی 30", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_31("نقش سفارشی 31", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_32("نقش سفارشی 32", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_33("نقش سفارشی 33", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_34("نقش سفارشی 34", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_35("نقش سفارشی 35", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_36("نقش سفارشی 36", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_37("نقش سفارشی 37", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_38("نقش سفارشی 38", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_39("نقش سفارشی 39", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_40("نقش سفارشی 40", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_41("نقش سفارشی 41", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_42("نقش سفارشی 42", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_43("نقش سفارشی 43", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_44("نقش سفارشی 44", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_45("نقش سفارشی 45", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_46("نقش سفارشی 46", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_47("نقش سفارشی 47", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_48("نقش سفارشی 48", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_49("نقش سفارشی 49", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_50("نقش سفارشی 50", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_51("نقش سفارشی 51", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_52("نقش سفارشی 52", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_53("نقش سفارشی 53", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_54("نقش سفارشی 54", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_55("نقش سفارشی 55", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_56("نقش سفارشی 56", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_57("نقش سفارشی 57", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_58("نقش سفارشی 58", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_59("نقش سفارشی 59", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, ""),
+    CUSTOM_60("نقش سفارشی 60", MafiaSide.CITY, MafiaGlyph.QUESTION, "", 0, 200, "");
 
     val isMulti: Boolean get() = this == CITIZEN || this == MAFIA
+
+    /** Original name, before scenario names or the narrator's edits. */
+    val defaultName: String get() = baseName
+    val defaultSide: MafiaSide get() = baseSide
+    val defaultGlyph: MafiaGlyph get() = baseGlyph
+    val defaultTagline: String get() = baseTagline
+    val defaultWake: Int get() = baseWake
+    val defaultIntroOrder: Int get() = baseIntro
+    val faName: String get() = MafiaRoleRegistry.name(this) ?: baseName
+    val side: MafiaSide get() = MafiaRoleRegistry.def(this)?.side ?: baseSide
+    val glyph: MafiaGlyph get() = MafiaRoleRegistry.def(this)?.glyph ?: baseGlyph
+    val tagline: String get() = MafiaRoleRegistry.def(this)?.tagline ?: baseTagline
+    val wakeOrder: Int get() {
+        val d = MafiaRoleRegistry.def(this)
+        if (d?.wakes == false) return 0
+        return MafiaRoleRegistry.scenarioWake[this] ?: d?.wakeOrder ?: baseWake
+    }
+    val introOrder: Int get() = MafiaRoleRegistry.def(this)?.introOrder ?: baseIntro
+    /** A free slot for a role the narrator adds himself. */
+    val isCustomSlot: Boolean get() = name.startsWith("CUSTOM_")
+    /** Rules defined as data (scenario roles and the narrator's own roles), not hand-coded. */
+    val isGeneric: Boolean get() = ordinal > JOKER.ordinal || MafiaRoleRegistry.overrides(this)
+    /** Built-in roles whose rules are data (scenario roles and custom slots). */
+    val isDataRole: Boolean get() = ordinal > JOKER.ordinal
 }
 
 object MafiaRoleText {
-    fun explain(role: MafiaRole): String = when (role) {
+    fun explain(role: MafiaRole): String =
+        (MafiaRoleRegistry.user[role]?.explain ?: MafiaGenericRoles.builtin[role]?.explain ?: baseExplain(role).replace(role.defaultName, role.faName))
+            .ifBlank { MafiaRoleRegistry.describe(role) }
+
+    fun intro(role: MafiaRole): String =
+        (MafiaRoleRegistry.user[role]?.intro ?: MafiaGenericRoles.builtin[role]?.intro ?: baseIntro(role).replace(role.defaultName, role.faName))
+            .ifBlank { if (role.side == MafiaSide.MAFIA) "${role.faName} خودش را به راوی و بقیه افراد مافیا معرفی کند" else "${role.faName} خودش را به راوی معرفی کند" }
+
+    private fun baseExplain(role: MafiaRole): String = when (role) {
         MafiaRole.CITIZEN -> "شهروند ساده نقش خاصی ندارد و جزء شهروندان است. مثل بقیه شهروندان باید تلاش کند از لا به لای داده‌ها و صحبت‌ها و لایک‌ها و دیس‌لایک‌ها و تمامی اتفاقات شب و روزهای بازی، مافیاها را پیدا کند و با رای دادن درست، آنها را یک به یک در روز از بازی بیرون بیندازد و شهر را نجات دهد. او و تیمش برنده بازی خواهند بود تنها و تنها اگر تمامی مافیاهای بازی یکی یکی از بازی بیرون بروند."
         MafiaRole.PROFESSIONAL -> "او به تعداد مشخص شده در بازی می‌تواند به یک مافیا شلیک کند، اما با شلیک اشتباه به شهروندان خودش از بازی خارج می‌شود. کار او به عنوان یک شهروند، این است که مافیا و یا مستقل شکار کند. یعنی اگر برایش قطعی و مسجل شد که کسی مافیا و یا مستقل است، خودش می‌تواند در شب بیدار شود و مستقیما او را مورد هدف قرار دهد. در این صورت اگر دکتر لکتر و یا دکتر او را نجات نداده باشد، آن مافیا و یا مستقل از بازی خارج می‌شود. نکته مهم این است که اگر اشتباه کند و قصد کشتن یک شهروند را داشته باشد تیرش به خطا می‌رود و آن شهروند از بازی بیرون نمی‌رود و در عوض خودش به جریمه ی این بی‌دقتی، از بازی حذف خواهد شد و دیگر قابلیت بازگشت به بازی را نخواهد داشت. پس در هر لحظه از شلیک کردنش دارد با جان خودش هم بازی می‌کند!\nالبته حرفه ای میتواند تعدادی زره داشته باشد که در صورت شلیک به او از شلیک جان سالم به در ببرد"
         MafiaRole.SNIPER -> " اسنایپر در گروه شهروندان ميباشد که به تعداد مشخص شده در بازی تير دارد و  تیرش قطعا کشنده خواهد بود البته به شرطی که فرمانده در بازی باشد و تیرش را تایید کند و در صورت نبود فرمانده تیرش همانند حرفه ای است اگر به اشتباه شهروند را بزند خودش از بازی بیرون خواهد رفت و دیگر قابلیت بازگشت به بازی را نخواهد داشت \n البته این فرمانده است که تیر او را تایید یا رد میکند و اگر او در بازی نباشد وظیفه اش را فرمانده بر عهده دارد"
@@ -175,9 +386,10 @@ object MafiaRoleText {
         MafiaRole.CORONA -> "کرونا جزء نقش های مستقل است که یک نقش بسیار جذاب و هیجانی به شمار میرود\nدر شب معارفه به تعداد مشخصی نفرات را آلوده می کند.\nشب اول دوره مخفی بیماری است و بیماری سرایت نخواهد کرد.\nدر آغاز شب دوم، بیماری می تواند منتقل شود یعنی اگر کسی به هر دلیلی آن شخص یا اشخاص را انتخاب یا عملیاتی روی آنها انجام دهد شب اول بیماری خودش شروع می شود مانند شات مافیا، استعلام کارآگاه، نجات دکتر ، شلیک حرفه ای ، انتخاب به عنوان نفر دوم دزد و .... \nدر پایان شب سوم بازیکنان بیمار جزء کشته های شب از بازی خارج می شوند مگر اینکه توسط فرشته نجات به بازی برگردند\nالبته اگر دکتر یا دکتر لکتر خودشان آلوده باشند نمی توانند کسی را از شر ویروس کرونا خلاص کنند.\nدکتر شهر یا دکتر لکتر می توانند با انتخاب بیمارانی که شب اول ابتلا هستند از انتشار بیماری جلوگیری کنند.\nکرونا خودش ناقل بیماری نیست و باعث انتشار نمی شود.\nاگر کرونا به هر دلیلی (شات شب یا خروج روز شامل رای گیری، تیر جنگی صاحب تفنگ یا ترور و ....)  از بازی خارج شود . انتشار ویروس کرونا متوقف میشود ولی آثار بیماران قبلی تا زمان مرگ شان ادامه خواهد داشت.\nبرای پیروزی کرونا نیاز است که خودش حتما در بازی حضور داشته باشند و تمام بازیکنان حاضر در شهر به ویروس آلوده باشند."
         MafiaRole.KILLER -> "او قاتل است وبسیار خطرناک، هنگامی که قاتل شهر یک نفر را میکشد تحت هیچ شرایطی درمان نخواهد شد و از بازی بیرون خواهد رفت.\nمگر اینکه قاتل آن شب از بین مردگان آن را زنده کند\nقاتل هر شب میتواند تیراندازی کند و هنگامی که به او شلیک میشود همانند یک شهروند عادی با او برخورد خواهد شد\nشرط پیروزی قاتل در خروج پدرخوانده، دکتر، کارآگاه ویژه و همه نقش های مستقل دیگر است"
         MafiaRole.JOKER -> "جوکر در مافیا بازی یکی از شهروندان است که به صورت مستقل عمل میکند\nشرط پیروزی جوکر در این است که در طول روز علیه او اجماع شود.\nبرخلاف بقیه بازیکنان که در طول بازی تلاش می‌کنند، در روز با اجماع رای بقیه بازیکنان بیرون نروند، جوکر برعکس تلاش می‌کند که همه به او مشکوک شوند و اجماع رای‌ها برای او باشد، چون در این شرایط است که او برنده محسوب می‌شود."
+        else -> ""
     }
 
-    fun intro(role: MafiaRole): String = when (role) {
+    private fun baseIntro(role: MafiaRole): String = when (role) {
         MafiaRole.CITIZEN -> "شهروند ساده خودش را به راوی معرفی کند"
         MafiaRole.PROFESSIONAL -> "حرفه ای خودش را به راوی معرفی کند"
         MafiaRole.SNIPER -> "اسنایپر خودش را به راوی معرفی کند"
@@ -257,11 +469,14 @@ object MafiaRoleText {
         MafiaRole.CORONA -> "کرونا خودش را به راوی معرفی کند"
         MafiaRole.KILLER -> "قاتل خودش را به راوی معرفی کند"
         MafiaRole.JOKER -> "جوکر خودش را به راوی معرفی کند"
+        else -> ""
     }
 }
 
 object MafiaRoleOptions {
-    fun of(role: MafiaRole): List<MafiaOptionDef> = when (role) {
+    fun of(role: MafiaRole): List<MafiaOptionDef> = if (role.isGeneric) MafiaGenericRoles.options(role) else baseOf(role)
+
+    private fun baseOf(role: MafiaRole): List<MafiaOptionDef> = when (role) {
         MafiaRole.CITIZEN -> listOf(
             MafiaOptionDef("تعداد شهروند ساده", listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55"), "1")
         )

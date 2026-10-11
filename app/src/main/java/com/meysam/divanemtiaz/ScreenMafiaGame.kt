@@ -18,6 +18,7 @@ abstract class MafiaScreen(host: MainActivity, val gameId: Long) : Screen(host) 
 
     fun load(): Boolean {
         g = host.mafia.game(gameId) ?: return false
+        MafiaRoleRegistry.activate(host.mafia.scenario(g.extra["scenario"]))
         return true
     }
 
@@ -202,7 +203,7 @@ class MafiaGameScreen(host: MainActivity, gameId: Long) : MafiaScreen(host, game
             })
         } else if (g.night > 0) {
             addView(step("رای گیری دور اول", MafiaCues.VOTE_FIRST, d.firstVoteDone, d.speakingDone && bombOk,
-                if (d.firstVoteDone) "${kit.n(d.defenders.size)} نفر به دفاع رفتند" else "رای لازم برای به دفاع رفتن بازیکن : ${kit.n(MafiaFlow.firstEdge(g.alive.size, mafiaSettings))}") {
+                if (d.firstVoteDone) "${kit.n(d.defenders.size)} نفر به دفاع رفتند" else "رای لازم برای به دفاع رفتن بازیکن : ${kit.n(MafiaFlow.firstEdge(g, mafiaSettings))}") {
                 host.push(MafiaVoteScreen(host, gameId, false))
             })
             if (MafiaFlow.defenceAvailable(g)) addView(step("دفاعیه", MafiaCues.DEFENCE, d.defenceDone, d.firstVoteDone, d.defenders.mapNotNull { g.player(it)?.name }.joinToString("، ")) {
@@ -216,7 +217,7 @@ class MafiaGameScreen(host: MainActivity, gameId: Long) : MafiaScreen(host, game
         }
         addView(kit.section("ابزار روز", RoyalIcon.SLIDERS))
         val tools = ArrayList<View>()
-        if (MafiaFlow.groupQueryAvailable(g, mafiaSettings)) tools += tool(MafiaGlyph.SCALES, "استعلام گروهی", "${kit.n(mafiaSettings.queryCount - g.queriesUsed)} بار مانده") { groupQuery() }
+        if (MafiaFlow.groupQueryAvailable(g, mafiaSettings)) tools += tool(MafiaGlyph.SCALES, "استعلام گروهی", "${kit.n(MafiaFlow.queryCount(g, mafiaSettings) - g.queriesUsed)} بار مانده") { groupQuery() }
         if (g.inGame(MafiaRole.DIE_HARD) && g.extra["dieHardQuery"] == g.night.toString()) tools += tool(MafiaGlyph.HELMET, "استعلام جان سخت", "نقش خارج‌شده‌ها") {
             playersDialog("استعلام جان سخت", g.out)
         }

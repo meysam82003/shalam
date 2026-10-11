@@ -130,6 +130,14 @@ object MafiaManual {
         log(g, if (on) "راوی ${p.name} را ساکت کرد" else "راوی سکوت ${p.name} را برداشت")
     }
 
+    /** Narrator's side change (e.g. a customer who joins a team in ارتش سری); null = back to the role's own side. */
+    fun setSide(g: MafiaGame, id: Int, side: MafiaSide?) {
+        val p = g.player(id) ?: return
+        p.flags.removeAll { it.startsWith("side:") }
+        if (side != null) p.flags += "side:" + side.name
+        log(g, "راوی ساید ${p.name} را به ${(side ?: p.role?.side)?.title ?: "-"} تغییر داد")
+    }
+
     fun toggleReveal(g: MafiaGame, id: Int) {
         val p = g.player(id) ?: return
         p.revealed = !p.revealed

@@ -26,7 +26,7 @@ class MafiaSpeakingScreen(host: MainActivity, gameId: Long) : MafiaScreen(host, 
         timers.forEach { it.stop() }
         timers.clear()
         val s = mafiaSettings
-        return scaffold("صحبت", "زمان صحبت ${kit.n(s.speakTime)} • چالش ${kit.n(s.challengeTime)} ثانیه",
+        return scaffold("صحبت", "زمان صحبت ${kit.n(s.speakTime)}" + if (g.extra["noChallenge"] == "1") " • بدون چالش" else " • چالش ${kit.n(s.challengeTime)} ثانیه",
             actions = listOf(
                 kit.iconButton(RoyalIcon.SWAP, "ترتیب نشستن", ButtonKind.SECONDARY, 44) { host.push(MafiaSeatingScreen(host, gameId)) },
                 kit.iconButton(RoyalIcon.UNDO, "بازنشانی", ButtonKind.SECONDARY, 44) { challengers.clear(); host.refresh() }
@@ -35,7 +35,8 @@ class MafiaSpeakingScreen(host: MainActivity, gameId: Long) : MafiaScreen(host, 
             addView(narration("صحبت‌ها به ترتیب نشستن؛ بازیکن اول سر صحبت است.", MafiaCues.SPEAKING, PanelStyle.NORMAL))
             MafiaManual.speakingOrder(g).forEachIndexed { i, p ->
                 val challenger = challengers[p.id]?.let { g.player(it) }
-                val extra = kit.horizontal().apply {
+                // Scenarios without challenge (e.g. اسکام) hide the challenge row.
+                val extra = if (g.extra["noChallenge"] == "1") null else kit.horizontal().apply {
                     if (challenger == null) {
                         addView(kit.chip("چالش به …", false) { pickChallenger(p) }.apply { setPadding(kit.dp(12), kit.dp(4), kit.dp(12), kit.dp(6)) })
                     } else {
@@ -105,8 +106,8 @@ class MafiaVoteScreen(host: MainActivity, gameId: Long, private val second: Bool
         val votes = if (second) g.day.secondVotes else g.day.firstVotes
         val rows = if (second) g.day.defenders.mapNotNull { g.player(it) } else g.alive
         val title = if (second) "رای گیری دور دوم" else "رای گیری دور اول"
-        val edgeText = if (!second) "رای لازم برای به دفاع رفتن بازیکن : ${kit.n(MafiaFlow.firstEdge(n, s))}"
-            else if (rows.size == 1) "رای لازم برای خروج بازیکن : ${kit.n(MafiaFlow.secondEdge(n, s))}"
+        val edgeText = if (!second) "رای لازم برای به دفاع رفتن بازیکن : ${kit.n(MafiaFlow.firstEdge(g, s))}"
+            else if (rows.size == 1) "رای لازم برای خروج بازیکن : ${kit.n(MafiaFlow.secondEdge(g, s))}"
             else "بیشترین رأی از بازی خارج می‌شود؛ تساوی = قرعهٔ مرگ"
         return scaffold(title, "${kit.n(n)} نفر در بازی",
             bottom = kit.button("پایان", ButtonKind.PRIMARY, RoyalIcon.CHECK, 52) {
