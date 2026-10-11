@@ -22,7 +22,8 @@ enum class GameType(
 /** Practical upper bound for individual games; far above any real table. */
 const val MAX_PLAYERS = 99
 
-data class Side(val name: String, val avatar: Int)
+/** A team or a player in a game. [members] are the people of a team (شلم، منفی), for per-person statistics. */
+data class Side(val name: String, val avatar: Int, val members: List<String> = emptyList())
 
 enum class RoundKind(val key: String) {
     SHALAM_HAND("shalam_hand"),
@@ -429,7 +430,8 @@ class League(
     val matches: MutableList<LeagueMatch> = matches.toMutableList()
 }
 
-data class RosterEntry(val id: Long, val name: String, val avatar: Int, val isTeam: Boolean)
+/** A saved person (isTeam = false) or team; a team lists the people in it. */
+data class RosterEntry(val id: Long, val name: String, val avatar: Int, val isTeam: Boolean, val members: List<String> = emptyList())
 
 object PersianText {
     private const val LATIN = "0123456789"

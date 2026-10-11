@@ -35,11 +35,18 @@ object SessionOps {
         sides.forEach { side ->
             val existing = roster.indexOfFirst { it.name == side.name && it.isTeam == isTeam }
             if (existing < 0) {
-                roster += RosterEntry(System.currentTimeMillis() + roster.size, side.name, side.avatar, isTeam)
+                roster += RosterEntry(System.currentTimeMillis() + roster.size, side.name, side.avatar, isTeam, side.members)
                 changed = true
-            } else if (roster[existing].avatar != side.avatar) {
-                roster[existing] = roster[existing].copy(avatar = side.avatar)
+            } else if (roster[existing].avatar != side.avatar || (side.members.isNotEmpty() && roster[existing].members != side.members)) {
+                roster[existing] = roster[existing].copy(avatar = side.avatar, members = side.members.ifEmpty { roster[existing].members })
                 changed = true
+            }
+            // Every person of a team is kept in the people list too.
+            side.members.forEach { m ->
+                if (roster.none { it.name == m && !it.isTeam }) {
+                    roster += RosterEntry(System.currentTimeMillis() + roster.size, m, (roster.size * 7 + 3) % Emblems.COUNT, false)
+                    changed = true
+                }
             }
         }
         if (changed) host.repo.saveRoster(roster)
@@ -91,6 +98,55 @@ fun Screen.avatarPicker(current: Int, onPick: (Int) -> Unit) {
         }
     }
     dialog = kit.dialog("انتخاب نشان", null, kit.grid(4, cells, 6), listOf(DialogAction("بستن")))
+    dialog.show()
+}
+
+/**
+ * Chooses the people of a team (up to [max]) from the saved people, or adds a new person.
+ * Teams built from people let every person have his own record in every game.
+ */
+fun Screen.memberPicker(current: List<String>, max: Int = 2, onDone: (List<String>) -> Unit) {
+    val chosen = ArrayList(current)
+    lateinit var dialog: Dialog
+    val grid = kit.grid(3, emptyList(), 6)
+    fun fill() {
+        grid.removeAllViews()
+        host.repo.roster().filter { !it.isTeam }.forEach { e ->
+            val on = e.name in chosen
+            grid.addView(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
+                background = PanelDrawable(kit.density, if (on) PanelStyle.SELECTED else PanelStyle.FLAT, 14f)
+                setPadding(kit.dp(4), kit.dp(6), kit.dp(4), kit.dp(8))
+                addView(kit.avatar(e.avatar, 42))
+                addView(kit.text(e.name, TextStyle.LABEL_BOLD, if (on) Royal.turquoiseLight else Royal.ivory, Gravity.CENTER, 1))
+                isClickable = true
+                contentDescription = e.name
+                setOnClickListener {
+                    kit.tap(it)
+                    if (on) chosen.remove(e.name) else { if (chosen.size >= max) chosen.removeAt(0); chosen += e.name }
+                    fill()
+                }
+            })
+        }
+    }
+    fill()
+    val body = kit.vertical().apply {
+        addView(kit.button("فرد جدید", ButtonKind.GHOST, RoyalIcon.PLUS, 40) {
+            kit.textPrompt("نام فرد", "") { name ->
+                val roster = host.repo.roster().toMutableList()
+                if (roster.none { it.name == name && !it.isTeam }) {
+                    roster += RosterEntry(System.currentTimeMillis(), name, (roster.size * 7 + 3) % Emblems.COUNT, false)
+                    host.repo.saveRoster(roster)
+                }
+                if (name !in chosen) { if (chosen.size >= max) chosen.removeAt(0); chosen += name }
+                fill()
+            }
+        }, kit.spaced(8))
+        addView(grid)
+    }
+    dialog = kit.dialog("اعضای تیم", "تا ${kit.n(max)} نفر از افراد را انتخاب کنید", body, listOf(
+        DialogAction("تایید", ButtonKind.PRIMARY) { onDone(chosen.toList()) },
+        DialogAction("لغو")
+    ))
     dialog.show()
 }
 

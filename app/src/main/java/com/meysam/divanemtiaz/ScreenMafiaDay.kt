@@ -15,7 +15,7 @@ class MafiaSpeakingScreen(host: MainActivity, gameId: Long) : MafiaScreen(host, 
 
     private fun pickChallenger(p: MafiaPlayer) {
         val taken = challengers.filterKeys { it != p.id }.values.toSet()
-        pickPlayers("انتخاب چلنجر برای ${p.name}", g.alive.filter { it.id != p.id && it.id !in taken && MafiaFlow.silenced(it) == null }, 1, 1, false,
+        pickPlayers("چه کسی از ${p.name} چالش گرفت؟", g.alive.filter { it.id != p.id && it.id !in taken && MafiaFlow.silenced(it) == null }, 1, 1, false,
             challengers[p.id]?.let { setOf(it) } ?: emptySet()) { ids ->
             challengers[p.id] = ids.first(); host.refresh()
         }
@@ -37,9 +37,9 @@ class MafiaSpeakingScreen(host: MainActivity, gameId: Long) : MafiaScreen(host, 
                 val challenger = challengers[p.id]?.let { g.player(it) }
                 val extra = kit.horizontal().apply {
                     if (challenger == null) {
-                        addView(kit.chip("انتخاب چلنجر", false) { pickChallenger(p) }.apply { setPadding(kit.dp(12), kit.dp(4), kit.dp(12), kit.dp(6)) })
+                        addView(kit.chip("چالش به …", false) { pickChallenger(p) }.apply { setPadding(kit.dp(12), kit.dp(4), kit.dp(12), kit.dp(6)) })
                     } else {
-                        addView(kit.weight(kit.text("چلنجر: ${challenger.name}", TextStyle.LABEL_BOLD, Royal.turquoiseLight, maxLines = 1)))
+                        addView(kit.weight(kit.text("${challenger.name} از ${p.name} چالش گرفت", TextStyle.LABEL_BOLD, Royal.turquoiseLight, maxLines = 2)))
                         val time = kit.text(clock(s.challengeTime), TextStyle.HEADING, Royal.goldLight, Gravity.CENTER, 1)
                         lateinit var timer: MafiaTimer
                         timer = MafiaTimer(this@MafiaSpeakingScreen, s.challengeTime) { left, _ -> time.text = clock(left) }
@@ -49,9 +49,14 @@ class MafiaSpeakingScreen(host: MainActivity, gameId: Long) : MafiaScreen(host, 
                             if (timer.running) timer.pause() else { timers.filter { it !== timer }.forEach { it.pause() }; timer.start() }
                         }.apply { setPadding(kit.dp(8), kit.dp(4), kit.dp(8), kit.dp(6)) })
                         addView(kit.hgap(4))
-                        addView(kit.iconButton(RoyalIcon.EDIT, "تغییر چلنجر ${p.name}", ButtonKind.CHIP, 36) { timer.stop(); pickChallenger(p) })
+                        addView(kit.iconButton(RoyalIcon.EDIT, "اصلاح چلنجر ${p.name}", ButtonKind.CHIP, 36) { timer.stop(); pickChallenger(p) })
                         addView(kit.hgap(4))
-                        addView(kit.iconButton(RoyalIcon.CLOSE, "حذف چالش ${p.name}", ButtonKind.DANGER, 36) { timer.stop(); challengers.remove(p.id); host.refresh() })
+                        addView(kit.iconButton(RoyalIcon.UNDO, "برگرداندن انتخاب چالش ${p.name}", ButtonKind.CHIP, 36) {
+                            timer.stop()
+                            challengers.remove(p.id)
+                            kit.toast("انتخاب اشتباه برگشت؛ ${p.name} دوباره می‌تواند چالش بدهد")
+                            host.refresh()
+                        })
                     }
                 }
                 val note = (if (i == 0) "سر صحبت" else null) ?: if (p.has("extraTime")) "زمان دوبرابر (کشیش)" else null

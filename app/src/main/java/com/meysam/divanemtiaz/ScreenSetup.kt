@@ -141,12 +141,23 @@ class SetupScreen(host: MainActivity, private val game: GameType) : Screen(host)
                 addView(kit.text(if (game.isTeamGame) "تیم ${kit.n(index + 1)}" else "بازیکن ${kit.n(index + 1)}", TextStyle.LABEL_BOLD, Royal.gold))
                 addView(kit.gap(4))
                 addView(nameField, kit.fill())
+                if (game.isTeamGame) {
+                    addView(kit.gap(4))
+                    addView(kit.chip(if (side.members.isEmpty()) "انتخاب اعضای تیم از افراد" else "اعضا: " + side.members.joinToString(" و "), side.members.isNotEmpty()) {
+                        memberPicker(sides[index].members) { members ->
+                            val old = sides[index]
+                            val autoName = old.name.isBlank() || old.name == initialSides().getOrNull(index)?.name || old.name == old.members.joinToString(" و ")
+                            sides[index] = old.copy(members = members, name = if (autoName && members.isNotEmpty()) members.joinToString(" و ") else old.name)
+                            host.refresh()
+                        }
+                    }.apply { setPadding(kit.dp(10), kit.dp(4), kit.dp(10), kit.dp(6)) })
+                }
             }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
             addView(kit.hgap(8))
             addView(kit.vertical(Gravity.CENTER).apply {
                 addView(kit.iconButton(RoyalIcon.USER, "انتخاب از فهرست", ButtonKind.CHIP, 44) {
                     rosterPicker(game.isTeamGame) { entry ->
-                        sides[index] = Side(entry.name, entry.avatar)
+                        sides[index] = Side(entry.name, entry.avatar, entry.members)
                         host.refresh()
                     }
                 })
@@ -208,7 +219,7 @@ class SetupScreen(host: MainActivity, private val game: GameType) : Screen(host)
         }
         val defaults = initialSides()
         val finalSides = sides.mapIndexed { i, s ->
-            Side(s.name.trim().ifBlank { defaults.getOrNull(i)?.name ?: "بازیکن ${kit.n(i + 1)}" }, s.avatar)
+            Side(s.name.trim().ifBlank { defaults.getOrNull(i)?.name ?: "بازیکن ${kit.n(i + 1)}" }, s.avatar, s.members)
         }
         val base = settings.rulesFor(game, joker, endPoint)
         val rules = when (game) {

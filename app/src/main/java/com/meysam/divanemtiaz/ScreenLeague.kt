@@ -98,7 +98,7 @@ class LeagueSetupScreen(host: MainActivity) : Screen(host) {
             },
             kit.button("از فهرست تیم‌ها", ButtonKind.GHOST, RoyalIcon.USER, 40) {
                 rosterPicker(true) { entry ->
-                    teams += Side(entry.name, entry.avatar)
+                    teams += Side(entry.name, entry.avatar, entry.members)
                     host.refresh()
                 }
             }
@@ -126,8 +126,23 @@ class LeagueSetupScreen(host: MainActivity) : Screen(host) {
             }
         })
         addView(kit.hgap(6))
-        addView(kit.weight(kit.field("نام تیم", teams[i].name).apply {
-            addTextChangedListener(watcher { text -> if (i < teams.size) teams[i] = teams[i].copy(name = text) })
+        addView(kit.weight(kit.vertical().apply {
+            addView(kit.field("نام تیم", teams[i].name).apply {
+                addTextChangedListener(watcher { text -> if (i < teams.size) teams[i] = teams[i].copy(name = text) })
+            }, kit.fill())
+            addView(kit.text(if (teams[i].members.isEmpty()) "بدون عضو — لمس برای انتخاب افراد" else "اعضا: " + teams[i].members.joinToString(" و "), TextStyle.CAPTION,
+                if (teams[i].members.isEmpty()) Royal.dim else Royal.turquoiseLight, maxLines = 1).apply {
+                setPadding(kit.dp(4), kit.dp(2), kit.dp(4), kit.dp(2))
+                isClickable = true
+                setOnClickListener {
+                    memberPicker(teams[i].members) { members ->
+                        val old = teams[i]
+                        val auto = old.name.startsWith("تیم ") || old.name.isBlank() || old.name == old.members.joinToString(" و ")
+                        teams[i] = old.copy(members = members, name = if (auto && members.isNotEmpty()) members.joinToString(" و ") else old.name)
+                        host.refresh()
+                    }
+                }
+            })
         }))
         if (teams.size > 2) {
             addView(kit.hgap(6))
@@ -139,7 +154,7 @@ class LeagueSetupScreen(host: MainActivity) : Screen(host) {
     }
 
     private fun start() {
-        val clean = teams.mapIndexed { i, t -> Side(t.name.trim().ifBlank { "تیم ${kit.n(i + 1)}" }, t.avatar) }
+        val clean = teams.mapIndexed { i, t -> Side(t.name.trim().ifBlank { "تیم ${kit.n(i + 1)}" }, t.avatar, t.members) }
         if (clean.size < 2) {
             kit.toast("دست‌کم دو تیم لازم است")
             return

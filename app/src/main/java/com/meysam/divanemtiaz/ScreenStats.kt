@@ -151,16 +151,23 @@ private fun Screen.statTiles(p: PlayerStats): View = kit.grid(3, listOf(
 /** Rankings of teams and players with Elo ratings, plus the all-time records. */
 class RankingScreen(host: MainActivity) : Screen(host) {
     private var teams = true
+    private var people = true
     private var game: GameType? = null
+    private var mafia = false
 
     override fun build(): View {
         val sessions = host.repo.sessions()
         val list = StatsEngine.leaderboard(sessions, teams, game)
         return scaffold(title = "رنک‌بندی", subtitle = "رتبهٔ Elo از همهٔ بازی‌های پایان‌یافته") {
-            addView(kit.grid(2, listOf(
-                kit.chip("تیم‌ها", teams, ButtonKind.CHIP_GOLD) { teams = true; game = null; host.refresh() },
-                kit.chip("بازیکنان", !teams, ButtonKind.CHIP_GOLD) { teams = false; game = null; host.refresh() }
+            addView(kit.grid(3, listOf(
+                kit.chip("افراد", people, ButtonKind.CHIP_GOLD) { people = true; game = null; mafia = false; host.refresh() },
+                kit.chip("تیم‌ها", !people && teams, ButtonKind.CHIP_GOLD) { people = false; teams = true; game = null; host.refresh() },
+                kit.chip("بازیکنان", !people && !teams, ButtonKind.CHIP_GOLD) { people = false; teams = false; game = null; host.refresh() }
             ), 6), kit.spaced(6))
+            if (people) {
+                peopleRanking(this, sessions, game, mafia) { g, m -> game = g; mafia = m; host.refresh() }
+                return@scaffold
+            }
             val games = GameType.values().filter { it.isTeamGame == teams }
             addView(kit.flow(listOf(kit.chip("همهٔ بازی‌ها", game == null) { game = null; host.refresh() }) + games.map { g ->
                 kit.chip(g.title, game == g) { game = g; host.refresh() }

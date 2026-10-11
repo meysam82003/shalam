@@ -61,7 +61,7 @@ class HomeScreen(host: MainActivity) : Screen(host) {
         column.addView(kit.grid(3, listOf(
             tile(RoyalIcon.TROPHY, "لیگ‌ها", "دو برده، جدول و فینال") { host.push(LeagueListScreen(host)) },
             tile(RoyalIcon.HISTORY, "تاریخچه", "ادامه و نتیجه‌ها") { host.push(HistoryScreen(host)) },
-            tile(RoyalIcon.PLAYERS, "بازیکنان", "تیم‌ها و نشان‌ها") { host.push(PlayersScreen(host)) },
+            tile(RoyalIcon.PLAYERS, "افراد و تیم‌ها", "کارنامهٔ هر نفر") { host.push(PlayersScreen(host)) },
             tile(RoyalIcon.CHART, "ماشین‌حساب ورق", "پخش و ورق اضافه") { host.push(DeckCalcScreen(host)) },
             tile(RoyalIcon.RULES, "قوانین", "شرح هر بازی") { host.push(RulesScreen(host, null)) },
             tile(RoyalIcon.SETTINGS, "تنظیمات", "همهٔ قوانین") { host.push(SettingsScreen(host)) },

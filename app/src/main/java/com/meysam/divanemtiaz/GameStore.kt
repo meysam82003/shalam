@@ -313,7 +313,7 @@ object GameCodec {
         put("label", session.label)
         if (session.leagueId != 0L) put("league", session.leagueId)
         put("sides", JSONArray().apply {
-            session.sides.forEach { side -> put(JSONObject().put("name", side.name).put("avatar", side.avatar)) }
+            session.sides.forEach { side -> put(encodeSide(side)) }
         })
         put("rules", encodeRules(session.rules))
         put("rounds", JSONArray().apply { session.rounds.forEach { put(encodeRound(it)) } })
@@ -330,7 +330,7 @@ object GameCodec {
         val sides = if (sidesJson != null && sidesJson.length() > 0) {
             List(sidesJson.length()) { i ->
                 val s = sidesJson.optJSONObject(i) ?: JSONObject()
-                Side(s.optString("name", "بازیکن ${i + 1}"), s.optInt("avatar", i))
+                Side(s.optString("name", "بازیکن ${i + 1}"), s.optInt("avatar", i), members(s))
             }
         } else {
             listOf(
@@ -621,7 +621,7 @@ object GameCodec {
         put("finished", l.finished)
         put("config", encodeLeagueConfig(l.config))
         put("rules", encodeRules(l.rules))
-        put("teams", JSONArray().apply { l.teams.forEach { put(JSONObject().put("name", it.name).put("avatar", it.avatar)) } })
+        put("teams", JSONArray().apply { l.teams.forEach { put(encodeSide(it)) } })
         put("matches", JSONArray().apply {
             l.matches.forEach { m ->
                 put(JSONObject().apply {
@@ -649,7 +649,7 @@ object GameCodec {
             game = GameType.fromKey(o.optString("game")),
             teams = List(teamsJson.length()) { i ->
                 val t = teamsJson.optJSONObject(i) ?: JSONObject()
-                Side(t.optString("name", "تیم ${i + 1}"), t.optInt("avatar", i))
+                Side(t.optString("name", "تیم ${i + 1}"), t.optInt("avatar", i), members(t))
             },
             rules = o.optJSONObject("rules")?.let(::decodeRules) ?: GameRules(),
             format = o.optInt("format", LeagueFormat.KNOCKOUT),
@@ -744,16 +744,25 @@ object GameCodec {
 
     fun encodeRoster(entries: List<RosterEntry>): JSONArray = JSONArray().apply {
         entries.forEach { e ->
-            put(JSONObject().put("id", e.id).put("name", e.name).put("avatar", e.avatar).put("team", e.isTeam))
+            put(JSONObject().put("id", e.id).put("name", e.name).put("avatar", e.avatar).put("team", e.isTeam).apply {
+                if (e.members.isNotEmpty()) put("members", JSONArray(e.members))
+            })
         }
     }
 
     fun decodeRoster(array: JSONArray): List<RosterEntry> = List(array.length()) { i ->
         val o = array.optJSONObject(i) ?: JSONObject()
-        RosterEntry(o.optLong("id", i.toLong()), o.optString("name"), o.optInt("avatar", 0), o.optBoolean("team", true))
+        RosterEntry(o.optLong("id", i.toLong()), o.optString("name"), o.optInt("avatar", 0), o.optBoolean("team", true), members(o))
     }.filter { it.name.isNotBlank() }
 
     private fun ints(values: List<Int>): JSONArray = JSONArray().apply { values.forEach { put(it) } }
+
+    private fun encodeSide(side: Side): JSONObject = JSONObject().put("name", side.name).put("avatar", side.avatar).apply {
+        if (side.members.isNotEmpty()) put("members", JSONArray(side.members))
+    }
+
+    private fun members(o: JSONObject): List<String> =
+        o.optJSONArray("members")?.let { a -> List(a.length()) { a.optString(it) }.filter { it.isNotBlank() } } ?: emptyList()
 
     private fun intList(array: JSONArray): List<Int> = List(array.length()) { array.optInt(it) }
 }

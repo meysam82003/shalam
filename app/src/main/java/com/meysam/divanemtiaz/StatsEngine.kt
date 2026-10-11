@@ -129,7 +129,7 @@ object StatsEngine {
     }
 
     /** Place of each side: 0 is best; equal places mean a draw between them. */
-    private fun placeOf(s: GameSession, totals: List<Int>): List<Int> {
+    fun placeOf(s: GameSession, totals: List<Int>): List<Int> {
         if (s.game == GameType.DOLO) {
             val ranking = GameEngine.ranking(s)
             return s.sides.indices.map { ranking.indexOf(it) }
@@ -138,7 +138,7 @@ object StatsEngine {
         return totals.map { v -> totals.count { if (high) it > v else it < v } }
     }
 
-    private fun pairScore(a: Int, b: Int): Double = when {
+    fun pairScore(a: Int, b: Int): Double = when {
         a < b -> 1.0
         a > b -> 0.0
         else -> 0.5
