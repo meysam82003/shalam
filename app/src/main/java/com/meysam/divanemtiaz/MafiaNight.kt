@@ -68,6 +68,11 @@ object MafiaNight {
 
     private fun pendingCard(g: MafiaGame, card: MafiaLastCard) = g.deck.firstOrNull { it.card == card && it.pending }
 
+    /** «مانی‌سا»: the holder's night ability is doubled tonight (twice the targets). */
+    private fun doubled(g: MafiaGame, job: NightJob): NightJob =
+        if (job.holders.any { id -> g.player(id)?.has("manisa") == true }) job.copy(modes = job.modes.map { if (it.max > 0) it.copy(max = it.max * 2) else it },
+            prompt = job.prompt + "\nکارت مانی‌سا: امشب توانایی دو برابر است") else job
+
     // ------------------------------------------------------------------ job list
 
     fun jobs(g: MafiaGame): List<NightJob> {
@@ -104,7 +109,7 @@ object MafiaNight {
             roleJob(g, r)?.let { out += it }
         }
         if (!groupAdded) mafiaGroupJob(g)?.let { out += it }
-        return out
+        return out.map { doubled(g, it) }
     }
 
     private fun pendingAttar(g: MafiaGame): MafiaPlayer? =
@@ -657,7 +662,7 @@ object MafiaNight {
                     MafiaRole.FELON -> n % 2 == 1
                     MafiaRole.INHERITOR -> p.marks["benefactor"]?.let { g.player(it) }?.let { it.alive && it.side == MafiaSide.CITY } == true
                     else -> false
-                } && !p.has("taken") || MafiaGeneric.nightImmune(p)
+                } && !p.has("taken") || MafiaGeneric.nightImmune(p) || p.has("dal")
                 if (immune) list.clear()
                 if (p.id in saves) list.clear()
                 if (list.isNotEmpty() && p.armor > 0 && !p.has("taken")) {

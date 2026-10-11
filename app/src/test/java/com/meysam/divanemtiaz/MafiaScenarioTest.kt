@@ -142,7 +142,7 @@ class MafiaScenarioTest {
         assertTrue(MafiaRole.NEGOTIATOR in s("negotiation").pool)
         assertTrue(MafiaRole.INFORMANT in s("capo").pool)
         assertEquals(13, s("capo").lineup(13)!!.values.sum())
-        assertEquals(listOf(MafiaLastCard.INTELLIGENCE, MafiaLastCard.VERTIGO), s("el_clasico").cards)
+        assertEquals(listOf(MafiaLastCard.INTELLIGENCE, MafiaLastCard.VERTIGO, MafiaLastCard.DAL, MafiaLastCard.MANISA, MafiaLastCard.MIRROR), s("el_clasico").cards)
         assertTrue(MafiaRole.VOODOO in s("nato_commando").pool)
         assertFalse(MafiaRole.MATADOR in s("nato_commando").pool)
         assertFalse(MafiaRole.CHARLATAN in s("filimo").pool)
@@ -193,5 +193,20 @@ class MafiaScenarioTest {
         assertTrue(MafiaNight.nostradamusForced(g, listOf(id(MafiaRole.MATADOR), id(MafiaRole.GOOD_MAN), id(MafiaRole.PROFESSIONAL))))
         val r = MafiaNight.perform(g, job, job.modes[0], listOf(id(MafiaRole.MATADOR), id(MafiaRole.GOOD_MAN), id(MafiaRole.DOCTOR)), null, 0, "مافیا")
         assertTrue(r.contains("باید با مافیا"))
+    }
+
+    @Test fun elClasicoCards() {
+        val g = table(8)
+        g.night = 1; g.isDay = true; g.introDone = true
+        val holder = g.player(8)!!
+        val target = g.player(5)!!
+        MafiaFlow.applyCard(g, MafiaCardState(MafiaLastCard.DAL).apply { this.holder = holder.id }, listOf(target.id), null)
+        assertFalse(target in MafiaFlow.votable(g))
+        MafiaFlow.startNight(g)
+        MafiaFlow.endNight(g)
+        assertTrue(MafiaFlow.votable(g).contains(target))
+        val before = target.role
+        MafiaFlow.applyCard(g, MafiaCardState(MafiaLastCard.MIRROR).apply { this.holder = holder.id }, listOf(target.id), null)
+        assertEquals(before, holder.role)
     }
 }

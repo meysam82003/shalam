@@ -120,6 +120,8 @@ object MafiaFlow {
         g.records.values.filter { it.key != MafiaNight.INTRO }.forEach { r -> g.log += MafiaLog(g.phaseTitle, traceLine(g, r)) }
         outcome.dead.forEach { id -> g.player(id)?.let { g.log += MafiaLog(g.phaseTitle, "${it.name} (${it.role?.faName}) در شب از بازی خارج شد") } }
         g.records.clear()
+        // «دال» and «مانی‌سا» last 24 hours: through this night.
+        g.players.forEach { it.flags.removeAll(setOf("dal", "manisa")) }
         g.night = n + 1
         g.isDay = true
         g.day = MafiaDayState()
@@ -209,12 +211,12 @@ object MafiaFlow {
     fun queryCount(g: MafiaGame, s: MafiaSettings): Int = g.extra["queryCount"]?.toIntOrNull() ?: s.queryCount
 
     /** Players who may receive votes (green mile excluded). */
-    fun votable(g: MafiaGame): List<MafiaPlayer> = g.alive.filter { !it.has("greenMile") }
+    fun votable(g: MafiaGame): List<MafiaPlayer> = g.alive.filter { !it.has("greenMile") && !it.has("dal") }
 
     fun finishFirstVote(g: MafiaGame, s: MafiaSettings) {
         val edge = firstEdge(g, s)
         g.day.defenders.clear()
-        g.alive.filter { !it.has("greenMile") && ((g.day.firstVotes[it.id] ?: 0) >= edge || it.has("redCarpet")) }.forEach { g.day.defenders += it.id }
+        g.alive.filter { !it.has("greenMile") && !it.has("dal") && ((g.day.firstVotes[it.id] ?: 0) >= edge || it.has("redCarpet")) }.forEach { g.day.defenders += it.id }
         g.day.firstVoteDone = true
         g.alive.forEach { p -> (g.day.firstVotes[p.id] ?: 0).takeIf { it > 0 }?.let { g.log += MafiaLog(g.phaseTitle, "${p.name}: ${PersianText.digits(it)} رای، در رای گیری اول کسب کرد") } }
     }
@@ -384,6 +386,12 @@ object MafiaFlow {
             } else CardOutcome(false, "بازیکن نقش را درست حدس نزد و از بازی بیرون خواهد رفت")
             MafiaLastCard.RED_CARPET -> { first?.flags?.add("redCarpet"); CardOutcome(false, "${first?.name ?: ""} در هر شرایطی به دفاعیه وارد می‌شود") }
             MafiaLastCard.GREEN_MILE -> { first?.flags?.add("greenMile"); CardOutcome(false, "${first?.name ?: ""} در مسیر سبز است و در رأی‌گیری قرار نمی‌گیرد") }
+            MafiaLastCard.DAL -> { first?.flags?.add("dal"); CardOutcome(false, "${first?.name ?: ""} تا ۲۴ ساعت نه در شب شلیک می‌شود و نه با رأی‌گیری حذف می‌شود") }
+            MafiaLastCard.MANISA -> { first?.flags?.add("manisa"); CardOutcome(false, "توانایی شبانهٔ ${first?.name ?: ""} امشب دو برابر است") }
+            MafiaLastCard.MIRROR -> if (first == null || holder == null) CardOutcome(false, "") else {
+                val r = holder.role; holder.role = first.role; first.role = r
+                CardOutcome(false, "هویت بازیکن اخراجی با ${first.name} جابه‌جا شد؛ راوی نقش جدید را به ${first.name} نشان دهد")
+            }
             MafiaLastCard.VERTIGO, MafiaLastCard.FINAL_SHOT, MafiaLastCard.CARD_EXCHANGE, MafiaLastCard.FACE_OFF, MafiaLastCard.LAST_VENOM -> {
                 st.pending = true
                 CardOutcome(false, "عملیات «${st.card.faName}» در شب انجام خواهد شد")

@@ -15,7 +15,7 @@ enum class CardAction {
 }
 
 /**
- * The 27 last-move cards (کارت حرکت آخر) with the source app's names and explanations, in deck order.
+ * The last-move cards (کارت حرکت آخر): the source app's 27 in deck order, then the El Clasico cards.
  * [requires] is a role that must be in the game for the card to be selectable.
  */
 enum class MafiaLastCard(
@@ -54,7 +54,10 @@ enum class MafiaLastCard(
     BLACK_NIGHT("شب سیاه", "شب مافیا و مستقل", MafiaGlyph.MOON, CardAction.PLAIN),
     NIGHT_LIKE_DAY("شب مثل روز روشن", "علنی شدن شب", MafiaGlyph.BULB, CardAction.PLAIN),
     BAD_CHANCE("بد شانس", "خروج تصادفی همراه", MafiaGlyph.SKULL, CardAction.PLAIN),
-    LAST_VENOM("زهر آخر", "زهر بی‌نجات", MafiaGlyph.FLASK, CardAction.NEXT_NIGHT, 1);
+    LAST_VENOM("زهر آخر", "زهر بی‌نجات", MafiaGlyph.FLASK, CardAction.NEXT_NIGHT, 1),
+    DAL("دال", "۲۴ ساعت مصونیت", MafiaGlyph.SHIELD, CardAction.PICK_PLAYERS, 1),
+    MANISA("مانی‌سا", "توانایی شب دو برابر", MafiaGlyph.BOLT, CardAction.PICK_PLAYERS, 1),
+    MIRROR("آینه", "جابه‌جایی هویت", MafiaGlyph.RING, CardAction.PICK_PLAYERS, 1);
 
     val explain: String get() = when (this) {
         INTELLIGENCE -> "بازیکن در حال ترک بازی با داشتن این کارت باید از هوش خود استفاده نماید، یک نقش از نقش هایی که در روند بازی اعلام نشده و یا مستقیم نمی داند را بر مبنای حدس برملا و پس از تایید صحت این افشاگری توسط گرداننده می تواند به بازی برگردد"
@@ -83,6 +86,9 @@ enum class MafiaLastCard(
         BLACK_NIGHT -> "در شب سیاه نقش های شهروندی نمیتوانند از نقش های خود استفاده کنند واین شب متعلق به گروه مافیا و مستقل است"
         NIGHT_LIKE_DAY -> "تمامی اتفاقات شب برای همه علنی خواهد شد و به همه گفته میشود که چه نقشی چه کاری انجام داده است"
         BAD_CHANCE -> "یکی از نقش های حاضر در بازی به صورت تصادفی انتخاب میشود و همراه بازیکن اخراجی از بازی خارج خواهد شد"
+        DAL -> "بازیکن اخراجی یک نفر را انتخاب می‌کند؛ آن فرد به مدت ۲۴ ساعت نه در شب با شلیک خارج می‌شود و نه در روز با رأی‌گیری حذف می‌شود (ال‌کلاسیکو)"
+        MANISA -> "بازیکن اخراجی یک نفر را انتخاب می‌کند؛ توانایی‌های شبانهٔ آن فرد در شب بعد دو برابر می‌شود (ال‌کلاسیکو)"
+        MIRROR -> "بازیکن اخراجی یک نفر را انتخاب می‌کند و هویت (نقش) فرد هدف با هویت او جابه‌جا می‌شود؛ بازیکن اخراجی با نقش جدید از بازی خارج می‌شود و راوی نقش تازهٔ فرد هدف را به او نشان می‌دهد (ال‌کلاسیکو)"
         LAST_VENOM -> "دارنده کارت زهر آخر در شب یک زهر به یکی از بازیکنان میدهد و آن شخص بدون هیچ نجاتی در روز از بازی بیرون خواهد رفت"
     }
 }
