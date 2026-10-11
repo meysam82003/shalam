@@ -302,8 +302,15 @@ class ButtonDrawable(
             paint.shader = LinearGradient(0f, face.top, 0f, face.bottom, c, floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
             paint.alpha = (255 * a).toInt()
             canvas.drawRoundRect(face, r, r, paint)
-            paint.shader = LinearGradient(0f, face.top, 0f, face.centerY(), Royal.alpha(Color.WHITE, 0.30f), 0, Shader.TileMode.CLAMP)
-            canvas.drawRoundRect(RectF(face.left + 2 * density, face.top + 1.5f * density, face.right - 2 * density, face.centerY()), r * 0.8f, r * 0.8f, paint)
+            // Top gloss, kept strictly inside the face so round buttons never show corners outside the circle.
+            val inner = RectF(face.left + 1.6f * density, face.top + 1.4f * density, face.right - 1.6f * density, face.bottom - 1.4f * density)
+            val innerR = (r - 1.5f * density).coerceAtLeast(0f)
+            val clip = Path().apply { addRoundRect(inner, innerR, innerR, Path.Direction.CW) }
+            canvas.save()
+            canvas.clipPath(clip)
+            paint.shader = LinearGradient(0f, inner.top, 0f, face.centerY(), Royal.alpha(Color.WHITE, 0.30f), 0, Shader.TileMode.CLAMP)
+            canvas.drawRect(inner.left, inner.top, inner.right, face.centerY(), paint)
+            canvas.restore()
             paint.shader = null
         }
         paint.style = Paint.Style.STROKE

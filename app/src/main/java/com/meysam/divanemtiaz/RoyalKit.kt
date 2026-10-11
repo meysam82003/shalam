@@ -164,11 +164,15 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
     fun iconButton(icon: RoyalIcon, description: String, kind: ButtonKind = ButtonKind.SECONDARY, size: Int = 44, onClick: () -> Unit): View =
         FrameLayout(context).apply {
             background = ButtonDrawable(density, kind, size / 2.2f)
+            // The text padding of the button face would squeeze and clip the icon of a small round button.
+            setPadding(0, 0, 0, 0)
+            clipToPadding = false
             layoutParams = LinearLayout.LayoutParams(dp(size), dp(size))
             isClickable = true
             contentDescription = description
-            addView(IconView(context, icon, ButtonDrawable.textColor(kind)), FrameLayout.LayoutParams(dp(size * 6 / 11), dp(size * 6 / 11), Gravity.CENTER).apply {
-                bottomMargin = dp(1)
+            // The face sits above its 3D edge, so the icon is centred on the face, not on the whole view.
+            addView(IconView(context, icon, ButtonDrawable.textColor(kind)), FrameLayout.LayoutParams(dp(size / 2), dp(size / 2), Gravity.CENTER).apply {
+                bottomMargin = dpf(2.4f).toInt()
             })
             setOnClickListener { tap(it); onClick() }
         }

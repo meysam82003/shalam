@@ -146,7 +146,7 @@ fun Screen.peopleRanking(parent: LinearLayout, sessions: List<GameSession>, game
     list.forEachIndexed { place, r ->
         val avatar = roster.firstOrNull { it.name == r.name && !it.isTeam }?.avatar ?: 0
         val (value, caption, rate) = when {
-            mafia -> Triple("${(r.mafia.winRate * 100).roundToInt()}٪", "${kit.n(r.mafia.wins)} برد از ${kit.n(r.mafia.games)} بازی • شهر ${kit.n(r.mafia.sideGames[MafiaSide.CITY] ?: 0)} • مافیا ${kit.n(r.mafia.sideGames[MafiaSide.MAFIA] ?: 0)}", r.mafia.winRate)
+            mafia -> Triple(kit.n((r.mafia.winRate * 100).roundToInt()) + "٪", "${kit.n(r.mafia.wins)} برد از ${kit.n(r.mafia.games)} بازی • شهر ${kit.n(r.mafia.sideGames[MafiaSide.CITY] ?: 0)} • مافیا ${kit.n(r.mafia.sideGames[MafiaSide.MAFIA] ?: 0)}", r.mafia.winRate)
             game != null -> r.byGame[game]!!.let { l -> Triple(kit.n(l.rating.roundToInt()), "${kit.n(l.wins)} برد • ${kit.n(l.draws)} مساوی • ${kit.n(l.losses)} باخت • ${StatsEngine.tier(l.rating)}", l.winRate) }
             else -> Triple(kit.n(PersonStats.overall(r).roundToInt()), "${kit.n(r.totalGames)} بازی • ${kit.n(r.totalWins)} برد", if (r.totalGames == 0) 0f else r.totalWins.toFloat() / r.totalGames)
         }
@@ -197,7 +197,7 @@ class PersonProfileScreen(host: MainActivity, private val name: String) : Screen
             addView(tiles(listOf(
                 "بازی" to kit.n(r.totalGames),
                 "برد" to kit.n(r.totalWins),
-                "درصد برد" to "${if (r.totalGames == 0) 0 else (r.totalWins * 100 / r.totalGames)}٪"
+                "درصد برد" to kit.n(if (r.totalGames == 0) 0 else (r.totalWins * 100 / r.totalGames)) + "٪"
             )))
             r.byGame.filter { it.value.games > 0 }.forEach { (game, l) ->
                 addView(kit.section(game.title, RoyalIcon.CARDS))
@@ -214,7 +214,7 @@ class PersonProfileScreen(host: MainActivity, private val name: String) : Screen
             if (r.partners.isNotEmpty()) {
                 addView(kit.section("هم‌تیمی‌ها", RoyalIcon.PLAYERS))
                 r.partners.entries.sortedByDescending { it.value.first }.forEach { (partner, gw) ->
-                    addView(line(partner, "${kit.n(gw.first)} بازی • ${kit.n(gw.second)} برد • ${if (gw.first == 0) 0 else gw.second * 100 / gw.first}٪") { host.push(PersonProfileScreen(host, partner)) })
+                    addView(line(partner, "${kit.n(gw.first)} بازی • ${kit.n(gw.second)} برد • ${kit.n(if (gw.first == 0) 0 else gw.second * 100 / gw.first)}٪") { host.push(PersonProfileScreen(host, partner)) })
                 }
             }
             if (r.teams.isNotEmpty()) {
@@ -227,7 +227,7 @@ class PersonProfileScreen(host: MainActivity, private val name: String) : Screen
                 addView(tiles(listOf(
                     "بازی" to kit.n(m.games),
                     "برد" to kit.n(m.wins),
-                    "درصد برد" to "${(m.winRate * 100).roundToInt()}٪",
+                    "درصد برد" to kit.n((m.winRate * 100).roundToInt()) + "٪",
                     "تا آخر ماند" to kit.n(m.survived),
                     "اولین خروج" to kit.n(m.firstOut),
                     "میانگین خروج" to if (m.exitNights.isEmpty()) "-" else "روز ${MafiaText.ordinal(Math.round(m.exitNights.average()).toInt())}"
