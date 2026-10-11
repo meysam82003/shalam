@@ -57,7 +57,7 @@ object MafiaFlow {
         g.records.clear(); g.day = MafiaDayState(); g.log.clear(); g.snapshots.clear()
         g.extra["lineup"] = g.players.joinToString("|") { "${it.id}:${it.role?.name}" }
         // Intro day: everyone talks once, without challenge, before the intro night.
-        g.extra["introDay"] = "pending"
+        if (g.extra["noIntroDay"] == "1") g.extra.remove("introDay") else g.extra["introDay"] = "pending"
         g.extra.remove("starterBase")
         if (g.extra["noNight"] == "1") {
             // Scenario without a night phase: straight to the first day.

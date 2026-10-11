@@ -15,7 +15,9 @@ data class ScenarioSetup(
     val edge: String? = null,
     val noCards: Boolean = false,
     val noMafiaIntro: Boolean = false,
-    val capo: Boolean? = null
+    val capo: Boolean? = null,
+    /** The game opens with the intro night (no intro day before it). */
+    val noIntroDay: Boolean = false
 )
 
 /**
@@ -63,7 +65,7 @@ data class MafiaScenario(
         put("cards", JSONArray(cards.map { it.name }))
         put("challenge", setup.challenge); put("noNight", setup.noNight); setup.queryCount?.let { put("query", it) }
         setup.edge?.let { put("edge", it) }; put("noCards", setup.noCards); put("noMafiaIntro", setup.noMafiaIntro)
-        setup.capo?.let { put("capo", it) }
+        setup.capo?.let { put("capo", it) }; put("noIntroDay", setup.noIntroDay)
         put("thresholds", setup.thresholds.entries.joinToString(",") { "${it.key}:${it.value}" })
         put("custom", custom); put("auto", auto); family?.let { put("family", it) }
     }
@@ -86,7 +88,7 @@ data class MafiaScenario(
             return MafiaScenario(o.optString("id"), o.optString("name"), o.optString("summary"), o.optString("rules"), pool, presets,
                 roleMap(o.optJSONObject("names")), roleMap(o.optJSONObject("wakeOrder")).mapNotNull { (r, v) -> v.toIntOrNull()?.let { r to it } }.toMap(),
                 cards, ScenarioSetup(o.optBoolean("challenge", true), o.optBoolean("noNight"), if (o.has("query")) o.optInt("query") else null,
-                    th, if (o.has("edge")) o.optString("edge") else null, o.optBoolean("noCards"), o.optBoolean("noMafiaIntro"), if (o.has("capo")) o.optBoolean("capo") else null),
+                    th, if (o.has("edge")) o.optString("edge") else null, o.optBoolean("noCards"), o.optBoolean("noMafiaIntro"), if (o.has("capo")) o.optBoolean("capo") else null, o.optBoolean("noIntroDay")),
                 custom = o.optBoolean("custom", true), auto = o.optBoolean("auto", presets.isEmpty()), family = if (o.has("family")) o.optString("family") else null)
         }
     }
@@ -96,7 +98,7 @@ object MafiaScenarios {
     const val FREE = "free"
 
     /** Game extras a scenario sets (copied from the draft to the started game). */
-    val KEYS = listOf("scenario", "noChallenge", "noNight", "thresholds", "queryCount", "edge", "noMafiaIntro", "scenarioCapo")
+    val KEYS = listOf("scenario", "noChallenge", "noNight", "thresholds", "queryCount", "edge", "noMafiaIntro", "scenarioCapo", "noIntroDay")
 
     private fun m(vararg p: Pair<MafiaRole, Int>): Map<MafiaRole, Int> = linkedMapOf(*p)
 
@@ -132,12 +134,14 @@ object MafiaScenarios {
     private fun godfatherRules(order: String, special: String, mind: String) = """• خانوادهٔ پدرخوانده؛ قوانین پایه در سه نسخه مشترک است و فقط نقش مستقل ویژه و کارت «ذهن زیبا» فرق دارد.
 • سه ساید: شهروند، مافیا و مستقل ویژهٔ این نسخه.
 • ترتیب بیداری شب: $order.
-• پدرخوانده: رهبر شلیک؛ استعلام منفی؛ یک محافظت در برابر لئون؛ به جای شلیک می‌تواند «حس ششم» بزند (حدس درست نقش = سلاخی که نجات و زره جلویش را نمی‌گیرد).
-• ساول گودمن: پس از خروج یک مافیا، یک بار به جای شلیک شهروند ساده را می‌خرد.
+• پدرخوانده: رهبر شلیک؛ استعلام منفی؛ یک جلیقه در برابر لئون؛ به جای شلیک می‌تواند هر شب «حس ششم» بزند (حدس درست نقش = سلاخی که نجات و جلیقه جلویش را نمی‌گیرد و کنستانتین هم برنمی‌گرداند).
+• ساول گودمن: فقط پس از خروج یک مافیا، یک بار به جای شلیک یک شهروند ساده را می‌خرد.
 • ماتادور: هر شب توانایی یک بازیکن را برای همان چرخه مسدود می‌کند.
 • دکتر واتسون: نجات شب؛ نجات خود محدود.
-• لئون: شلیک به مافیا؛ شلیک اشتباه روی شهروند مجازات خود لئون است؛ شلیک روی پدرخوانده با زره او تعامل دارد.
-• همشهری کین و کنستانتین طبق قانون نقش خودشان؛ کنستانتین یک بار بازیکن خارج‌شده را برمی‌گرداند (نقش‌های افشاشده یا سلاخی‌شده نه).
+• لئون حرفه‌ای: دو تیر؛ شلیک به شهروند ← خود لئون خارج می‌شود؛ اولین شلیک روی پدرخوانده جلیقهٔ او را می‌گیرد.
+• همشهری کین: یک بار یک نفر را نشان می‌دهد؛ اگر مافیا باشد روز بعد سایدش اعلام و کین شب بعد خارج می‌شود؛ شهروند یا نوستراداموس ← اتفاقی نمی‌افتد.
+• کنستانتین: یک بار یک بازیکن خارج‌شده را برمی‌گرداند، به شرطی که هویتش افشا نشده و سلاخی نشده باشد.
+• ترکیب مرجع ۱۱ نفره: ۳ مافیا، ۷ شهروند، ۱ مستقل؛ ۱۳ نفره: ۴ مافیا، ۸ شهروند، ۱ مستقل.
 $special
 • روز معارفه (۳۰ تا ۴۰ ثانیه برای هر نفر، بدون چالش) پیش از شب معارفه؛ روزهای بعد با چالش.
 • سر صحبت هر روز دو نفر جلوتر می‌رود (اگر بیرون باشد نفر بعدی).
@@ -190,12 +194,14 @@ $special
                 "ذهن زیبا – نوستراداموس"),
             listOf(GODFATHER, GOOD_MAN, MATADOR, NOSTRADAMUS, DOCTOR, PROFESSIONAL, CITIZEN_KANE, CONSTANTINE, CITIZEN, MAFIA),
             presets = mapOf(10 to m(GODFATHER to 1, GOOD_MAN to 1, MATADOR to 1, NOSTRADAMUS to 1, DOCTOR to 1, PROFESSIONAL to 1, CITIZEN_KANE to 1, CONSTANTINE to 1, CITIZEN to 2),
-                12 to m(GODFATHER to 1, GOOD_MAN to 1, MATADOR to 1, MAFIA to 1, NOSTRADAMUS to 1, DOCTOR to 1, PROFESSIONAL to 1, CITIZEN_KANE to 1, CONSTANTINE to 1, CITIZEN to 3)),
+                11 to m(GODFATHER to 1, GOOD_MAN to 1, MATADOR to 1, NOSTRADAMUS to 1, DOCTOR to 1, PROFESSIONAL to 1, CITIZEN_KANE to 1, CONSTANTINE to 1, CITIZEN to 3),
+                12 to m(GODFATHER to 1, GOOD_MAN to 1, MATADOR to 1, MAFIA to 1, NOSTRADAMUS to 1, DOCTOR to 1, PROFESSIONAL to 1, CITIZEN_KANE to 1, CONSTANTINE to 1, CITIZEN to 3),
+                13 to m(GODFATHER to 1, GOOD_MAN to 1, MATADOR to 1, MAFIA to 1, NOSTRADAMUS to 1, DOCTOR to 1, PROFESSIONAL to 1, CITIZEN_KANE to 1, CONSTANTINE to 1, CITIZEN to 4)),
             names = godfatherNames, wake = mapOf(NOSTRADAMUS to 1, DOCTOR to 30, PROFESSIONAL to 31, CITIZEN_KANE to 32, CONSTANTINE to 33),
             cards = godfatherCards(MafiaLastCard.NOSTRADAMUS_BEAUTIFUL_MIND), setup = ScenarioSetup(), auto = false, family = GODFATHER_FAMILY),
         MafiaScenario("godfather_jack", "پدرخوانده – جک گنجشکه", "پدرخوانده – جک اسپارو • نقش ویژه: جک اسپارو • کارت: ذهن زیبا – جک اسپارو",
             godfatherRules("تیم مافیا ← دکتر واتسون ← لئون ← همشهری کین ← کنستانتین ← جک اسپارو",
-                "• جک اسپارو (مستقل این نسخه): با توانایی و شرط برد مخصوص خودش (متن کامل در کارت نقش)؛ در شمارش برابری مافیا و شهر حساب نمی‌شود.",
+                "• جک اسپارو / جک گنجشکه (مستقل این نسخه): از شب معارفه هر شب باید یک نفر را طلسم کند (تا همه طلسم نشده‌اند تکراری نه) و آخر از همه بیدار می‌شود. شلیک شب او را نمی‌کشد؛ اگر با رأی روز خارج شود نقشش اعلام می‌شود و در بازی می‌ماند. اگر طلسم‌شده تا ۲۴ ساعت خارج شود، جک هم همراهش خارج می‌شود؛ با حدس درست «ذهن زیبا» یا حس ششم پدرخوانده هم خارج می‌شود. برد جک: خروج همهٔ مافیا یا رسیدن جک به سه نفر آخر؛ در شمارش برابری مافیا و شهر حساب نمی‌شود.",
                 "ذهن زیبا – جک اسپارو"),
             listOf(GODFATHER, GOOD_MAN, MATADOR, JACK_SPARROW, DOCTOR, PROFESSIONAL, CITIZEN_KANE, CONSTANTINE, CITIZEN, MAFIA),
             presets = mapOf(10 to m(GODFATHER to 1, GOOD_MAN to 1, MATADOR to 1, JACK_SPARROW to 1, DOCTOR to 1, PROFESSIONAL to 1, CITIZEN_KANE to 1, CONSTANTINE to 1, CITIZEN to 2)),
@@ -203,10 +209,11 @@ $special
             cards = godfatherCards(MafiaLastCard.JACK_SPARROW_BEAUTIFUL_MIND), auto = false, family = GODFATHER_FAMILY),
         MafiaScenario("godfather_sherlock", "پدرخوانده – شرلوک هلمز", "نقش ویژه: شرلوک هلمز • کارت: ذهن زیبا – شرلوک هلمز",
             godfatherRules("شرلوک هلمز ← تیم مافیا ← دکتر واتسون ← لئون ← همشهری کین ← کنستانتین",
-                "• شرلوک هلمز (مستقل این نسخه): با توانایی و شرط برد مخصوص خودش (متن کامل در کارت نقش)؛ کار او پیش از تیم مافیا انجام می‌شود.",
+                "• شرلوک هلمز (مستقل این نسخه): هر شب پیش از تیم مافیا بیدار می‌شود و نقش یک نفر را حدس می‌زند؛ حدس درست ← شرلوک نقش و ساید او را می‌گیرد و هدف سلاخی می‌شود. دو شب اول در برابر شلیک نامیراست و در روز با رأی خارج می‌شود. تیم مافیا می‌تواند توانایی او را بلاک کند. برد: رسیدن به سه نفر آخر (مرحلهٔ دست دادن).",
                 "ذهن زیبا – شرلوک هلمز"),
             listOf(SHERLOCK_HOLMES, GODFATHER, GOOD_MAN, MATADOR, DOCTOR, PROFESSIONAL, CITIZEN_KANE, CONSTANTINE, CITIZEN, MAFIA),
-            presets = mapOf(10 to m(SHERLOCK_HOLMES to 1, GODFATHER to 1, GOOD_MAN to 1, MATADOR to 1, DOCTOR to 1, PROFESSIONAL to 1, CITIZEN_KANE to 1, CONSTANTINE to 1, CITIZEN to 2)),
+            presets = mapOf(10 to m(SHERLOCK_HOLMES to 1, GODFATHER to 1, GOOD_MAN to 1, MATADOR to 1, DOCTOR to 1, PROFESSIONAL to 1, CITIZEN_KANE to 1, CONSTANTINE to 1, CITIZEN to 2),
+                13 to m(SHERLOCK_HOLMES to 1, GODFATHER to 1, GOOD_MAN to 1, MATADOR to 1, MAFIA to 1, DOCTOR to 1, PROFESSIONAL to 1, CITIZEN_KANE to 1, CONSTANTINE to 1, CITIZEN to 4)),
             names = godfatherNames, wake = mapOf(SHERLOCK_HOLMES to 2, DOCTOR to 30, PROFESSIONAL to 31, CITIZEN_KANE to 32, CONSTANTINE to 33),
             cards = godfatherCards(MafiaLastCard.SHERLOCK_HOLMES_BEAUTIFUL_MIND), auto = false, family = GODFATHER_FAMILY),
         MafiaScenario("investigator", "بازپرس", "بازپرس، محقق، شیاد و ناتو",
@@ -215,13 +222,16 @@ $special
 • اگر بازپرس همان شب بمیرد، بازپرسی صبح اجرا می‌شود؛ اگر یکی از هدف‌ها شب حذف شود، توانایی بازپرس نمی‌سوزد.
 • محقق هر شب خودش را به یک بازیکن پیوند می‌زند؛ اگر محقق با شلیک یا رأی خارج شود، هدف وابسته هم خارج می‌شود (رئیس مافیا مستثناست).
 • شیاد هر شب یک نفر را پاپوش می‌کند؛ انتخاب تکراری مجاز است.
-• ناتو یک بار نقش دقیق یک شهروند نقش‌دار را حدس می‌زند؛ حدس درست = حذف مستقیم.""",
+• ناتو یک بار نقش دقیق یک شهروند نقش‌دار را حدس می‌زند؛ حدس درست = حذف مستقیم.
+• حد نصاب دفاع و خروج: ۱۱ تا ۱۳ نفر ← ۵ رأی؛ ۸ تا ۱۰ ← ۴؛ ۶ و ۷ ← ۳. تساوی ← کسی خارج نمی‌شود.
+• شیاد کارآگاه را بلاک می‌کند (استعلام آن شب منفی). رئیس مافیا می‌تواند شهروند ساده یا رویین‌تن را بخرد (سوداگری).""",
             listOf(GODFATHER, NATO, FRAUD, MAFIA, RESEARCHER, HERO, INTERROGATOR, DOCTOR, DETECTIVE, SNIPER, CITIZEN),
             presets = mapOf(10 to m(GODFATHER to 1, NATO to 1, FRAUD to 1, RESEARCHER to 1, HERO to 1, INTERROGATOR to 1, DOCTOR to 1, DETECTIVE to 1, CITIZEN to 2),
                 12 to m(GODFATHER to 1, NATO to 1, FRAUD to 1, MAFIA to 1, RESEARCHER to 1, HERO to 1, INTERROGATOR to 1, DOCTOR to 1, DETECTIVE to 1, SNIPER to 1, CITIZEN to 2),
                 13 to m(GODFATHER to 1, NATO to 1, FRAUD to 1, MAFIA to 1, RESEARCHER to 1, HERO to 1, INTERROGATOR to 1, DOCTOR to 1, DETECTIVE to 1, SNIPER to 1, CITIZEN to 3)),
             names = mapOf(GODFATHER to "رئیس مافیا", SNIPER to "تک‌تیرانداز"),
-            wake = mapOf(RESEARCHER to 10, FRAUD to 26, DETECTIVE to 30, DOCTOR to 31, INTERROGATOR to 32), auto = false),
+            wake = mapOf(RESEARCHER to 10, FRAUD to 26, DETECTIVE to 30, DOCTOR to 31, INTERROGATOR to 32),
+            setup = ScenarioSetup(thresholds = mapOf(13 to 5, 12 to 5, 11 to 5, 10 to 4, 9 to 4, 8 to 4, 7 to 3, 6 to 3)), auto = false),
         MafiaScenario("nato_commando", "ناتو / تکاور", "محافظ، گروگانگیر، تکاور و تفنگ‌ساز",
             """• گروگانگیر = افسونگر برنامه (نام‌مستعار معتبر).
 • ترتیب شب: نگهبان ← گروگانگیر ← تیم مافیا بدون گروگانگیر ← کارآگاه ← تکاور ← پزشک ← تفنگدار.
@@ -279,7 +289,8 @@ $special
 • سربدار: اگر با رأی خارج شود، درباریان شب بعد هیچ کاری ندارند.
 • کاتب: به یک نفر امکان وصیت در صورت مرگ همان شب می‌دهد.
 • ریش‌سفید: یک بار در خواب نیمروز یک نفر را از مرحلهٔ دوم رأی خارج می‌کند.
-• شب‌گرد: یک شب کامل دست‌نیافتنی است.""",
+• شب‌گرد: یک شب کامل دست‌نیافتنی است.
+• طبیب: هر شب یک پادزهر می‌دهد که فقط اگر هدف همان مسموم باشد نجاتش می‌دهد؛ روی خودش حداکثر دو بار. کاتب: هر شب قلم و کاغذ به یک نفر می‌دهد تا اگر همان شب کشته شد وصیت منتشر کند. ریش‌سفید: یک بار در خواب نیمروز یک نفر را از مرحلهٔ دوم رأی معاف می‌کند. مفتش سلطان را رعیت می‌بیند.""",
             listOf(SULTAN, MERCENARY, EXECUTIONER, MAFIA, SARBEDAR, SCRIBE, ELDER, NIGHTWALKER, CITIZEN),
             names = mapOf(MAFIA to "درباری ساده", CITIZEN to "رعیت ساده")),
         MafiaScenario("masked", "نقابدار", "نقابدار، یاکوزا، ژوپیتر و رونانت",
@@ -291,7 +302,8 @@ $special
 • ژوپیتر: هر شب یک شهروند ساده را از تبدیل یاکوزا محافظت می‌کند.
 • رونانت: اگر شلیک مافیا بخورد و نجات نشود یک روز مهلت دارد.
 • آلفا: یک شب استعلام کارآگاه را فریز می‌کند؛ استعلام آن شب خنثی و از آن نفر تا آخر بازی استعلام گرفته نمی‌شود.
-• اگر فرد یاکوزایی‌شده‌ای باشد، نقابدار و او به هم معرفی شده و از آن شب با هم بیدار می‌شوند.""",
+• اگر فرد یاکوزایی‌شده‌ای باشد، نقابدار و او به هم معرفی شده و از آن شب با هم بیدار می‌شوند.
+• یاکوزا: یک بار در بازی با تأیید رئیس و به جای شات، خودش را فدا می‌کند تا هدف را مافیا کند؛ فقط شهروند ساده یا نقابدار. دکتر: هر شب یک نجات، خودش دو بار. ژوپیتر هر شب یک نفر را از یاکوزایی شدن محافظت می‌کند.""",
             listOf(GODFATHER, YAKUZA, MASKED, MAFIA, DETECTIVE, DOCTOR, JUPITER, REVENANT, CITIZEN)),
         MafiaScenario("filimo", "فیلیمو / دکتر لکتر", "دکتر لکتر، جوکر مافیا، جان‌سخت و فروشنده",
             """• دکتر شهر: نجات خود فقط یک بار.
@@ -308,11 +320,14 @@ $special
 • استعلام کارآگاه: جوکر، دکتر لکتر و مافیای ساده مثبت؛ پدرخوانده و شهروندان منفی.
 • روانشناس: دو بار در کل بازی یک نفر را ۲۴ ساعت ساکت می‌کند. جان‌سخت: اولین شلیک مافیا را تحمل می‌کند و دو بار استعلام وضعیت دارد.
 • ترتیب شب (برگهٔ گردانندگی): دکتر شهر ← پدرخوانده با مافیا ← دکتر لکتر ← جوکر ← کارآگاه ← حرفه‌ای ← روانپزشک ← فروشنده ← جان‌سخت.
-• کارت‌های مرجع (۶ کارت): مسیر سبز، فرش قرمز، شلیک نهایی، حدس نقش (= هوش و ذکاوت: حدس درست نقش یک بازیکن ← بازگشت به بازی)، بی‌خوابی، دروغ سیزده.""",
+• کارت‌های مرجع (۶ کارت): مسیر سبز، فرش قرمز، شلیک نهایی، حدس نقش (= هوش و ذکاوت: حدس درست نقش یک بازیکن ← بازگشت به بازی)، بی‌خوابی، دروغ سیزده.
+• فروشنده: یک بار در بازی توانایی یک نفر را برای همیشه می‌گیرد (روی جان‌سخت با جلیقهٔ سالم فقط جلیقه می‌سوزد).
+• تساوی دو نفر در رأی دوم ← قرعهٔ مرگ.
+• بازی با شب معارفه شروع می‌شود و بعد از آن روز معارفه با چالش ۳۰ ثانیه‌ای است (روز معارفه پیش از شب ندارد).""",
             listOf(GODFATHER, DOCTOR_LECTOR, JOKER_M, MAFIA, CITIZEN, SALESMAN, SLEEP_WALKER, PROFESSIONAL, DETECTIVE, DIE_HARD, DOCTOR, PSYCHOLOGIST, MAYOR),
             names = mapOf(GODFATHER to "رئیس مافیا"),
             cards = listOf(MafiaLastCard.GREEN_MILE, MafiaLastCard.RED_CARPET, MafiaLastCard.FINAL_SHOT, MafiaLastCard.INTELLIGENCE, MafiaLastCard.INSOMNIA, MafiaLastCard.THIRTEEN_LIE),
-            setup = ScenarioSetup(edge = "down")),
+            setup = ScenarioSetup(edge = "down", noIntroDay = true)),
         MafiaScenario("negotiation", "مذاکره", "مذاکره‌کننده، خبرنگار، تک‌تیرانداز و زره‌پوش",
             """• مذاکره فقط وقتی ممکن است که مذاکره‌کننده زنده باشد و تیم مافیا حداقل یک عضو از دست داده باشد. مذاکره جای شلیک شب را می‌گیرد.
 • هدف فقط شهروند ساده یا زره‌پوشِ بدون زره است؛ موفقیت ← بازیکن از همان زمان مافیا می‌شود. راوی فقط اعلام می‌کند «فرایند مذاکره انجام شد».
@@ -323,7 +338,8 @@ $special
 • استعلام: مذاکره‌کننده و مافیای ساده مثبت؛ رئیس مافیا و شهروندان منفی.
 • ترتیب شب: مافیا ← کارآگاه ← تک‌تیرانداز ← پزشک ← خبرنگار (پس از مذاکره).
 • حد نصاب رأی: ۱۰، ۹ و ۸ نفر ← ۴ رأی برای دفاع و خروج (بقیه مثل ناتو).
-• تعداد بازیکنان: ۹، ۱۰، ۱۲، ۱۳ و ۱۵ نفر. کارت حرکت آخر در منابع ذکر نشده.""",
+• تعداد بازیکنان: ۹، ۱۰، ۱۲، ۱۳ و ۱۵ نفر. کارت حرکت آخر در منابع ذکر نشده.
+• پزشک تا وقتی ۸ نفر یا بیشتر در بازی‌اند هر شب دو نجات دارد.""",
             listOf(GODFATHER, NEGOTIATOR, MAFIA, DETECTIVE, SNIPER, DOCTOR, REPORTER, ARMORED, CITIZEN),
             wake = mapOf(DETECTIVE to 30, SNIPER to 31, DOCTOR to 32, REPORTER to 33),
             names = mapOf(GODFATHER to "رئیس مافیا", DOCTOR to "پزشک", SNIPER to "تک‌تیرانداز"),
@@ -421,12 +437,14 @@ $special
             """• شهر: دکتر، رویین‌تن، شهروند ساده؛ مافیا: گادفادر، تروریست، مافیای ساده.
 • معارفه ۱۵ ثانیه برای هر نفر؛ شب معارفه مافیاها همدیگر را می‌شناسند؛ هر روز یک چالش آزاد.
 • مرحلهٔ اول: هر بازیکن دو رأی اجباری؛ حد نصاب دفاع: ۱۰ ← ۴، ۱۲ ← ۵، ۱۳ ← ۵.
-• مرحلهٔ خروج: هر بازیکن یک رأی؛ بالاترین رأی حذف؛ تساوی ← کسی خارج نمی‌شود.""",
+• مرحلهٔ خروج: هر بازیکن یک رأی؛ بالاترین رأی حذف؛ تساوی ← کسی خارج نمی‌شود.
+• بیشترین رأی در مرحلهٔ خروج حذف می‌شود (خروج اجباری).
+• ۱۰ نفره: دو «اعلام وضعیت» رنگی؛ بازی از وضعیت زرد شروع می‌شود (اختلاف شهر و مافیا ۱–۲ قرمز، ۳–۴ زرد، ۵ به بالا سفید).""",
             listOf(GODFATHER, TERRORIST, MAFIA, DOCTOR, HERO, CITIZEN),
             presets = mapOf(10 to m(GODFATHER to 1, TERRORIST to 1, MAFIA to 1, DOCTOR to 1, HERO to 1, CITIZEN to 5),
                 12 to m(GODFATHER to 1, TERRORIST to 1, MAFIA to 2, DOCTOR to 1, HERO to 1, CITIZEN to 6),
                 13 to m(GODFATHER to 1, TERRORIST to 1, MAFIA to 2, DOCTOR to 1, HERO to 1, CITIZEN to 7)),
-            names = mapOf(GODFATHER to "گادفادر"), setup = ScenarioSetup(thresholds = mapOf(10 to 4, 12 to 5, 13 to 5)), auto = false),
+            names = mapOf(GODFATHER to "گادفادر"), setup = ScenarioSetup(thresholds = mapOf(10 to 4, 12 to 5, 13 to 5), queryCount = 2), auto = false),
         MafiaScenario("weather", "آب و هوا", "هوای هر شب روی بازی اثر دارد",
             """• همهٔ رأی‌گیری‌ها با چشم بسته؛ ۶ تا ۱۶ نفر.
 • کارشناس آب‌وهوا: یک بار (در تعداد بالا دو بار) هوای بعدی را عوض می‌کند و در شب طوفانی یک نفر را مجبور به دفاع فردا می‌کند.
@@ -438,7 +456,8 @@ $special
             """• سه ساید: شهر، مافیا، جوکر مستقل.
 • پزشک: هر شب یک نجات؛ نجات خود یک بار. مافیا: یک شلیک شب.
 • جوکر: شب نامیرا؛ اگر به سه نفر آخر برسد شهروند می‌شود. در دو شب می‌تواند «خنده» را فعال کند؛ اگر فردای آن با رأی خارج شود برنده است.
-• هر روز دو دور صحبت بدون چالش. حد نصاب دفاع: ۶ نفر ← ۳، ۵ نفر ← ۲. افراد دفاع حق رأی دارند. خروج هر بازیکن ← اعلام نقش.""",
+• هر روز دو دور صحبت بدون چالش. حد نصاب دفاع: ۶ نفر ← ۳، ۵ نفر ← ۲. افراد دفاع حق رأی دارند. خروج هر بازیکن ← اعلام نقش.
+• طراح: سپهر ازقندی (وایت‌شو). نسخهٔ بزرگ‌تر «کلاسیک پیشرفته با جوکر» (۱۲، ۱۳، ۱۵ نفر) در «کلاسیک پیشرفته» است.""",
             listOf(MAFIA, DOCTOR, JOKER, CITIZEN), presets = mapOf(6 to m(MAFIA to 1, DOCTOR to 1, JOKER to 1, CITIZEN to 3)),
             names = mapOf(DOCTOR to "پزشک"), setup = ScenarioSetup(challenge = false, thresholds = mapOf(6 to 3, 5 to 2))),
         MafiaScenario("elixir", "اکسیر", "گروه بیماری در برابر انسان‌ها",
@@ -453,18 +472,28 @@ $special
 • گادفادر: شلیک؛ اگر خارج شود سلاخ و گنگستر توانایی ویژه را از دست می‌دهند.
 • سلاخ: یک بار جنازهٔ خروج رأیی را سلاخی می‌کند؛ به جای شلیک نقش یک شهروند ویژه را حدس می‌زند.
 • شهر: نگهبان، پزشک (خودش دو بار)، سیرکوله، تفنگدار (یک جنگی و مشقی نامحدود)، بازرس، دکستر، کارآگاه خصوصی، ۲ شهروند ساده.
-• دزد کاملاً مخفی است و یارانش را نمی‌شناسد؛ هر شب کنش دو نفر را جابه‌جا می‌کند (کنش نگهبان را نه، دو شب پیاپی تکراری نه). کارآگاه خصوصی فقط استعلام دزد را مثبت می‌گیرد. بازرس آخر از همه بیدار می‌شود و کنش شبانهٔ یک نفر را می‌فهمد.""",
+• دزد کاملاً مخفی است و یارانش را نمی‌شناسد؛ هر شب کنش دو نفر را جابه‌جا می‌کند (کنش نگهبان را نه، دو شب پیاپی تکراری نه). کارآگاه خصوصی فقط استعلام دزد را مثبت می‌گیرد. بازرس آخر از همه بیدار می‌شود و کنش شبانهٔ یک نفر را می‌فهمد.
+• ترکیب مرجع ۱۳ نفره: مافیا (۴): گادفادر، سلاخ، گنگستر، دزد. شهر (۹): نگهبان، پزشک، سیرکوله، تفنگدار، بازرس، دکستر، کاراگاه خصوصی، ۲ شهروند ساده.
+• با خروج گادفادر، سلاخ و گنگستر توانایی ویژه را از دست می‌دهند و مافیای ساده می‌شوند.
+• سلاخ: یک بار جنازهٔ خروج رأیی را سلاخی می‌کند و یک بار به جای شلیک ناتویی (حدس نقش) دارد. دکستر نقش مقابل سلاخ است (یک بار).
+• گنگستر فقط یک شب تفنگ می‌دهد (یک جنگی و یک مشقی؛ جنگی به یار خودش نه). دزد یارانش را نمی‌شناسد، هر شب کنش دو نفر را جابه‌جا می‌کند (نه کنش نگهبان)، با شات مافیا خارج نمی‌شود و اگر به نگهبان بزند خارج می‌شود.
+• نگهبان در شب از ۱ یا ۲ نفر در برابر دزد نگهبانی می‌دهد و در روز زره دارد. سیرکوله هر شب به خانهٔ یک نفر می‌رود؛ اگر قربانی شب را درست حدس بزند قاتل را می‌بیند و بیرون از خانه از شات مافیا در امان است. کاراگاه خصوصی فقط دزد را مثبت می‌بیند. پزشک خودش را دو بار.
+• حد نصاب: ۱۱ تا ۱۳ نفر ← ۵ رأی.""",
             listOf(GODFATHER, BUTCHER, GANGSTER, THIEF, GUARD, DOCTOR, CIRCULE, GUNMAN, INSPECTOR, DEXTER, PRIVATE_EYE, CITIZEN),
-            presets = mapOf(12 to m(GODFATHER to 1, BUTCHER to 1, GANGSTER to 1, THIEF to 1, GUARD to 1, DOCTOR to 1, CIRCULE to 1, GUNMAN to 1, INSPECTOR to 1, DEXTER to 1, PRIVATE_EYE to 1, CITIZEN to 1)),
+            presets = mapOf(13 to m(GODFATHER to 1, BUTCHER to 1, GANGSTER to 1, THIEF to 1, GUARD to 1, DOCTOR to 1, CIRCULE to 1, GUNMAN to 1, INSPECTOR to 1, DEXTER to 1, PRIVATE_EYE to 1, CITIZEN to 2)),
             names = mapOf(GUARD to "نگهبان", DOCTOR to "پزشک", GODFATHER to "گادفادر"),
-            wake = mapOf(GUARD to 2, THIEF to 3, DEXTER to 30, PRIVATE_EYE to 31, DOCTOR to 32, CIRCULE to 33, GANGSTER to 34, GUNMAN to 35, INSPECTOR to 36), auto = false),
+            wake = mapOf(GUARD to 2, THIEF to 3, DEXTER to 30, PRIVATE_EYE to 31, DOCTOR to 32, CIRCULE to 33, GANGSTER to 34, GUNMAN to 35, INSPECTOR to 36),
+            setup = ScenarioSetup(thresholds = mapOf(13 to 5, 12 to 5, 11 to 5)), auto = false),
         MafiaScenario("parallel", "دنیای موازی", "بازی هم‌زمان در دو دنیا (لایه روی سناریوی پایه)",
             """• یک سناریوی پایه انتخاب می‌شود (مثلاً بازپرس).
 • زمان‌های گفتگو دو برابر؛ بازیکن زمانش را بین دنیای ۱ و ۲ تقسیم می‌کند.
 • پس از یک دور صحبت: رأی دنیای ۱ ← خروج دنیای ۱ ← رأی دنیای ۲.
 • خروج در یک دنیا فقط حق آن دنیا را می‌گیرد.
 • شب ابتدا کارهای دنیای ۱ و سپس دنیای ۲ جداگانه انجام می‌شود؛ شرط برد هر دنیا جداست.
-• برای اجرا، دو بازی هم‌زمان (یکی برای هر دنیا) با همین بازیکنان بسازید.""",
+• برای اجرا، دو بازی هم‌زمان (یکی برای هر دنیا) با همین بازیکنان بسازید.
+• طراح: محسن شهاب. سناریوی پایهٔ اصلی «بازپرس» است (۱۰، ۱۲ و ۱۳ نفر).
+• هر بازیکن در هر دنیا یک نقش دارد (ممکن است یکسان باشد). کسی که از یک دنیا خارج شده تا آخر بازی حق اظهار نظر دربارهٔ آن دنیا را ندارد؛ تخلف ← اخراج.
+• دو گروه برنده وجود دارد (یکی برای هر دنیا)؛ نقش دنیایی که زودتر تمام شده تا پایان هر دو دنیا فاش نمی‌شود.""",
             emptyList()),
         MafiaScenario("triple", "تریپل ۱۲ نفره", "ناتلی، پوتون، جاناتان و مونیکا",
             """• مافیا ×۴: گادفادر (استعلام بازپرس منفی)، ناتلی (حدس نقش همراه شلیک؛ دو اشتباه پشت سر هم ← خروج خودش)، تروریست، پوتون (یک بار حدس زره آهنگر).
@@ -478,7 +507,8 @@ $special
 • تپانگر: استعلام شب. تپان‌خواه: نجات شب؛ نجات خود یک بار؛ دو شب پیاپی یک هدف ممنوع.
 • شو فادر: رهبر و شلیک؛ استعلام منفی. شو مستر: هر شب یک تپان را گروگان می‌گیرد؛ اگر شو فادر را گروگان بگیرد تیم آن شب شلیک ندارد. شو ملق: شوی ساده.
 • معارفه ۱۵ ثانیه؛ هر روز یک چالش آزاد؛ نصف آرا برای دفاع.
-• نقش‌های تپان/شو قوانین خاص خودشان را دارند و در برنامه نیستند؛ به خاطر شباهت اسمی با نقش دیگری جایگزین نشده‌اند. با «افزودن نقش» بسازید.""",
+• نقش‌های تپان/شو قوانین خاص خودشان را دارند و در برنامه نیستند؛ به خاطر شباهت اسمی با نقش دیگری جایگزین نشده‌اند. با «افزودن نقش» بسازید.
+• «شو ملق» برای ۱۰ تا ۱۳ نفر طراحی شده است.""",
             emptyList(), setup = ScenarioSetup(edge = "down"), auto = false),
         MafiaScenario("scorpion", "اسکورپیون", "کودتای تریتور و متخصص",
             """• ۱۲ یا ۱۳ نفر. تریتور (مافیای خائن با برد جدا) و متخصص (در ظاهر شهر ولی هم‌پیمان تریتور) در شب معارفه آشنا می‌شوند و از شب‌های بعد اول بیدار می‌شوند و روی یک بازیکن بمب مخفی می‌گذارند یا هدف را تغییر می‌دهند.
@@ -493,10 +523,17 @@ $special
 • لابی‌من: ساید یک نفر را برای اعلام وضعیت آینده لابی می‌کند.
 • نسخهٔ پیشرفتهٔ سناریوی رویال برای ۱۰ نفر؛ تنها یک تیم برنده است و تساوی ندارد.
 • ترتیب شب: شوالیه ← تیم مافیا (به جز سایه) ← سایه ← متخصص ← مارشال ← رنجر ← آفیسر ← آدم‌برفی.
-• متخصص در کل بازی ۵ داروی شفابخش دارد و خودش تقسیمشان می‌کند. رنجر شات شب مافیا را ردیابی می‌کند. لابی‌من در نبود گادفادر شلیک دارد.""",
+• متخصص در کل بازی ۵ داروی شفابخش دارد و خودش تقسیمشان می‌کند. رنجر شات شب مافیا را ردیابی می‌کند. لابی‌من در نبود گادفادر شلیک دارد.
+• گادفادر در شب نامیراست و تا زنده است استعلامش شهروندی است؛ تصمیم شات و تأیید لابی با اوست.
+• سایه (خاموش، تنها بیدار می‌شود): «پوش» — اگر فرد انتخابی فردا وارد دفاعیه (یا دوئل مارشال) شود و رأی خروج نیاورد، پوش شده و خارج می‌شود؛ در سه نفر آخر کار نمی‌کند.
+• مارشال: کارت مأموریت دوئل را شب به یک نفر می‌دهد که تا پیش از رأی‌گیری فردا می‌تواند دوئل اعلام کند.
+• رنجر: اگر هدف شات مافیا را درست ردیابی کند فرصت شلیک انتقام دارد (به گادفادر، شوالیهٔ زره‌پوش و فرد نجات‌یافته نمی‌رسد).
+• آدم‌برفی: شب اول یک گلولهٔ برف آگاهی پرتاب می‌کند؛ روی مافیا (جز گادفادر) آب می‌شود. آفیسر: هر شب یکی از دو قابلیت «کشف» یا «بازجویی». شوالیه: یک شب شیلد می‌پوشد. رویالیست: شهروند ساده.
+• حد نصاب دفاع و خروج: ۸ تا ۱۰ نفر ← ۴ رأی.""",
             listOf(GODFATHER, LOBBYIST, SHADOW_M, EXPERT, MARSHAL, RANGER, SNOWMAN, OFFICER, KNIGHT, ROYALIST),
             presets = mapOf(10 to m(GODFATHER to 1, LOBBYIST to 1, SHADOW_M to 1, EXPERT to 1, MARSHAL to 1, RANGER to 1, SNOWMAN to 1, OFFICER to 1, KNIGHT to 1, ROYALIST to 1)),
-            names = mapOf(GODFATHER to "گادفادر"), auto = false),
+            names = mapOf(GODFATHER to "گادفادر"), wake = mapOf(KNIGHT to 2, SHADOW_M to 26, EXPERT to 30, MARSHAL to 31, RANGER to 32, OFFICER to 33, SNOWMAN to 34),
+            setup = ScenarioSetup(thresholds = mapOf(10 to 4, 9 to 4, 8 to 4)), auto = false),
         MafiaScenario("representative", "نماینده", "نماینده‌های روز و رأی خیانت",
             """• دن: استعلام منفی؛ «رأی خیانت» می‌تواند رأی هدف یکی از نماینده‌ها را یکی کم یا زیاد کند.
 • یاغی: پس از خروج رئیس یا هکر به ترور تبدیل می‌شود و تا پیش از رأی می‌تواند یک نفر را با خود ببرد.
@@ -507,9 +544,14 @@ $special
 • روز: انتخاب نماینده‌ها؛ هر نماینده هدف معرفی می‌کند؛ رأی خیانت پیش از نهایی شدن رأی اعمال می‌شود (راوی رأی‌ها را دستی تنظیم می‌کند).
 • تعداد مجاز ۱۰، ۱۲ و ۱۳ نفر؛ در ۱۲ و ۱۳ نفر ناتو به مافیا و سرباز و شهروند ساده به شهر اضافه می‌شوند.
 • روز اول: هر نفر از سر صحبت یک نماینده انتخاب می‌کند؛ بیشترین رأی نمایندهٔ اول؛ رأی دوم از انتهای صحبت برای نمایندهٔ دوم (تساوی ← هر دو نماینده).
-• هکر دو نفر را به ترتیب انتخاب می‌کند؛ اگر نفر اول روی نفر دوم کاری کرده باشد خنثی می‌شود. محافظ هر شب یک نفر را در برابر یاغی محافظت می‌کند. وکیل یک بار کسی را از دفاعیهٔ فردا معاف می‌کند. سرباز یک تیر دارد که به کسی می‌دهد؛ دادن به مافیا ← خروج خود سرباز.""",
-            listOf(GODFATHER, REBEL, HACKER_M, MAFIA, DOCTOR, GUIDE, MINER, LAWYER, BODYGUARD_C, NATO, SOLDIER, CITIZEN),
-            names = mapOf(GODFATHER to "دن", BODYGUARD_C to "محافظ")),
+• هکر دو نفر را به ترتیب انتخاب می‌کند؛ اگر نفر اول روی نفر دوم کاری کرده باشد خنثی می‌شود. محافظ هر شب یک نفر را در برابر یاغی محافظت می‌کند. وکیل یک بار کسی را از دفاعیهٔ فردا معاف می‌کند. سرباز یک تیر دارد که به کسی می‌دهد؛ دادن به مافیا ← خروج خود سرباز.
+• مین‌گذار یک بار جلوی خانهٔ یک نفر مین می‌گذارد؛ اگر مافیا به او شات بزند مین فعال می‌شود و مافیا به دستور رئیس یک فدایی از خودش می‌دهد (حتی اگر پزشک نجات دهد). مافیا یک بار در بازی می‌تواند هم‌زمان با شات مین را خنثی کند.
+• راهنما اگر یک مافیا را انتخاب کند، هویتش برای مافیا افشا می‌شود. دفاعیه: هر نماینده یک اتهام، ۲۰ ثانیه؛ متهم می‌تواند یک نفر را برای دفاع از خود انتخاب کند.""",
+            listOf(GODFATHER, HACKER_M, REBEL, NATO, GUIDE, DOCTOR, MINER, BODYGUARD_C, LAWYER, SOLDIER, CITIZEN),
+            presets = mapOf(10 to m(GODFATHER to 1, HACKER_M to 1, REBEL to 1, GUIDE to 1, DOCTOR to 1, MINER to 1, BODYGUARD_C to 1, LAWYER to 1, CITIZEN to 2),
+                12 to m(GODFATHER to 1, HACKER_M to 1, REBEL to 1, NATO to 1, GUIDE to 1, DOCTOR to 1, MINER to 1, BODYGUARD_C to 1, LAWYER to 1, SOLDIER to 1, CITIZEN to 2),
+                13 to m(GODFATHER to 1, HACKER_M to 1, REBEL to 1, NATO to 1, GUIDE to 1, DOCTOR to 1, MINER to 1, BODYGUARD_C to 1, LAWYER to 1, SOLDIER to 1, CITIZEN to 3)),
+            names = mapOf(GODFATHER to "دن", BODYGUARD_C to "محافظ"), auto = false),
         MafiaScenario("capo", "کاپو", "دن، جادوگر، جلاد و عطار",
             """• دن: استعلام منفی؛ یک پادزهر برای سم عطار؛ قابلیت سوداگری روی شهروند ساده یا مظنون.
 • جادوگر: هر شب یک شهروند را هدف می‌گیرد؛ اگر هدف توانایی‌دار باشد اثر توانایی روی خودش برمی‌گردد.
@@ -521,7 +563,8 @@ $special
 • وارث: در شب معارفه یک نفر را انتخاب می‌کند؛ اگر شهروند باشد تا او در بازی است وارث با تیر مافیا نمی‌میرد؛ انتخاب مافیا ← قابلیت از دست می‌رود. وارث قابل سوداگری نیست.
 • زره‌ساز: هر شب یک نفر را در برابر تیر مافیا زره می‌پوشاند؛ خودش را یک شب در کل بازی.
 • تفنگ کاپو: پایان روز اول رأی اعتماد؛ معتمد دو فشنگ دارد (یکی جنگی، یکی مشقی)؛ به یک نفر دو بار نمی‌شود شلیک کرد.
-• ترتیب شب: تیم مافیا (جادوگر تنها اکت می‌کند) ← زره‌ساز ← کارآگاه ← عطار ← وارث.""",
+• ترتیب شب: تیم مافیا (جادوگر تنها اکت می‌کند) ← زره‌ساز ← کارآگاه ← عطار ← وارث.
+• استعلام کارآگاه: مظنون، جلاد و جادوگر همیشه مثبت؛ دن منفی. اگر جادوگر کارآگاه را بزند، استعلام به خود کارآگاه برمی‌گردد. دن در کل بازی یک سوداگری دارد.""",
             listOf(GODFATHER, WITCHER, NATO, INFORMANT, DETECTIVE, SUSPECT, DOCTOR, ATTAR, INHERITOR, HEADMAN, CITIZEN),
             presets = mapOf(10 to m(GODFATHER to 1, WITCHER to 1, NATO to 1, DETECTIVE to 1, SUSPECT to 1, DOCTOR to 1, ATTAR to 1, INHERITOR to 1, CITIZEN to 2),
                 12 to m(GODFATHER to 1, WITCHER to 1, NATO to 1, INFORMANT to 1, DETECTIVE to 1, SUSPECT to 1, DOCTOR to 1, ATTAR to 1, INHERITOR to 1, HEADMAN to 1, CITIZEN to 2),
@@ -534,10 +577,11 @@ $special
 • جان میلتون: رئیس؛ شلیک شب؛ «قبض روح» با حدس دقیق نقش.
 • شرور: یک وفادار را تهدید می‌کند؛ اگر دو شب روی یک هدف ادامه دهد و هنری نجاتش نداده باشد، هدف خارج می‌شود.
 • هانیبال: یک وفادار ساده را به خائنین جذب می‌کند. خائن: بدون توانایی خاص.
-• هنری: نجات؛ در ۱۲ نفر نجات خود دو بار. آرتور: دو استعلام. فردریگ: شناسایی کارت.""",
+• هنری: نجات؛ در ۱۲ نفر نجات خود دو بار. آرتور: دو استعلام. فردریگ: شناسایی کارت.
+• لوئیس (وفادار): یک سپر هدیه می‌دهد؛ با خروج او خائنین شب بعد کاری ندارند. حد نصاب: ۱۱ و ۱۲ نفر ← ۵ رأی، ۸ تا ۱۰ ← ۴ رأی.""",
             listOf(MILTON, VILLAIN, HANNIBAL, TRAITOR, HENRY, ARTHUR, FREDERICK, CITIZEN), players = 12..12,
             presets = mapOf(12 to m(MILTON to 1, VILLAIN to 1, HANNIBAL to 1, TRAITOR to 1, HENRY to 1, ARTHUR to 1, FREDERICK to 1, CITIZEN to 5)),
-            names = mapOf(CITIZEN to "وفادار ساده", TRAITOR to "خائن"), auto = false),
+            names = mapOf(CITIZEN to "وفادار ساده", TRAITOR to "خائن"), setup = ScenarioSetup(thresholds = mapOf(12 to 5, 11 to 5, 10 to 4, 9 to 4, 8 to 4)), auto = false),
         MafiaScenario("el_clasico", "ال کلاسیکو", "پابلو اسکوبار و چرچیل مستقل",
             """• پابلو اسکوبار: رئیس با شلیک و سلاخی (حدس نقش، هر شب ممکن)؛ در برابر مرگ معمولی نامیرا ولی با شناسایی درست هویت خارج می‌شود.
 • خوآن: هر شب توانایی یک شهروند را می‌گیرد؛ دو شب پشت سر هم یک هدف ممنوع.
@@ -566,9 +610,11 @@ $special
         MafiaScenario("hannibal", "هانیبال", "خرید در معارفه و اثر سایه",
             """• در شب معارفه، هانیبال می‌تواند به یک شهروند ساده پیشنهاد خرید بدهد؛ اگر بازیکن رد کرد، فردا دربارهٔ آن صحبت مستقیم نکند (تخلف ← خروج انضباطی).
 • سایه: روی یک هدف دو شب پشت سر هم کار نمی‌کند. اثر سایه بدون حفاظت قهرمان: کارآگاه ← استعلام‌ها منفی؛ دکتر ← نجات روی خودش برمی‌گردد؛ معمار ← کارت روی خودش؛ انتقام‌جو ← در صورت کار خودش خارج می‌شود؛ اسنایپر الیت ← شلیک برگشتی.
-• رئیس: یک شب به جای شلیک حدس نقش دارد.""",
+• رئیس: یک شب به جای شلیک حدس نقش دارد.
+• ترتیب شب (۱۰ نفره): قهرمان ← سایه ← هانیبال ← تیم مافیا ← کارآگاه ← دکتر ← معمار ← انتقام‌جو. در ۱۲ و ۱۳ نفر ناتو و اسنایپر الیت اضافه می‌شوند.""",
             listOf(GODFATHER, HANNIBAL, SHADOW_M, MAFIA, DETECTIVE, DOCTOR, HERO_P, ARCHITECT, AVENGER, ELITE_SNIPER, CITIZEN),
-            names = mapOf(GODFATHER to "رئیس", HERO_P to "قهرمان", SHADOW_M to "سایه")),
+            names = mapOf(GODFATHER to "رئیس", HERO_P to "قهرمان", SHADOW_M to "سایه"),
+            wake = mapOf(HERO_P to 2, SHADOW_M to 3, HANNIBAL to 4, DETECTIVE to 30, DOCTOR to 31, ARCHITECT to 32, AVENGER to 33)),
         MafiaScenario("wild_west", "غرب وحشی", "دوئل به جای رأی خروج",
             """• ۸ نفر؛ سه ساید: خوب (شهر)، بد (تبهکار)، زشت (مستقل).
 • کشتن شبانهٔ معمولی وجود ندارد؛ شب‌ها بیشتر مجوز و اطلاعات است. شلیک‌ها در روز است.
@@ -623,16 +669,16 @@ $special
     /** How completely each scenario can be played with the app's own roles and cards (from the scenario data). */
     val status: Map<String, String> = mapOf(
         "classic" to "✅ کامل", "classic_advanced" to "⚙️ چارچوب آزاد", "godfather" to "✅ کامل", "godfather_jack" to "✅ کامل",
-        "godfather_sherlock" to "✅ کامل", "investigator" to "✅ تقریباً کامل", "nato_commando" to "🟢 تقریباً کامل (گروگانگیر = افسونگر)",
+        "godfather_sherlock" to "✅ کامل", "investigator" to "✅ کامل", "nato_commando" to "🟢 تقریباً کامل (گروگانگیر = افسونگر)",
         "zodiac" to "✅ تقریباً کامل، بدون کارت", "advanced" to "⚙️ چارچوب آزاد", "mafia_nights" to "🟡 مرجع ناقص؛ مجموعهٔ نقش برنامه",
-        "court" to "🔴 نقش‌های هسته‌ای ساخته‌شده", "masked" to "🟠 ناقص", "filimo" to "✅ کامل",
+        "court" to "🟡 نقش‌ها کامل؛ ترکیب نامشخص", "masked" to "🟡 نقش‌ها کامل؛ ترکیب نامشخص", "filimo" to "✅ کامل",
         "negotiation" to "✅ کامل", "saghi" to "🟠 ناقص", "epic" to "🔴 هستهٔ اختصاصی", "black_army" to "🔴 هستهٔ اختصاصی",
         "kafir" to "🟠 ناقص", "white_show" to "✅ نقش‌ها کامل", "mythic" to "🟠 ناقص", "scam" to "✅ کامل",
-        "red_status" to "⚙️ قواعد ویژه", "pure_classic" to "✅ کامل", "weather" to "🟠 سیستم آب‌وهوا دستی", "joker_mafia" to "🟡 قابل ساخت",
-        "elixir" to "🟠 ناقص", "thief_gangster" to "🟠 ناقص", "parallel" to "⚙️ لایه روی سناریوی پایه", "triple" to "🟠 ناقص",
-        "molagh" to "🔴 نقش‌های اختصاصی در برنامه نیست", "scorpion" to "🔴 هستهٔ اختصاصی", "specialist" to "🟠 ناقص",
-        "representative" to "🟠 ناقص", "capo" to "✅ ۱۰، ۱۲ و ۱۳ نفره", "eminence" to "🟠 ناقص", "el_clasico" to "✅ نقش‌ها و کارت‌ها کامل",
-        "classic10" to "✅ کامل", "cover" to "⚙️ لایه روی سناریوی پایه", "target" to "⚙️ لایه روی سناریوی پایه", "hannibal" to "🟠 ناقص",
+        "red_status" to "🟡 فقط ۶ یا ۹ نفره تأیید شد", "pure_classic" to "✅ کامل", "weather" to "🔴 منبع معتبری پیدا نشد؛ قوانین از سند شما", "joker_mafia" to "🟡 قابل ساخت",
+        "elixir" to "🔴 منبع معتبری پیدا نشد؛ قوانین از سند شما", "thief_gangster" to "✅ ۱۳ نفره کامل", "parallel" to "⚙️ لایه روی بازپرس", "triple" to "🔴 منبع معتبری پیدا نشد؛ قوانین از سند شما",
+        "molagh" to "🔴 نقش‌های اختصاصی در برنامه نیست", "scorpion" to "🔴 منبع معتبری پیدا نشد؛ قوانین از سند شما", "specialist" to "✅ کامل",
+        "representative" to "✅ ۱۰، ۱۲ و ۱۳ نفره", "capo" to "✅ ۱۰، ۱۲ و ۱۳ نفره", "eminence" to "🟡 ۱۲ نفره؛ نقش لوئیس دستی", "el_clasico" to "✅ نقش‌ها و کارت‌ها کامل",
+        "classic10" to "✅ کامل", "cover" to "⚙️ لایه روی سناریوی پایه", "target" to "⚙️ لایه روی سناریوی پایه", "hannibal" to "🟡 ترتیب شب کامل؛ ترکیب نامشخص",
         "wild_west" to "🟠 ناقص", "pro_club" to "🟡 تهمت‌زن = تغییر استعلام", "shahnameh" to "🔴 نقش‌های اسطوره‌ای ساخته‌شده",
         "ahriman_rise" to "🔴 نقش‌های اختصاصی ساخته‌شده", "secret_army" to "🔴 نقش‌های اختصاصی ساخته‌شده"
     )
@@ -657,6 +703,7 @@ $special
         if (!s.setup.challenge) g.extra["noChallenge"] = "1"
         if (s.setup.noNight) g.extra["noNight"] = "1"
         if (s.setup.noMafiaIntro) g.extra["noMafiaIntro"] = "1"
+        if (s.setup.noIntroDay) g.extra["noIntroDay"] = "1"
         if (s.setup.thresholds.isNotEmpty()) g.extra["thresholds"] = s.setup.thresholds.entries.joinToString(",") { "${it.key}:${it.value}" }
         s.setup.queryCount?.let { g.extra["queryCount"] = it.toString() }
         s.setup.edge?.let { g.extra["edge"] = it }
