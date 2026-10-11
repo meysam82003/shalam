@@ -54,8 +54,9 @@ class MafiaEngineTest {
         assertEquals("تعداد بازیکنان با نقش ها برابر نیست", MafiaFlow.validate(5, mapOf(MafiaRole.CITIZEN to 3, MafiaRole.MAFIA to 1), emptyList()).second)
         assertEquals("نقش شهروندی باید از نقش مافیایی بیشتر باشد", MafiaFlow.validate(4, mapOf(MafiaRole.CITIZEN to 2, MafiaRole.MAFIA to 2), emptyList()).second)
         assertTrue(MafiaFlow.validate(5, mapOf(MafiaRole.CITIZEN to 3, MafiaRole.GODFATHER to 1, MafiaRole.MAFIA to 1), emptyList()).first)
-        assertFalse(MafiaFlow.validate(5, mapOf(MafiaRole.CITIZEN to 3, MafiaRole.COMMANDER to 1, MafiaRole.MAFIA to 1), emptyList()).first)
-        assertFalse(MafiaFlow.validate(5, mapOf(MafiaRole.CITIZEN to 4, MafiaRole.MAFIA to 1), listOf(MafiaLastCard.GOD_FATHER_PRESENT)).first)
+        // Scenarios differ, so a role never forces its "opposite" role (e.g. Saul Goodman without the reporter).
+        assertTrue(MafiaFlow.validate(5, mapOf(MafiaRole.CITIZEN to 3, MafiaRole.GOOD_MAN to 1, MafiaRole.MAFIA to 1), emptyList()).first)
+        assertTrue(MafiaFlow.validate(5, mapOf(MafiaRole.CITIZEN to 3, MafiaRole.COMMANDER to 1, MafiaRole.MAFIA to 1), emptyList()).first)
     }
 
     @Test

@@ -23,22 +23,11 @@ object MafiaFlow {
         val mafia = roles.filter { it.key.side == MafiaSide.MAFIA }.values.sum()
         val independent = roles.filter { it.key.side == MafiaSide.INDEPENDENT }.values.sum()
         fun has(r: MafiaRole) = (roles[r] ?: 0) > 0
-        fun pair(a: MafiaRole, b: String) = false to "نقش مقابل ${a.faName}، ($b) انتخاب نشده است"
         if (players < 4) return false to "تعداد بازیکنان نباید از ${PersianText.digits(4)} نفر کمتر باشد"
         if (players != total) return false to "تعداد بازیکنان با نقش ها برابر نیست"
         if (city == 0) return false to "در نقش های انتخابی شهروند وجود ندارد"
         if (mafia == 0) return false to "در نقش های انتخابی نقش مافیایی وجود ندارد"
         if (city <= mafia) return false to "نقش شهروندی باید از نقش مافیایی بیشتر باشد"
-        val pairs = listOf(MafiaRole.GUARD to MafiaRole.INVESTIGATOR, MafiaRole.PROTECTOR to MafiaRole.BOMBER, MafiaRole.WRECKER to MafiaRole.GUNMAN,
-            MafiaRole.JUPITER to MafiaRole.YAKUZA)
-        pairs.forEach { (a, b) -> if (has(a) && !has(b)) return pair(a, b.faName) }
-        if (has(MafiaRole.GUARDIAN) && !has(MafiaRole.MATADOR) && !has(MafiaRole.ILLUSIONIST)) return pair(MafiaRole.GUARDIAN, MafiaRole.MATADOR.faName + " یا " + MafiaRole.ILLUSIONIST.faName)
-        if (has(MafiaRole.SPECIAL_DETECTIVE) && independent == 0) return false to "در برابر نقش ${MafiaRole.SPECIAL_DETECTIVE.faName} هیچ نقش مستقلی انتخاب نشده است"
-        listOf(MafiaRole.REPORTER to MafiaRole.GOOD_MAN, MafiaRole.TYLER to MafiaRole.MASON, MafiaRole.COMMANDER to MafiaRole.SNIPER).forEach { (a, b) ->
-            if (has(a) && !has(b)) return pair(a, b.faName)
-            if (has(b) && !has(a) && b != MafiaRole.SNIPER && b != MafiaRole.MASON) return pair(b, a.faName)
-        }
-        cards.forEach { c -> c.requires?.let { r -> if (!has(r)) return false to "برای کار حرکت آخر ${c.faName.replace("\n", " ")} نقش ${r.faName} انتخاب نشده است" } }
         return true to "همه چی ردیفه بزن بریم!"
     }
 

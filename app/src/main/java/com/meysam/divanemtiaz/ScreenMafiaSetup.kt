@@ -8,20 +8,31 @@ import android.widget.LinearLayout
 
 /** «طراحی بازی»: three tabs (players, roles, last-move cards) and «توزیع نقش». The draft is saved on every change. */
 class MafiaDesignScreen(host: MainActivity, private var tab: Int = 0) : Screen(host) {
-    private val draft: MafiaGame = host.mafia.draft()
+    /** Re-read on every build: the reveal screen saves «دیدم» into the stored draft. */
+    private var draft: MafiaGame = host.mafia.draft()
     private var side = MafiaSide.CITY
 
     private fun save() { host.mafia.saveDraft(draft); host.refresh() }
 
     override fun build(): View {
+        draft = host.mafia.draft()
         val (ok, message) = MafiaFlow.validate(draft.players.size, draft.roleCounts, draft.deck.map { it.card })
         return scaffold("طراحی بازی", "${kit.n(draft.players.size)} بازیکن  •  ${kit.n(draft.roleCounts.values.sum())} نقش  •  ${kit.n(draft.deck.size)} کارت",
             actions = listOf(kit.iconButton(RoyalIcon.SAVE, "ذخیره به عنوان گروه", ButtonKind.SECONDARY, 44) { saveGroup() }),
-            bottom = kit.button("توزیع نقش", if (ok) ButtonKind.PRIMARY else ButtonKind.GHOST, RoyalIcon.CARDS, 52) {
-                if (!ok) kit.toast(message) else {
+            bottom = kit.button("توزیع نقش", if (ok) ButtonKind.PRIMARY else ButtonKind.SECONDARY, RoyalIcon.CARDS, 52) {
+                val go = {
+                    // Narrator's call: missing roles are filled with simple citizens.
+                    val missing = draft.players.size - draft.roleCounts.values.sum()
+                    if (missing > 0) draft.roleCounts[MafiaRole.CITIZEN] = (draft.roleCounts[MafiaRole.CITIZEN] ?: 0) + missing
                     draft.players.forEach { it.role = null; it.seen = false }
                     host.mafia.saveDraft(draft)
                     host.push(MafiaDistributeScreen(host))
+                }
+                when {
+                    ok -> go()
+                    draft.players.size < 2 -> kit.toast(message)
+                    else -> kit.confirm("ادامه به تشخیص راوی", message + "\nبا این حال توزیع نقش انجام شود؟" +
+                        if (draft.players.size > draft.roleCounts.values.sum()) "\n(نقش‌های کم با شهروند ساده پر می‌شوند)" else "", "ادامه") { go() }
                 }
             }) {
             addView(kit.grid(3, listOf("بازیکنان", "نقش ها", "کارت حرکت آخر").mapIndexed { i, t ->
@@ -218,15 +229,36 @@ class MafiaDesignScreen(host: MainActivity, private var tab: Int = 0) : Screen(h
 
 /** «توزیع نقش»: random or manual assignment, then each player sees his own card. */
 class MafiaDistributeScreen(host: MainActivity) : Screen(host) {
-    private val draft: MafiaGame = host.mafia.draft()
+    /** Re-read on every build: the reveal screen saves «دیدم» into the stored draft. */
+    private var draft: MafiaGame = host.mafia.draft()
     private var showAll = false
 
     private fun save() { host.mafia.saveDraft(draft); host.refresh() }
 
     override fun build(): View {
+        draft = host.mafia.draft()
         val allSeen = draft.players.isNotEmpty() && draft.players.all { it.role != null && it.seen }
         return scaffold("توزیع نقش", "${kit.n(draft.players.count { it.seen })} از ${kit.n(draft.players.size)} نفر نقش خود را دیده‌اند",
-            bottom = if (allSeen) kit.button("شروع", ButtonKind.SUCCESS, RoyalIcon.PLAY, 52) { start() } else null) {
+            bottom = kit.horizontal().apply {
+                if (!allSeen) {
+                    addView(kit.button("همه دیدند", ButtonKind.SECONDARY, RoyalIcon.CHECK, 52) {
+                        if (draft.players.any { it.role == null }) MafiaNight.distribute(draft)
+                        draft.players.forEach { it.seen = true }
+                        save()
+                    }, LinearLayout.LayoutParams(kit.dp(130), ViewGroup.LayoutParams.WRAP_CONTENT))
+                    addView(kit.hgap(8))
+                }
+                addView(kit.weight(kit.button("شروع", if (allSeen) ButtonKind.SUCCESS else ButtonKind.PRIMARY, RoyalIcon.PLAY, 52) {
+                    if (allSeen) start()
+                    else kit.confirm("شروع به تشخیص راوی", "همهٔ بازیکنان نقش خود را ندیده‌اند" +
+                        (if (draft.players.any { it.role == null }) "\nنقش بازیکنان بدون نقش خودکار پخش می‌شود" else "") + "\nبازی شروع شود؟", "شروع") {
+                        if (draft.players.any { it.role == null }) MafiaNight.distribute(draft)
+                        draft.players.forEach { it.seen = true }
+                        host.mafia.saveDraft(draft)
+                        start()
+                    }
+                }))
+            }) {
             addView(kit.grid(3, listOf(
                 kit.button("توزیع نقش", ButtonKind.PRIMARY, RoyalIcon.CARDS, 46) {
                     MafiaNight.distribute(draft); draft.players.forEach { it.seen = false }; save()

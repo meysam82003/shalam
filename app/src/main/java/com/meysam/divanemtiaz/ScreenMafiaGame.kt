@@ -152,8 +152,11 @@ class MafiaGameScreen(host: MainActivity, gameId: Long) : MafiaScreen(host, game
     }
 
     private fun endNight() {
-        if (!MafiaFlow.insomnia(g)) MafiaFlow.nightEndRefusal(g)?.let { kit.toast(it); return }
-        kit.confirm(if (g.night == 0) "پایان شب معارفه" else "پایان شب", "شب تمام شود و روز آغاز شود؟", "روز می‌شود") {
+        val refusal = if (MafiaFlow.insomnia(g)) null else MafiaFlow.nightEndRefusal(g)
+        val pending = if (refusal == null) "" else MafiaNight.jobs(g).filter { it.key !in g.records && MafiaNight.refusal(g, it) == null }.joinToString("، ") { it.title }
+        val message = if (refusal == null) "شب تمام شود و روز آغاز شود؟" else "$refusal\nانجام‌نشده: $pending\nبه تشخیص راوی شب تمام شود؟"
+        kit.confirm(if (g.night == 0) "پایان شب معارفه" else "پایان شب", message, if (refusal == null) "روز می‌شود" else "پایان شب به هر حال", refusal != null) {
+            if (refusal != null) g.log += MafiaLog(g.phaseTitle, "راوی شب را بدون انجام همهٔ مراحل به پایان رساند")
             host.audio().stopMusic()
             val outcome = MafiaFlow.endNight(g)
             val win = MafiaFlow.checkWin(g)
@@ -254,7 +257,7 @@ class MafiaGameScreen(host: MainActivity, gameId: Long) : MafiaScreen(host, game
         contentDescription = title
         setOnClickListener {
             kit.tap(it)
-            if (!enabled && !done) kit.toast("ابتدا مرحلهٔ قبل را انجام دهید") else onClick()
+            if (!enabled && !done) kit.confirm(title, "مرحلهٔ قبل هنوز انجام نشده است.\nبه تشخیص راوی این مرحله باز شود؟", "باز کن") { onClick() } else onClick()
         }
     }
 
@@ -331,10 +334,12 @@ class MafiaGameScreen(host: MainActivity, gameId: Long) : MafiaScreen(host, game
     }
 
     private fun startNight() {
-        MafiaFlow.dayEndRefusal(g)?.let { kit.toast(it); return }
+        val refusal = MafiaFlow.dayEndRefusal(g)
         val win = MafiaFlow.checkWin(g)
         if (win != null) { store(); playCue(MafiaFlow.winCue(win)); host.refresh(); return }
-        kit.confirm("شروع شب", "روز تمام شود و شب ${MafiaText.ordinal(g.night)} آغاز شود؟", "شب می‌شود") {
+        val message = if (refusal == null) "روز تمام شود و شب ${MafiaText.ordinal(g.night)} آغاز شود؟" else "$refusal\nبه تشخیص راوی روز تمام شود و شب آغاز شود؟"
+        kit.confirm("شروع شب", message, if (refusal == null) "شب می‌شود" else "شروع شب به هر حال", refusal != null) {
+            if (refusal != null) g.log += MafiaLog(g.phaseTitle, "راوی روز را بدون انجام همهٔ مراحل به پایان رساند")
             MafiaFlow.startNight(g)
             store()
             playCue(MafiaCues.NIGHT_START) { if (mafiaSettings.nightMusic.isSet) host.post(3000) { startNightMusic() } }
@@ -476,6 +481,8 @@ class MafiaJobScreen(host: MainActivity, gameId: Long, private val key: String) 
     private var word = ""
     private val types = HashMap<Int, String>()
     private var wakePlayed = false
+    /** The narrator chose to run a blocked job anyway. */
+    private var forced = false
 
     private fun wakeCue(job: NightJob): String? = when {
         job.key == MafiaNight.MAFIA_GROUP -> MafiaCues.MAFIA_WAKE
@@ -501,7 +508,7 @@ class MafiaJobScreen(host: MainActivity, gameId: Long, private val key: String) 
             addView(kit.text("این کار امشب در دسترس نیست.", TextStyle.BODY, Royal.muted, Gravity.CENTER))
         }
         val record = g.records[key]
-        val refusal = MafiaNight.refusal(g, job)
+        val refusal = if (forced) null else MafiaNight.refusal(g, job)
         val decoy = MafiaNight.isDecoy(g, job)
         val mode = job.modes.getOrElse(modeIndex) { job.modes.first() }
         val bottom: View = when {
@@ -512,7 +519,11 @@ class MafiaJobScreen(host: MainActivity, gameId: Long, private val key: String) 
                 }
                 addView(kit.weight(kit.button("بازگشت", ButtonKind.SECONDARY, RoyalIcon.BACK, 50) { host.pop() }))
             }
-            refusal != null -> kit.button("بازگشت", ButtonKind.SECONDARY, RoyalIcon.BACK, 52) { playDone(job); host.pop() }
+            refusal != null -> kit.horizontal().apply {
+                addView(kit.weight(kit.button("انجام به تشخیص راوی", ButtonKind.SECONDARY, RoyalIcon.SLIDERS, 52) { forced = true; host.refresh() }))
+                addView(kit.hgap(8))
+                addView(kit.weight(kit.button("بازگشت", ButtonKind.PRIMARY, RoyalIcon.BACK, 52) { playDone(job); host.pop() }))
+            }
             else -> kit.horizontal().apply {
                 if (mode.min == 0 || job.role != null) {
                     addView(kit.button("کاری انجام نداد", ButtonKind.GHOST, null, 52) {
