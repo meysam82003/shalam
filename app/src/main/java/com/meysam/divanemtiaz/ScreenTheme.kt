@@ -100,7 +100,7 @@ class ThemePreviewView(context: Context, private val spec: ThemeSpec) : View(con
     }
 }
 
-/** «ظاهر برنامه»: the seven styles with a live miniature of each; the choice applies to every page at once. */
+/** «ظاهر برنامه»: the six styles with a live miniature of each; the choice applies to every page at once. */
 class ThemeScreen(host: MainActivity) : Screen(host) {
     override fun build(): View = scaffold("ظاهر برنامه", "${kit.n(Themes.all.size)} سبک • همهٔ صفحه‌ها و بازی‌ها") {
         addView(kit.text("هر سبک رنگ، قاب کارت‌ها، دکمه‌ها، نور و بافت پس‌زمینه و زمان‌سنج‌های خودش را دارد؛ داده‌ها و بازی‌ها تغییری نمی‌کنند.",
@@ -109,8 +109,28 @@ class ThemeScreen(host: MainActivity) : Screen(host) {
     }
 }
 
-/** Two-column picker of every style; used on the appearance page and in the general settings. */
-fun themeGrid(screen: Screen): View {
+/**
+ * First launch: the user picks the look of the app before anything else. A tap shows the style at once;
+ * «ادامه» keeps it, and from then on only the settings change it.
+ */
+class ThemeWelcomeScreen(host: MainActivity) : Screen(host) {
+    override fun build(): View = scaffold("به دیوان امتیاز خوش آمدید", "ظاهر برنامه را انتخاب کنید", showBack = false,
+        bottom = kit.button("ادامه با سبک «${ThemeEngine.spec.title}»", ButtonKind.PRIMARY, RoyalIcon.CHECK, 54) {
+            val id = ThemeEngine.spec.id
+            host.updateSettings { s -> s.copy(general = s.general.copy(theme = id)) }
+            host.resetTo(HomeScreen(host))
+        }) {
+        addView(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
+            addView(HeroCrestView(host), LinearLayout.LayoutParams(kit.dp(200), kit.dp(150)))
+        }, kit.spaced(4))
+        addView(kit.text("یکی از شش سبک را لمس کنید تا همین حالا روی برنامه ببینید؛ بعداً هم از «تنظیمات ← ظاهر برنامه» قابل تغییر است.",
+            TextStyle.LABEL, Royal.muted, Gravity.CENTER), kit.spaced(10))
+        addView(themeGrid(this@ThemeWelcomeScreen) { t -> host.applyTheme(t.id) })
+    }
+}
+
+/** Two-column picker of every style; a tap saves the style, or calls [onPick] instead (first-launch preview). */
+fun themeGrid(screen: Screen, onPick: ((ThemeSpec) -> Unit)? = null): View {
     val kit = screen.kit
     val host = screen.host
     val current = ThemeEngine.spec.id
@@ -130,7 +150,8 @@ fun themeGrid(screen: Screen): View {
             contentDescription = "سبک ${t.title}"
             setOnClickListener {
                 kit.tap(it)
-                if (t.id != ThemeEngine.spec.id) host.updateSettings { s -> s.copy(general = s.general.copy(theme = t.id)) }
+                if (onPick != null) onPick(t)
+                else if (t.id != ThemeEngine.spec.id) host.updateSettings { s -> s.copy(general = s.general.copy(theme = t.id)) }
             }
         }
     }, 8)

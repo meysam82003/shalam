@@ -11,7 +11,7 @@ import kotlin.math.min
 import kotlin.math.pow
 
 class ThemeTest {
-    @After fun restore() = ThemeEngine.apply(Themes.ROYAL)
+    @After fun restore() = ThemeEngine.apply(Themes.EMERALD)
 
     private fun channel(c: Int, shift: Int): Double {
         val v = ((c shr shift) and 0xFF) / 255.0
@@ -33,19 +33,22 @@ class ThemeTest {
         return (0xFF shl 24) or mix(16) or mix(8) or mix(0)
     }
 
-    @Test fun sevenStylesWithTheClassicAsDefault() {
-        assertEquals(7, Themes.all.size)
-        assertEquals(7, Themes.all.map { it.id }.toSet().size)
-        assertEquals("royal", GeneralSettings().theme)
-        assertEquals(Themes.ROYAL, Themes.byId(null))
-        assertEquals(Themes.ROYAL, Themes.byId("unknown"))
+    @Test fun sixStylesAndTheFirstLaunchAsksForOne() {
+        assertEquals(6, Themes.all.size)
+        assertEquals(6, Themes.all.map { it.id }.toSet().size)
+        assertEquals("", GeneralSettings().theme)
+        assertFalse(Themes.isChosen(GeneralSettings().theme))
+        // The removed blue style of older versions counts as not chosen, so the picker is shown once.
+        assertFalse(Themes.isChosen("royal"))
+        assertTrue(Themes.isChosen("neon"))
+        assertEquals(Themes.FALLBACK, Themes.byId("royal"))
         assertEquals(Themes.NEON, Themes.byId("neon"))
     }
 
     @Test fun stylesDifferInShapeNotOnlyColour() {
-        assertTrue(Themes.all.map { it.button }.toSet().size >= 5)
-        assertTrue(Themes.all.map { it.frame }.toSet().size >= 4)
-        assertTrue(Themes.all.map { it.pattern }.toSet().size >= 7)
+        assertTrue(Themes.all.map { it.button }.toSet().size >= 4)
+        assertTrue(Themes.all.map { it.frame }.toSet().size >= 3)
+        assertEquals(6, Themes.all.map { it.pattern }.toSet().size)
         assertEquals(3, Themes.all.count { it.light })
     }
 
@@ -67,10 +70,10 @@ class ThemeTest {
         assertEquals(Themes.COBALT.metal, Royal.metal)
         assertEquals(Themes.COBALT.titleColor, Royal.title)
         val v = ThemeEngine.version
-        ThemeEngine.apply(Themes.ROYAL)
+        ThemeEngine.apply(Themes.EMERALD)
         assertTrue(ThemeEngine.version > v)
-        assertEquals(0xFFF8F0DC.toInt(), Royal.ivory)
-        assertEquals(0xFFE6BE6A.toInt(), Royal.gold)
+        assertEquals(Themes.EMERALD.text, Royal.ivory)
+        assertEquals(Themes.EMERALD.accent, Royal.gold)
     }
 
     @Test fun themeAndLeaguePictureAreStoredAndOldDataStillLoads() {
@@ -78,7 +81,7 @@ class ThemeTest {
         assertEquals("iranic", GameCodec.decodeSettings(GameCodec.encodeSettings(s)).general.theme)
         val old = GameCodec.encodeSettings(AppSettings())
         old.getJSONObject("general").remove("theme")
-        assertEquals("royal", GameCodec.decodeSettings(old).general.theme)
+        assertEquals("", GameCodec.decodeSettings(old).general.theme)
 
         val league = League(5L, "جام", GameType.SHALAM, listOf(Side("الف", 1), Side("ب", 2)), GameRules(), LeagueFormat.KNOCKOUT, LeagueSettings(), avatar = PhotoStore.BASE + 3)
         assertEquals(PhotoStore.BASE + 3, GameCodec.decodeLeague(GameCodec.encodeLeague(league)).avatar)

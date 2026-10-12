@@ -88,36 +88,8 @@ class ThemeSpec(
 
 private fun c(v: Long): Int = v.toInt()
 
-/** The seven selectable styles; «سلطنتی کلاسیک» is the original look and stays the default. */
+/** The six selectable styles; the user picks one on the first launch and can change it in the settings. */
 object Themes {
-    val ROYAL = ThemeSpec(
-        id = "royal", title = "سلطنتی کلاسیک", latin = "Royal Lapis", summary = "لاجوردی و طلایی با قاب‌های هخامنشی؛ ظاهر اصلی دیوان",
-        light = false,
-        bg = intArrayOf(c(0xFF060D22), c(0xFF0A1734), c(0xFF0F2048)),
-        glows = listOf(ThemeGlow(0.5f, -0.06f, 0.9f, c(0x733A63C8)), ThemeGlow(0.5f, 1.05f, 0.9f, c(0x1A2ED3C6))),
-        vignette = c(0x88000000), pattern = ThemePattern.KHATAM, patternColor = c(0xFFE6BE6A),
-        surface = c(0xF516295A), surfaceLow = c(0xF50B1937),
-        raised = c(0xFF1B3369), raisedLow = c(0xFF0C1A3B),
-        flat = c(0xEB13254F), flatLow = c(0xEB0D1C3F),
-        border = c(0xFFFBE3A6), borderLow = c(0xFFB1832F), inner = c(0x47E6BE6A), jewels = true,
-        frame = ThemeFrame.ORNATE, frameWidth = 1.3f, shadow = c(0x3C000000), shadowDepth = 3.5f, gloss = 0.07f, radius = 1f,
-        accent = c(0xFFE6BE6A), accentText = c(0xFFFBE3A6), accentDeep = c(0xFFB1832F), accentShadow = c(0xFF6E4A1A),
-        metalLight = c(0xFFFBE3A6), metal = c(0xFFE6BE6A), metalDeep = c(0xFFB1832F), metalShadow = c(0xFF6E4A1A),
-        success = c(0xFF2ED3C6), successText = c(0xFF8EF0E6), successDeep = c(0xFF0E8C86),
-        danger = c(0xFFD0414B), dangerText = c(0xFFF5868C), dangerDeep = c(0xFF7A1724),
-        text = c(0xFFF8F0DC), muted = c(0xFFB3C3DD), dim = c(0xFF7487AE), titleColor = c(0xFFFBE3A6),
-        onAccent = c(0xFF050B1A), scrim = c(0xFF050B1A), lapis = c(0xFF12285A), lapisLight = c(0xFF1D3B7C),
-        button = ThemeButton.BEVEL,
-        primary = intArrayOf(c(0xFFFBE3A6), c(0xFFE6BE6A), c(0xFFB1832F)), primaryHorizontal = false, primaryText = c(0xFF050B1A), primaryEdge = c(0xFF6E4A1A),
-        secondary = intArrayOf(c(0xFF24447F), c(0xFF18306A), c(0xFF0E1F48)), secondaryText = c(0xFFFBE3A6), secondaryBorder = c(0xFFE6BE6A),
-        chip = intArrayOf(c(0xFF1C346B), c(0xFF142A5A), c(0xFF0E1F48)), chipText = c(0xFFF8F0DC), chipBorder = c(0x8CE6BE6A),
-        successFill = intArrayOf(c(0xFF8EF0E6), c(0xFF2ED3C6), c(0xFF0E8C86)), successOn = c(0xFF050B1A),
-        dangerFill = intArrayOf(c(0xFFE8656D), c(0xFFD0414B), c(0xFF7A1724)), dangerOn = c(0xFFF8F0DC),
-        buttonRadius = 1f, glow = false,
-        ring = intArrayOf(c(0xFFFBE3A6), c(0xFFE6BE6A), c(0xFF2ED3C6)), ringTrack = c(0x26E6BE6A),
-        swatch = intArrayOf(c(0xFF0A1734), c(0xFFE6BE6A), c(0xFF2ED3C6))
-    )
-
     val COBALT = ThemeSpec(
         id = "cobalt", title = "وایت کبالت", latin = "White Cobalt", summary = "روشن، تمیز و دقیق؛ سفید با آبی کبالت",
         light = true,
@@ -286,14 +258,20 @@ object Themes {
         swatch = intArrayOf(c(0xFF140B2E), c(0xFFB57CFF), c(0xFFFF5CD6))
     )
 
-    val all: List<ThemeSpec> = listOf(ROYAL, COBALT, COPPER, IRANIC, EMERALD, IVORY, NEON)
+    val all: List<ThemeSpec> = listOf(COBALT, COPPER, IRANIC, EMERALD, IVORY, NEON)
 
-    fun byId(id: String?): ThemeSpec = all.firstOrNull { it.id == id } ?: ROYAL
+    /** Shown until a style is chosen (the first launch) or when a stored style no longer exists. */
+    val FALLBACK: ThemeSpec get() = EMERALD
+
+    fun byId(id: String?): ThemeSpec = all.firstOrNull { it.id == id } ?: FALLBACK
+
+    /** True once the user has picked one of the current styles. */
+    fun isChosen(id: String?): Boolean = all.any { it.id == id }
 }
 
 /** The active style; [apply] copies its tokens into [Royal] so every existing widget follows it. */
 object ThemeEngine {
-    @Volatile var spec: ThemeSpec = Themes.ROYAL
+    @Volatile var spec: ThemeSpec = Themes.EMERALD
         private set
 
     /** Changes with every switch, so cached artwork of the previous style is never reused. */

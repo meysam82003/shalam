@@ -40,7 +40,7 @@ class SplashScreen(host: MainActivity) : Screen(host) {
         if (done) return
         done = true
         host.cancelPosts()
-        host.resetTo(HomeScreen(host))
+        host.resetTo(if (Themes.isChosen(settings.general.theme)) HomeScreen(host) else ThemeWelcomeScreen(host))
     }
 
     override fun onShow() {

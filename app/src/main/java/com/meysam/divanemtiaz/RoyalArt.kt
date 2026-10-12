@@ -789,62 +789,99 @@ class GameSealView(context: Context, private val game: GameType?) : CachedArtVie
     }
 }
 
-/** Home and splash crest from the web version: sun rays, a khatam star frame and the crown medallion. */
+/** Home and splash crest: a fan of four playing cards (the card games the app keeps score of) under a small crown. */
 class HeroCrestView(context: Context) : CachedArtView(context) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
-    override fun artKey(): Any = "crest"
+    override fun artKey(): Any = "cards-crest"
 
     override fun drawArt(canvas: Canvas) {
-        // Design box 300 × 230 like the web SVG, centred and scaled to fit.
+        // Design box 300 × 230, centred and scaled to fit.
         val k = min(width / 300f, height / 230f)
         if (k <= 0f) return
         val ox = (width - 300f * k) / 2f
         val oy = (height - 230f * k) / 2f
-        val cx = ox + 150f * k
-        val cy = oy + 112f * k
-        paint.style = Paint.Style.STROKE
+        fun x(v: Float) = ox + v * k
+        fun y(v: Float) = oy + v * k
+        val light = ThemeEngine.spec.light
+        // Soft light behind the fan and its shadow on the table.
+        paint.style = Paint.Style.FILL
+        paint.shader = RadialGradient(x(150f), y(128f), 125f * k, intArrayOf(Royal.alpha(Royal.gold, if (light) 0.20f else 0.28f), Royal.alpha(Royal.gold, 0.06f), 0), floatArrayOf(0f, 0.6f, 1f), Shader.TileMode.CLAMP)
+        canvas.drawCircle(x(150f), y(128f), 125f * k, paint)
+        paint.shader = RadialGradient(x(150f), y(206f), 92f * k, intArrayOf(if (light) 0x30000000 else 0x66000000, 0), null, Shader.TileMode.CLAMP)
+        canvas.save()
+        canvas.scale(1f, 0.16f, x(150f), y(206f))
+        canvas.drawCircle(x(150f), y(206f), 92f * k, paint)
+        canvas.restore()
         paint.shader = null
-        paint.strokeCap = Paint.Cap.ROUND
-        paint.strokeWidth = 1.4f * k
-        paint.color = Royal.alpha(Royal.metal, 0.28f)
-        for (i in 0 until 32) {
-            val a = i * Math.PI / 16
-            val r1 = if (i % 2 == 1) 78f else 72f
-            val r2 = if (i % 2 == 1) 96f else 108f
-            canvas.drawLine(cx + (cos(a) * r1).toFloat() * k, cy + (sin(a) * r1).toFloat() * k, cx + (cos(a) * r2).toFloat() * k, cy + (sin(a) * r2).toFloat() * k, paint)
+        // Four cards: diamond, club, heart and the spade of shalam in front.
+        val ink = 0xFF1B2233.toInt()
+        val red = 0xFFC4303F.toInt()
+        val cards = listOf(
+            Triple(-33f, SuitShapes.diamond(36f * k), red),
+            Triple(-11f, SuitShapes.club(38f * k), ink),
+            Triple(11f, SuitShapes.heart(36f * k), red),
+            Triple(33f, SuitShapes.spade(38f * k), ink)
+        )
+        val w = 72f * k
+        val h = 100f * k
+        val corner = 7f * k
+        val pivotX = x(150f)
+        val pivotY = y(212f)
+        cards.forEach { (angle, suit, color) ->
+            canvas.save()
+            canvas.rotate(angle, pivotX, pivotY)
+            val card = RectF(pivotX - w / 2f, pivotY - 30f * k - h, pivotX + w / 2f, pivotY - 30f * k)
+            paint.style = Paint.Style.FILL
+            paint.color = 0x2E000000
+            canvas.drawRoundRect(RectF(card.left + 1.5f * k, card.top + 2f * k, card.right + 1.5f * k, card.bottom + 2f * k), corner, corner, paint)
+            paint.color = Color.BLACK
+            paint.shader = LinearGradient(0f, card.top, 0f, card.bottom, 0xFFFFFFFF.toInt(), 0xFFF3EFE7.toInt(), Shader.TileMode.CLAMP)
+            canvas.drawRoundRect(card, corner, corner, paint)
+            paint.shader = null
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 2.2f * k
+            paint.color = Color.BLACK
+            paint.shader = LinearGradient(0f, card.top, 0f, card.bottom, Royal.metal, Royal.metalDeep, Shader.TileMode.CLAMP)
+            canvas.drawRoundRect(card, corner, corner, paint)
+            paint.shader = null
+            paint.strokeWidth = 0.9f * k
+            paint.color = Royal.alpha(Royal.metalDeep, 0.45f)
+            val inset = 4.5f * k
+            canvas.drawRoundRect(RectF(card.left + inset, card.top + inset, card.right - inset, card.bottom - inset), corner * 0.6f, corner * 0.6f, paint)
+            paint.style = Paint.Style.FILL
+            paint.color = color
+            val b = RectF().also { suit.computeBounds(it, true) }
+            canvas.drawPath(Path(suit).apply { offset(card.centerX() - b.centerX(), card.centerY() - b.centerY()) }, paint)
+            // Small corner pips.
+            val small = Matrix().apply { setScale(0.32f, 0.32f) }
+            val pip = Path(suit).apply { transform(small) }
+            val pb = RectF().also { pip.computeBounds(it, true) }
+            canvas.drawPath(Path(pip).apply { offset(card.left + 10f * k - pb.centerX(), card.top + 12f * k - pb.centerY()) }, paint)
+            canvas.drawPath(Path(pip).apply { offset(card.right - 10f * k - pb.centerX(), card.bottom - 12f * k - pb.centerY()) }, paint)
+            canvas.restore()
         }
-        val star = Path()
-        for (i in 0 until 16) {
-            val a = i * Math.PI / 8 - Math.PI / 2
-            val rr = if (i % 2 == 1) 66f else 88f
-            val x = cx + (cos(a) * rr).toFloat() * k
-            val y = cy + (sin(a) * rr).toFloat() * k
-            if (i == 0) star.moveTo(x, y) else star.lineTo(x, y)
-        }
-        star.close()
+        // Crown over the fan.
+        val crown = Path(GameSealView.CROWN)
+        val m = Matrix().apply { setRectToRect(RectF(0f, 0f, 100f, 100f), RectF(x(112f), y(14f), x(188f), y(90f)), Matrix.ScaleToFit.CENTER) }
+        crown.transform(m)
         paint.style = Paint.Style.FILL
-        paint.color = Royal.alpha(Royal.metal, 0.06f)
-        canvas.drawPath(star, paint)
+        paint.color = 0x55000000
+        canvas.drawPath(Path(crown).apply { offset(0f, 2.2f * k) }, paint)
+        paint.color = Color.BLACK
+        paint.shader = Emblems.goldFill(y(34f), y(70f))
+        canvas.drawPath(crown, paint)
+        paint.shader = null
         paint.style = Paint.Style.STROKE
-        paint.color = Royal.alpha(Royal.metal, 0.55f)
-        canvas.drawPath(star, paint)
-        paint.strokeWidth = 1f * k
-        paint.color = Royal.alpha(Royal.metal, 0.35f)
-        canvas.drawCircle(cx, cy, 60f * k, paint)
-        paint.strokeWidth = 3f * k
-        paint.color = Royal.alpha(Royal.metal, 0.2f)
-        paint.pathEffect = android.graphics.DashPathEffect(floatArrayOf(2f * k, 5f * k), 0f)
-        canvas.drawCircle(cx, cy, 56f * k, paint)
-        paint.pathEffect = null
+        paint.strokeWidth = 0.9f * k
+        paint.color = Royal.alpha(Royal.metalShadow, 0.7f)
+        canvas.drawPath(crown, paint)
         paint.style = Paint.Style.FILL
-        // Crown medallion: the web places a 100-unit seal at (100, 62).
-        val r = 48f * k
-        val mcx = ox + 150f * k
-        val mcy = oy + 112f * k
-        Emblems.drawMedallion(canvas, mcx, mcy, r, GameSealView.base(null), paint)
-        Emblems.drawRelief(canvas, GameSealView.CROWN, mcx, mcy, r, paint, 2f * 50f / 48f)
-        Emblems.drawGloss(canvas, mcx, mcy, r * 0.83f, paint)
+        // Two sparkles.
+        listOf(Triple(96f, 44f, 5f), Triple(206f, 34f, 4f)).forEach { (sx, sy, r) ->
+            paint.color = Royal.alpha(Royal.metalLight, 0.9f)
+            canvas.drawPath(RoyalShapes.starPath(x(sx), y(sy), r * k, 4, 0.32f), paint)
+        }
     }
 }
 
@@ -1003,8 +1040,7 @@ class RoyalSwitch(context: Context, checked: Boolean) : View(context) {
             LinearGradient(0f, track.top, 0f, track.bottom, Royal.turquoise, Royal.turquoiseDeep, Shader.TileMode.CLAMP)
         } else {
             val t = ThemeEngine.spec
-            if (t.id == "royal") LinearGradient(0f, track.top, 0f, track.bottom, 0xFF0A1630.toInt(), 0xFF142A5A.toInt(), Shader.TileMode.CLAMP)
-            else LinearGradient(0f, track.top, 0f, track.bottom, Royal.mix(t.flatLow or 0xFF000000.toInt(), Royal.ivory, if (t.light) 0.16f else 0.06f),
+            LinearGradient(0f, track.top, 0f, track.bottom, Royal.mix(t.flatLow or 0xFF000000.toInt(), Royal.ivory, if (t.light) 0.16f else 0.06f),
                 Royal.mix(t.flat or 0xFF000000.toInt(), Royal.ivory, if (t.light) 0.10f else 0.10f), Shader.TileMode.CLAMP)
         }
         canvas.drawRoundRect(track, h / 2f, h / 2f, paint)

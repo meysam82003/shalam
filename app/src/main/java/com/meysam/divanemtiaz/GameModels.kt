@@ -310,8 +310,8 @@ data class GeneralSettings(
     val defaultTeam1: String = "ما",
     val defaultTeam2: String = "اونا",
     val uiScale: Int = UiScale.NORMAL,
-    /** Visual style ([Themes]); every style shows the same screens and data. */
-    val theme: String = "royal"
+    /** Visual style ([Themes]); empty until the user picks one on the first launch. */
+    val theme: String = ""
 )
 
 /** Display size of the whole interface, in percent. */
