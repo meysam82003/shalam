@@ -18,7 +18,7 @@ import kotlin.math.sin
 enum class RoyalIcon {
     BACK, NEXT, HOME, SETTINGS, HISTORY, RULES, PLAYERS, PLUS, MINUS, CHECK, CLOSE, EDIT, TRASH,
     EYE, EYE_OFF, CROWN, TROPHY, TIMER, CHART, STAR, PLAY, UNDO, FLAG, WARNING, SLIDERS, MENU,
-    SPADE, HEART, DIAMOND, CLUB, SWAP, USER, SHARE, CARDS, SAVE, LEAGUE
+    SPADE, HEART, DIAMOND, CLUB, SWAP, USER, SHARE, CARDS, SAVE, LEAGUE, SEARCH
 }
 
 /** Vector icons drawn on a 24-unit grid, so no image resource is needed. */
@@ -93,6 +93,10 @@ object RoyalIcons {
                 p.moveTo(4f, 6.5f); p.lineTo(20f, 6.5f); p.moveTo(9f, 6.5f); p.lineTo(9.6f, 4f); p.lineTo(14.4f, 4f); p.lineTo(15f, 6.5f)
                 p.moveTo(6f, 6.5f); p.lineTo(7f, 20f); p.lineTo(17f, 20f); p.lineTo(18f, 6.5f)
                 p.moveTo(10f, 10f); p.lineTo(10f, 16.5f); p.moveTo(14f, 10f); p.lineTo(14f, 16.5f)
+            }
+            RoyalIcon.SEARCH -> {
+                p.addCircle(10.5f, 10.5f, 6f, Path.Direction.CW)
+                p.moveTo(15f, 15f); p.lineTo(20.5f, 20.5f)
             }
             RoyalIcon.EYE -> {
                 p.moveTo(2.5f, 12f); p.cubicTo(5.5f, 6.5f, 18.5f, 6.5f, 21.5f, 12f); p.cubicTo(18.5f, 17.5f, 5.5f, 17.5f, 2.5f, 12f); p.close()
@@ -503,10 +507,17 @@ object Emblems {
 abstract class CachedArtView(context: Context) : View(context) {
     private var cache: android.graphics.Bitmap? = null
     private var cacheKey: String? = null
+    /** Art skipped because the view was far off screen; drawn when it scrolls or moves near. */
+    private var pending = false
+    private val dst = RectF()
+    private val bitmapPaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
 
     protected abstract fun artKey(): Any
 
     protected abstract fun drawArt(canvas: Canvas)
+
+    /** Highest pixel density the art is rendered at (lower = less memory and faster first draw). */
+    protected open val maxArtDensity: Float = Float.MAX_VALUE
 
     fun invalidateArt() {
         cacheKey = null
@@ -514,36 +525,89 @@ abstract class CachedArtView(context: Context) : View(context) {
         invalidate()
     }
 
+    private fun key(): String = "${javaClass.name}|$width|$height|${artKey()}"
+
+    private fun render(key: String): android.graphics.Bitmap {
+        val s = min(1f, maxArtDensity / resources.displayMetrics.density)
+        val bw = (width * s).toInt().coerceAtLeast(1)
+        val bh = (height * s).toInt().coerceAtLeast(1)
+        val bitmap = android.graphics.Bitmap.createBitmap(bw, bh, android.graphics.Bitmap.Config.ARGB_8888)
+        val c = Canvas(bitmap)
+        c.scale(bw / width.toFloat(), bh / height.toFloat())
+        drawArt(c)
+        ArtCache.put(key, bitmap)
+        return bitmap
+    }
+
+    /** Renders the art into the shared cache ahead of time (called by [ArtWarmer]); true if work was done. */
+    fun warm(): Boolean {
+        if (width <= 0 || height <= 0 || !isAttachedToWindow) return false
+        val key = key()
+        if (ArtCache.get(key) != null) return false
+        render(key)
+        return true
+    }
+
+    private val loc = IntArray(2)
+    private fun nearScreen(): Boolean {
+        if (!isShown) return false
+        getLocationOnScreen(loc)
+        val dm = resources.displayMetrics
+        // On screen (with a small margin): everything further away is drawn by ArtWarmer while the app is idle.
+        val m = dm.heightPixels / 8
+        return loc[1] + height > -m && loc[1] < dm.heightPixels + m && loc[0] + width > 0 && loc[0] < dm.widthPixels
+    }
+
+    private val wake = android.view.ViewTreeObserver.OnScrollChangedListener { checkPending() }
+    private val wakeLayout = android.view.ViewTreeObserver.OnGlobalLayoutListener { checkPending() }
+
+    private fun checkPending() {
+        if (pending && nearScreen()) { pending = false; invalidate() }
+    }
+
     override fun onDraw(canvas: Canvas) {
         if (width <= 0 || height <= 0) return
-        val key = "${javaClass.name}|$width|$height|${artKey()}"
+        val key = key()
         var bitmap = cache?.takeIf { key == cacheKey && !it.isRecycled }
         if (bitmap == null) {
-            // Art is shared through one memory-bounded cache: a page of a hundred role cards draws each design once
-            // and no longer keeps a full bitmap per view alive (which made the mafia pages stall on garbage collection).
+            // Art is shared through one memory-bounded cache and drawn only near the screen: a page of two hundred
+            // role cards no longer renders every card (and allocates every bitmap) before its first frame.
             bitmap = ArtCache.get(key)
             if (bitmap == null) {
-                bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
-                drawArt(Canvas(bitmap!!))
-                ArtCache.put(key, bitmap)
+                if (!nearScreen()) {
+                    pending = true
+                    ArtWarmer.enqueue(this)
+                    return
+                }
+                bitmap = render(key)
             }
             cache = bitmap
             cacheKey = key
         }
-        canvas.drawBitmap(bitmap, 0f, 0f, null)
+        pending = false
+        dst.set(0f, 0f, width.toFloat(), height.toFloat())
+        canvas.drawBitmap(bitmap, null, dst, bitmapPaint)
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        viewTreeObserver.addOnScrollChangedListener(wake)
+        viewTreeObserver.addOnGlobalLayoutListener(wakeLayout)
     }
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
+        viewTreeObserver.removeOnScrollChangedListener(wake)
+        viewTreeObserver.removeOnGlobalLayoutListener(wakeLayout)
         cache = null
         cacheKey = null
     }
 }
 
-/** Process-wide cache of drawn art, sized to an eighth of the heap. Bitmaps are never recycled while shared. */
+/** Process-wide cache of drawn art, sized to a quarter of the heap. Bitmaps are never recycled while shared. */
 object ArtCache {
     private val lru = object : android.util.LruCache<String, android.graphics.Bitmap>(
-        (Runtime.getRuntime().maxMemory() / 1024L / 8L).toInt().coerceAtLeast(4096)
+        (Runtime.getRuntime().maxMemory() / 1024L / 4L).toInt().coerceAtLeast(4096)
     ) {
         override fun sizeOf(key: String, value: android.graphics.Bitmap): Int = (value.byteCount / 1024).coerceAtLeast(1)
     }

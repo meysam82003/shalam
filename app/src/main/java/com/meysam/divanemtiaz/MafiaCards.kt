@@ -57,6 +57,9 @@ class RoleCardView(context: Context) : CachedArtView(context) {
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
+    // Cards are small on screen: rendering at up to 2.25× keeps two hundred of them within the art cache.
+    override val maxArtDensity: Float = 2.25f
+
     override fun artKey(): Any = listOf(glyph, tint, title, subtitle, portrait?.let { System.identityHashCode(it).toString() + "." + it.generationId } ?: "-", faceDown, dead)
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {

@@ -32,6 +32,10 @@ abstract class Screen(val host: MainActivity) {
     /** Session shown by this screen, used to restore the game after process death. */
     open val sessionId: Long? get() = null
 
+    /** Subtitle of the page bar (pages update it in place). */
+    var subtitleView: android.widget.TextView? = null
+        private set
+
     fun scaffold(
         title: String,
         subtitle: String? = null,
@@ -51,7 +55,8 @@ abstract class Screen(val host: MainActivity) {
         }
         bar.addView(kit.vertical().apply {
             addView(kit.text(title, TextStyle.TITLE, Royal.goldLight, maxLines = 1))
-            if (!subtitle.isNullOrBlank()) addView(kit.text(subtitle, TextStyle.CAPTION, Royal.muted, maxLines = 1))
+            subtitleView = null
+            if (!subtitle.isNullOrBlank()) addView(kit.text(subtitle, TextStyle.CAPTION, Royal.muted, maxLines = 1).also { subtitleView = it })
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         actions.forEach {
             bar.addView(kit.hgap(6))
@@ -405,30 +410,46 @@ class MainActivity : Activity() {
         push(if (session.finished) ResultScreen(this, session) else boardFor(session))
     }
 
+    private var transition = 0
+
     private fun render(animate: Boolean = true, forward: Boolean = true, notify: Boolean = true) {
         val screen = current ?: return
         val view = screen.build()
         if (!animate || !settings.general.animations) {
-            container.animate().cancel()
+            transition++
+            for (i in 0 until container.childCount) container.getChildAt(i).animate().cancel()
             container.removeAllViews()
             container.addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         } else {
-            // Cross-slide on hardware layers: the old page glides out while the new one glides in (RTL: forward comes
-            // from the left), both composited by the GPU so the transition holds the display's frame rate.
-            val shift = kit.dpf(28f)
-            for (i in 0 until container.childCount) container.getChildAt(i).animate().cancel()
-            val olds = (0 until container.childCount).map { container.getChildAt(it) }
-            olds.forEach { old ->
-                old.isEnabled = false
-                old.animate().alpha(0f).translationX(if (forward) shift else -shift).setDuration(TRANSITION_OUT)
-                    .setInterpolator(android.view.animation.AccelerateInterpolator(1.4f)).withLayer()
-                    .withEndAction { container.removeView(old) }.start()
-            }
+            // Slide + fade on hardware layers (RTL: a new page enters from the left, going back slides it to the right).
+            // The motion starts only after the new page's first frame is drawn, so building and drawing a heavy page
+            // never eats the animation's frames.
+            val shift = container.width.takeIf { it > 0 }?.let { it * 0.22f } ?: kit.dpf(80f)
+            // Only the page on screen slides out; anything left from an interrupted transition goes at once.
+            val children = (0 until container.childCount).map { container.getChildAt(it) }
+            children.forEach { it.animate().cancel() }
+            children.dropLast(1).forEach { container.removeView(it) }
+            val olds = children.takeLast(1).onEach { it.isEnabled = false; it.alpha = 1f; it.translationX = 0f }
+            val id = ++transition
             container.addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             view.alpha = 0f
             view.translationX = if (forward) -shift else shift
-            view.animate().alpha(1f).translationX(0f).setDuration(TRANSITION_IN).setStartDelay(30)
-                .setInterpolator(android.view.animation.DecelerateInterpolator(2f)).withLayer().start()
+            ArtWarmer.hold(Motion.PAGE_IN + 120)
+            val start = Runnable {
+                if (id != transition) return@Runnable
+                olds.forEach { old ->
+                    old.animate().alpha(0f).translationX(if (forward) shift * 0.6f else -shift * 0.6f).setDuration(Motion.PAGE_OUT)
+                        .setInterpolator(Motion.EASE_IN_OUT).withLayer().withEndAction { container.removeView(old) }.start()
+                }
+                view.animate().alpha(1f).translationX(0f).setDuration(Motion.PAGE_IN).setInterpolator(Motion.EASE_OUT).withLayer().start()
+            }
+            view.viewTreeObserver.addOnPreDrawListener(object : android.view.ViewTreeObserver.OnPreDrawListener {
+                override fun onPreDraw(): Boolean {
+                    if (view.viewTreeObserver.isAlive) view.viewTreeObserver.removeOnPreDrawListener(this)
+                    view.post(start)
+                    return true
+                }
+            })
         }
         if (notify && resumed) screen.onShow()
     }
@@ -443,8 +464,6 @@ class MainActivity : Activity() {
 
     companion object {
         private const val STATE_SESSION = "session_id"
-        private const val TRANSITION_IN = 240L
-        private const val TRANSITION_OUT = 160L
         private const val REQUEST_DOCUMENT = 4101
         private const val REQUEST_MIC = 4102
     }

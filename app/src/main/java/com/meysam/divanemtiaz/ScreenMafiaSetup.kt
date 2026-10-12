@@ -5,6 +5,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.TextView
 
 /** «طراحی بازی»: three tabs (players, roles, last-move cards) and «توزیع نقش». The draft is saved on every change. */
 class MafiaDesignScreen(host: MainActivity, private var tab: Int = 0) : Screen(host) {
@@ -14,51 +15,117 @@ class MafiaDesignScreen(host: MainActivity, private var tab: Int = 0) : Screen(h
     private var showAll = false
     private var scenario: MafiaScenario? = null
 
-    private fun save() { host.mafia.saveDraft(draft); host.refresh() }
+    // Live parts of the page, updated in place: a change to the draft never rebuilds the page or its cards.
+    private var content: LinearLayout? = null
+    private var statusBox: FrameLayout? = null
+    private var sideTabs: SlidingTabs? = null
+    private var selectedBox: FrameLayout? = null
+    private var roleGrid: CardGrid? = null
+    private var cardGrid: CardGrid? = null
+    private var emptyRoles: TextView? = null
+    private var roleQuery = ""
+    private var cardQuery = ""
+    /** One cell per role / card for the life of the page (stable keys). */
+    private val roleCells = HashMap<MafiaRole, RoleCell>()
+    private val cardCells = HashMap<MafiaLastCard, CardCell>()
+
+    private fun save() {
+        host.mafia.saveDraft(draft)
+        updateLive()
+    }
+
+    /** Refreshes everything that depends on the draft without touching the rest of the page. */
+    private fun updateLive() {
+        subtitleView?.text = subtitle()
+        renderStatus()
+        when (tab) {
+            0 -> showTab(false)
+            1 -> {
+                updateSideLabels()
+                renderSelected()
+                roleCells.values.forEach { it.bind() }
+                updateRoleGrid(true)
+            }
+            else -> cardCells.values.forEach { it.bind() }
+        }
+    }
+
+    private fun distribute() {
+        val (ok, message) = MafiaFlow.validate(draft.players.size, draft.roleCounts, draft.deck.map { it.card })
+        val go = {
+            // Narrator's call: missing roles are filled with simple citizens.
+            val missing = draft.players.size - draft.roleCounts.values.sum()
+            if (missing > 0) draft.roleCounts[MafiaRole.CITIZEN] = (draft.roleCounts[MafiaRole.CITIZEN] ?: 0) + missing
+            draft.players.forEach { it.role = null; it.seen = false }
+            // «ذهن زیبا» only for the special role that is in this game.
+            val keep = MafiaScenarios.matchMind(draft.deck.map { it.card }, draft.roleCounts.filter { it.value > 0 }.keys)
+            draft.deck.removeAll { it.card !in keep }
+            host.mafia.saveDraft(draft)
+            host.push(MafiaDistributeScreen(host))
+        }
+        when {
+            ok -> go()
+            draft.players.size < 2 -> kit.toast(message)
+            else -> kit.confirm("ادامه به تشخیص راوی", message + "\nبا این حال توزیع نقش انجام شود؟" +
+                if (draft.players.size > draft.roleCounts.values.sum()) "\n(نقش‌های کم با شهروند ساده پر می‌شوند)" else "", "ادامه") { go() }
+        }
+    }
+
+    private fun subtitle() = (scenario?.let { it.name + "  •  " } ?: "") +
+        "${kit.n(draft.players.size)} بازیکن  •  ${kit.n(draft.roleCounts.values.sum())} نقش  •  ${kit.n(draft.deck.size)} کارت"
+
+    private var bottomBox = FrameLayout(host)
+
+    private fun renderStatus() {
+        val box = statusBox ?: return
+        val (ok, message) = MafiaFlow.validate(draft.players.size, draft.roleCounts, draft.deck.map { it.card })
+        bottomBox.removeAllViews()
+        bottomBox.addView(kit.button("توزیع نقش", if (ok) ButtonKind.PRIMARY else ButtonKind.SECONDARY, RoyalIcon.CARDS, 52) { distribute() })
+        box.removeAllViews()
+        box.addView(kit.panel(if (ok) PanelStyle.SUCCESS else PanelStyle.DANGER, 10).apply {
+            addView(kit.horizontal().apply {
+                addView(kit.icon(if (ok) RoyalIcon.CHECK else RoyalIcon.WARNING, if (ok) Royal.turquoiseLight else Royal.crimsonLight, 22))
+                addView(kit.hgap(8))
+                addView(kit.weight(kit.text(message, TextStyle.BODY_BOLD, if (ok) Royal.turquoiseLight else Royal.crimsonLight)))
+            })
+        })
+    }
+
+    /** Swaps only the tab's content (with a short cross-fade), never the page. */
+    private fun showTab(animate: Boolean) {
+        val box = content ?: return
+        roleGrid = null; cardGrid = null; sideTabs = null; selectedBox = null; emptyRoles = null
+        box.removeAllViews()
+        when (tab) {
+            0 -> playersTab(box)
+            1 -> rolesTab(box)
+            else -> cardsTab(box)
+        }
+        if (animate && kit.settings.general.animations) {
+            box.alpha = 0f
+            box.translationY = kit.dpf(8f)
+            box.animate().alpha(1f).translationY(0f).setDuration(Motion.ITEM).setInterpolator(Motion.EASE_OUT).start()
+        }
+    }
 
     override fun build(): View {
         draft = host.mafia.draft()
         scenario = host.mafia.scenario(draft.extra["scenario"])
         MafiaRoleRegistry.activate(scenario)
-        val (ok, message) = MafiaFlow.validate(draft.players.size, draft.roleCounts, draft.deck.map { it.card })
-        return scaffold("طراحی بازی", (scenario?.let { it.name + "  •  " } ?: "") + "${kit.n(draft.players.size)} بازیکن  •  ${kit.n(draft.roleCounts.values.sum())} نقش  •  ${kit.n(draft.deck.size)} کارت",
+        // Names or rules may have changed on another page: cells are made afresh for this build and then reused.
+        roleCells.clear(); cardCells.clear()
+        bottomBox = FrameLayout(host)
+        return scaffold("طراحی بازی", subtitle(),
             actions = listOf(kit.iconButton(RoyalIcon.RULES, "تغییر سناریو", ButtonKind.SECONDARY, 44) { host.push(MafiaScenarioListScreen(host)) },
                 kit.iconButton(RoyalIcon.SAVE, "ذخیره به عنوان گروه", ButtonKind.SECONDARY, 44) { saveGroup() }),
-            bottom = kit.button("توزیع نقش", if (ok) ButtonKind.PRIMARY else ButtonKind.SECONDARY, RoyalIcon.CARDS, 52) {
-                val go = {
-                    // Narrator's call: missing roles are filled with simple citizens.
-                    val missing = draft.players.size - draft.roleCounts.values.sum()
-                    if (missing > 0) draft.roleCounts[MafiaRole.CITIZEN] = (draft.roleCounts[MafiaRole.CITIZEN] ?: 0) + missing
-                    draft.players.forEach { it.role = null; it.seen = false }
-                    // «ذهن زیبا» only for the special role that is in this game.
-                    val keep = MafiaScenarios.matchMind(draft.deck.map { it.card }, draft.roleCounts.filter { it.value > 0 }.keys)
-                    draft.deck.removeAll { it.card !in keep }
-                    host.mafia.saveDraft(draft)
-                    host.push(MafiaDistributeScreen(host))
-                }
-                when {
-                    ok -> go()
-                    draft.players.size < 2 -> kit.toast(message)
-                    else -> kit.confirm("ادامه به تشخیص راوی", message + "\nبا این حال توزیع نقش انجام شود؟" +
-                        if (draft.players.size > draft.roleCounts.values.sum()) "\n(نقش‌های کم با شهروند ساده پر می‌شوند)" else "", "ادامه") { go() }
-                }
-            }) {
-            addView(kit.grid(3, listOf("بازیکنان", "نقش ها", "کارت حرکت آخر").mapIndexed { i, t ->
-                kit.chip(t, tab == i, ButtonKind.CHIP_GOLD) { tab = i; host.refresh() }
-            }, 6), kit.spaced(8))
-            addView(kit.panel(if (ok) PanelStyle.SUCCESS else PanelStyle.DANGER, 10).apply {
-                layoutParams = kit.spaced(10)
-                addView(kit.horizontal().apply {
-                    addView(kit.icon(if (ok) RoyalIcon.CHECK else RoyalIcon.WARNING, if (ok) Royal.turquoiseLight else Royal.crimsonLight, 22))
-                    addView(kit.hgap(8))
-                    addView(kit.weight(kit.text(message, TextStyle.BODY_BOLD, if (ok) Royal.turquoiseLight else Royal.crimsonLight)))
-                })
-            })
-            when (tab) {
-                0 -> playersTab(this)
-                1 -> rolesTab(this)
-                else -> cardsTab(this)
-            }
+            bottom = bottomBox) {
+            addView(SlidingTabs(host, kit, listOf("بازیکنان", "نقش ها", "کارت حرکت آخر"), tab) { i -> tab = i; showTab(true) }, kit.spaced(8))
+            statusBox = FrameLayout(host)
+            addView(statusBox, kit.spaced(10))
+            renderStatus()
+            content = kit.vertical()
+            addView(content, kit.fill())
+            showTab(false)
         }
     }
 
@@ -123,13 +190,83 @@ class MafiaDesignScreen(host: MainActivity, private var tab: Int = 0) : Screen(h
 
     // ------------------------------------------------------------------ roles
 
+    private fun sideCount(s: MafiaSide) = draft.roleCounts.filter { it.key.side == s }.values.sum()
+
+    private fun sideLabel(s: MafiaSide) = "${s.title}  ${kit.n(sideCount(s))}"
+
+    private fun updateSideLabels() {
+        val t = sideTabs ?: return
+        MafiaSide.values().forEachIndexed { i, s -> t.setLabel(i, sideLabel(s)) }
+    }
+
+    private fun renderSelected() {
+        val box = selectedBox ?: return
+        box.removeAllViews()
+        val selected = draft.roleCounts.filter { it.value > 0 }.keys
+        if (selected.isEmpty()) { box.visibility = View.GONE; return }
+        box.visibility = View.VISIBLE
+        box.addView(kit.flow(selected.map { r ->
+            kit.badge("${r.faName}${if ((draft.roleCounts[r] ?: 0) > 1) " ×" + kit.n(draft.roleCounts[r]!!) else ""}", r.side.textColor())
+        }, 4))
+    }
+
+    /** Roles shown for the current side / pool / search; filtering only, on data already in memory. */
+    private fun shownRoles(): List<MafiaRole> {
+        val sc = scenario?.takeIf { it.id != MafiaScenarios.FREE }
+        val selected = draft.roleCounts.filter { it.value > 0 }.keys
+        val pool = sc?.pool?.takeIf { it.isNotEmpty() && !showAll }
+        val base = pool?.let { p -> (p + selected).distinct() } ?: MafiaRoleRegistry.available()
+        // A search looks through every side, so a name is found without knowing its side first.
+        return if (roleQuery.isNotBlank()) base.filter { SearchText.matches(roleQuery, it.faName, it.defaultName, it.tagline) }
+        else base.filter { it.side == side }
+    }
+
+    private fun updateRoleGrid(animate: Boolean) {
+        val grid = roleGrid ?: return
+        val shown = shownRoles()
+        grid.submit(shown.map { it.name }, animate) { key -> roleCell(MafiaRole.valueOf(key)) }
+        emptyRoles?.let {
+            it.visibility = if (shown.isEmpty()) View.VISIBLE else View.GONE
+            it.text = if (roleQuery.isNotBlank()) "نقشی با «${roleQuery.trim()}» پیدا نشد" else "در این سناریو نقشی از این ساید نیست؛ «همهٔ نقش‌ها» را بزنید."
+        }
+    }
+
+    private fun roleCell(r: MafiaRole): RoleCell = roleCells.getOrPut(r) { RoleCell(r) }.also { it.bind() }
+
+    /** A role card with its selection frame and count badge; re-bound in place when the draft changes. */
+    private inner class RoleCell(val role: MafiaRole) : FrameLayout(host) {
+        private val card = roleCard(role)
+        private val badge = kit.badge("✓", Royal.turquoise, true)
+        private var state = -1
+
+        init {
+            setPadding(kit.dp(4), kit.dp(4), kit.dp(4), kit.dp(5))
+            addView(card, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(badge, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.LEFT).apply { topMargin = kit.dp(4); leftMargin = kit.dp(4) })
+            isClickable = true
+            contentDescription = role.faName
+            setOnClickListener { kit.tap(it); roleDialog(role) }
+        }
+
+        fun bind() {
+            val count = draft.roleCounts[role] ?: 0
+            if (count == state) return
+            val was = state
+            state = count
+            background = PanelDrawable(kit.density, if (count > 0) PanelStyle.SELECTED else PanelStyle.GHOST, 14f)
+            card.alpha = if (count > 0) 1f else 0.78f
+            badge.text = if (count > 1) "×" + kit.n(count) else "✓"
+            badge.visibility = if (count > 0) View.VISIBLE else View.GONE
+            if (was >= 0 && count > 0 && was != count && kit.settings.general.animations) kit.pulse(badge)
+        }
+    }
+
     private fun rolesTab(parent: LinearLayout) {
-        val c = draft.roleCounts.filter { it.key.side == MafiaSide.CITY }.values.sum()
-        val m = draft.roleCounts.filter { it.key.side == MafiaSide.MAFIA }.values.sum()
-        val i = draft.roleCounts.filter { it.key.side == MafiaSide.INDEPENDENT }.values.sum()
-        parent.addView(kit.grid(3, listOf(MafiaSide.CITY to c, MafiaSide.MAFIA to m, MafiaSide.INDEPENDENT to i).map { (s, n) ->
-            kit.chip("${s.title}  ${kit.n(n)}", side == s, ButtonKind.CHIP_GOLD) { side = s; host.refresh() }
-        }, 6), kit.spaced(8))
+        sideTabs = SlidingTabs(host, kit, MafiaSide.values().map { sideLabel(it) }, side.ordinal) { i ->
+            side = MafiaSide.values()[i]
+            updateRoleGrid(true)
+        }
+        parent.addView(sideTabs, kit.spaced(8))
         val sc = scenario?.takeIf { it.id != MafiaScenarios.FREE }
         if (sc != null) {
             val ref = sc.lineup(draft.players.size)
@@ -149,34 +286,24 @@ class MafiaDesignScreen(host: MainActivity, private var tab: Int = 0) : Screen(h
                     addView(kit.weight(kit.button("ذخیره در سناریو", ButtonKind.SECONDARY, RoyalIcon.SAVE, 40) { saveToScenario(sc) }))
                 })
             })
-            if (sc.pool.isNotEmpty()) parent.addView(kit.grid(2, listOf(
-                kit.chip("نقش‌های سناریو", !showAll, ButtonKind.CHIP_GOLD) { showAll = false; host.refresh() },
-                kit.chip("همهٔ نقش‌ها", showAll, ButtonKind.CHIP_GOLD) { showAll = true; host.refresh() }
-            ), 6), kit.spaced(8))
+            if (sc.pool.isNotEmpty()) parent.addView(SlidingTabs(host, kit, listOf("نقش‌های سناریو", "همهٔ نقش‌ها"), if (showAll) 1 else 0) { i ->
+                showAll = i == 1
+                updateRoleGrid(true)
+            }, kit.spaced(8))
         }
-        val selected = draft.roleCounts.filter { it.value > 0 }.keys
-        if (selected.isNotEmpty()) {
-            parent.addView(kit.flow(selected.map { r ->
-                kit.badge("${r.faName}${if ((draft.roleCounts[r] ?: 0) > 1) " ×" + kit.n(draft.roleCounts[r]!!) else ""}", r.side.textColor())
-            }, 4), kit.spaced(8))
-        }
-        val pool = sc?.pool?.takeIf { it.isNotEmpty() && !showAll }
-        val shown = (pool?.let { p -> (p + selected).distinct() } ?: MafiaRoleRegistry.available()).filter { it.side == side }
-        if (shown.isEmpty()) parent.addView(kit.text("در این سناریو نقشی از این ساید نیست؛ «همهٔ نقش‌ها» را بزنید.", TextStyle.LABEL, Royal.muted, Gravity.CENTER), kit.spaced(8))
+        selectedBox = FrameLayout(host)
+        parent.addView(selectedBox, kit.spaced(8))
+        renderSelected()
+        parent.addView(kit.searchBox("جست‌وجوی نقش (همهٔ سایدها)", roleQuery) { q ->
+            roleQuery = q
+            updateRoleGrid(true)
+        }, kit.spaced(8))
+        emptyRoles = kit.text("", TextStyle.LABEL, Royal.muted, Gravity.CENTER)
+        parent.addView(emptyRoles, kit.spaced(8))
         parent.addView(kit.button("ساخت نقش جدید", ButtonKind.GHOST, RoyalIcon.PLUS, 40) { host.push(MafiaRoleEditScreen(host, null)) }, kit.spaced(8))
-        parent.addView(kit.grid(3, shown.map { r ->
-            val count = draft.roleCounts[r] ?: 0
-            FrameLayout(host).apply {
-                background = PanelDrawable(kit.density, if (count > 0) PanelStyle.SELECTED else PanelStyle.GHOST, 14f)
-                setPadding(kit.dp(4), kit.dp(4), kit.dp(4), kit.dp(5))
-                addView(roleCard(r).apply { alpha = if (count > 0) 1f else 0.78f }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-                if (count > 0) addView(kit.badge(if (count > 1) "×" + kit.n(count) else "✓", Royal.turquoise, true),
-                    FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.LEFT).apply { topMargin = kit.dp(4); leftMargin = kit.dp(4) })
-                isClickable = true
-                contentDescription = r.faName
-                setOnClickListener { kit.tap(it); roleDialog(r) }
-            }
-        }, 6))
+        roleGrid = CardGrid(host, 3, kit.dp(6))
+        parent.addView(roleGrid, kit.fill())
+        updateRoleGrid(false)
     }
 
     private fun roleDialog(role: MafiaRole) {
@@ -236,6 +363,46 @@ class MafiaDesignScreen(host: MainActivity, private var tab: Int = 0) : Screen(h
 
     // ------------------------------------------------------------------ cards
 
+    private fun cardCell(c: MafiaLastCard): CardCell = cardCells.getOrPut(c) { CardCell(c) }.also { it.bind() }
+
+    /** A last-move card with its selection frame; tapping toggles it in the deck in place. */
+    private inner class CardCell(val card: MafiaLastCard) : FrameLayout(host) {
+        private val view = lastCard(card)
+        private val badge = kit.badge("✓", Royal.turquoise, true)
+        private var state: Boolean? = null
+
+        init {
+            setPadding(kit.dp(4), kit.dp(4), kit.dp(4), kit.dp(5))
+            addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(badge, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.LEFT).apply { topMargin = kit.dp(4); leftMargin = kit.dp(4) })
+            isClickable = true
+            contentDescription = card.faName
+            setOnClickListener {
+                kit.tap(it)
+                if (draft.deck.any { s -> s.card == card }) draft.deck.removeAll { s -> s.card == card } else draft.deck += MafiaCardState(card)
+                save()
+            }
+            setOnLongClickListener { cardInfo(card); true }
+        }
+
+        fun bind() {
+            val on = draft.deck.any { it.card == card }
+            if (on == state) return
+            val was = state
+            state = on
+            background = PanelDrawable(kit.density, if (on) PanelStyle.SELECTED else PanelStyle.GHOST, 14f)
+            view.alpha = if (on) 1f else 0.75f
+            badge.visibility = if (on) View.VISIBLE else View.GONE
+            if (was != null && on && kit.settings.general.animations) kit.pulse(badge)
+        }
+    }
+
+    private fun updateCardGrid(animate: Boolean) {
+        val grid = cardGrid ?: return
+        val shown = MafiaLastCard.values().filter { SearchText.matches(cardQuery, it.faName, it.tagline) }
+        grid.submit(shown.map { it.name }, animate) { key -> cardCell(MafiaLastCard.valueOf(key)) }
+    }
+
     private fun cardsTab(parent: LinearLayout) {
         parent.addView(kit.horizontal().apply {
             layoutParams = kit.spaced(8)
@@ -255,23 +422,10 @@ class MafiaDesignScreen(host: MainActivity, private var tab: Int = 0) : Screen(h
                 save()
             }, kit.spaced(8))
         }
-        parent.addView(kit.grid(3, MafiaLastCard.values().map { c ->
-            val on = draft.deck.any { it.card == c }
-            FrameLayout(host).apply {
-                background = PanelDrawable(kit.density, if (on) PanelStyle.SELECTED else PanelStyle.GHOST, 14f)
-                setPadding(kit.dp(4), kit.dp(4), kit.dp(4), kit.dp(5))
-                addView(lastCard(c).apply { alpha = if (on) 1f else 0.75f }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-                if (on) addView(kit.badge("✓", Royal.turquoise, true), FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.LEFT).apply { topMargin = kit.dp(4); leftMargin = kit.dp(4) })
-                isClickable = true
-                contentDescription = c.faName
-                setOnClickListener {
-                    kit.tap(it)
-                    if (on) draft.deck.removeAll { s -> s.card == c } else draft.deck += MafiaCardState(c)
-                    save()
-                }
-                setOnLongClickListener { cardInfo(c); true }
-            }
-        }, 6))
+        parent.addView(kit.searchBox("جست‌وجوی کارت حرکت آخر", cardQuery) { q -> cardQuery = q; updateCardGrid(true) }, kit.spaced(8))
+        cardGrid = CardGrid(host, 3, kit.dp(6))
+        parent.addView(cardGrid, kit.fill())
+        updateCardGrid(false)
         parent.addView(kit.text("برای دیدن توضیح هر کارت، آن را نگه دارید.", TextStyle.CAPTION, Royal.dim, Gravity.CENTER), kit.spaced(4))
     }
 
