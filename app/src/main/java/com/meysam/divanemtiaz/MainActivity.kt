@@ -33,6 +33,9 @@ abstract class Screen(val host: MainActivity) {
     /** Scroll position of the page, kept while another page is on top and across rebuilds. */
     var savedScroll = 0
 
+    /** Pages of a running game keep a compact page bar instead of the large title. */
+    open val compactHeader: Boolean get() = sessionId != null
+
     /** Tab of the bottom navigation this page belongs to ([NavBar]); -1 = no navigation bar. */
     open val navTab: Int get() = -1
 
@@ -52,36 +55,64 @@ abstract class Screen(val host: MainActivity) {
         content: LinearLayout.() -> Unit
     ): View {
         val root = kit.vertical().apply { layoutDirection = View.LAYOUT_DIRECTION_RTL }
+        val light = ThemeEngine.spec.light
+        val barFill = android.graphics.drawable.ColorDrawable(Royal.alpha(Royal.scrim, if (light) 0.86f else 0.80f)).apply { alpha = 0 }
         val bar = kit.horizontal().apply {
-            setPadding(kit.dp(12), kit.dp(6), kit.dp(12), kit.dp(5))
-            minimumHeight = kit.dp(50)
+            setPadding(kit.dp(12), kit.dp(6), kit.dp(12), kit.dp(6))
+            minimumHeight = kit.dp(54)
+            background = barFill
         }
         if (showBack) {
-            bar.addView(kit.iconButton(RoyalIcon.BACK, "بازگشت", ButtonKind.SECONDARY, 44) { host.onBackPressedCompat() })
-            bar.addView(kit.hgap(8))
+            bar.addView(kit.iconButton(RoyalIcon.BACK, "بازگشت", ButtonKind.SECONDARY, 42) { host.onBackPressedCompat() })
+            bar.addView(kit.hgap(10))
         }
-        bar.addView(kit.vertical().apply {
-            addView(kit.text(title, TextStyle.TITLE, Royal.title, maxLines = 1))
+        // Game pages keep a compact title; other pages show a large title that slides into the bar on scroll.
+        val large = !compactHeader
+        val smallTitle = kit.vertical().apply {
+            addView(kit.text(title, if (large) TextStyle.HEADING else TextStyle.TITLE, Royal.title, maxLines = 1))
             subtitleView = null
-            if (!subtitle.isNullOrBlank()) addView(kit.text(subtitle, TextStyle.CAPTION, Royal.muted, maxLines = 1).also { subtitleView = it })
-        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            if (!large && !subtitle.isNullOrBlank()) addView(kit.text(subtitle, TextStyle.CAPTION, Royal.muted, maxLines = 1).also { subtitleView = it })
+            if (large) alpha = 0f
+        }
+        bar.addView(smallTitle, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         actions.forEach {
             bar.addView(kit.hgap(6))
             bar.addView(it)
         }
         root.addView(bar)
-        root.addView(View(host).apply {
+        val hairline = View(host).apply {
             background = android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.RIGHT_LEFT,
-                intArrayOf(0, Royal.alpha(Royal.gold, if (ThemeEngine.spec.light) 0.35f else 0.55f), 0)
+                intArrayOf(0, Royal.alpha(Royal.gold, if (light) 0.35f else 0.55f), 0)
             )
-        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(1)))
+            if (large) alpha = 0f
+        }
+        root.addView(hairline, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(1)))
+        val header = if (large) kit.vertical().apply {
+            setPadding(kit.dp(4), kit.dp(2), kit.dp(4), kit.dp(14))
+            addView(kit.text(title, TextStyle.DISPLAY, Royal.title, maxLines = 2).apply { setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, kit.textSize(26f)) })
+            if (!subtitle.isNullOrBlank()) addView(kit.text(subtitle, TextStyle.LABEL, Royal.muted, maxLines = 2).also { subtitleView = it })
+            addView(View(host).apply {
+                background = android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.RIGHT_LEFT,
+                    ThemeEngine.spec.primary).apply { cornerRadius = kit.dpf(2f) }
+            }, LinearLayout.LayoutParams(kit.dp(34), kit.dp(3)).apply { topMargin = kit.dp(8) })
+        } else null
         val column = kit.vertical().apply {
-            setPadding(kit.dp(14), kit.dp(10), kit.dp(14), kit.dp(20))
+            setPadding(kit.dp(16), kit.dp(if (large) 2 else 10), kit.dp(16), kit.dp(22))
             layoutDirection = View.LAYOUT_DIRECTION_RTL
+            if (header != null) addView(header, kit.fill())
             content()
         }
-        root.addView(ScrollView(host).apply {
+        root.addView(object : ScrollView(host) {
+            override fun onScrollChanged(l: Int, t: Int, oldl: Int, oldt: Int) {
+                super.onScrollChanged(l, t, oldl, oldt)
+                if (header == null) return
+                val f = (t / maxOf(1f, header.height * 0.75f)).coerceIn(0f, 1f)
+                smallTitle.alpha = f
+                hairline.alpha = f
+                barFill.alpha = (255 * f).toInt()
+            }
+        }.apply {
             isFillViewport = true
             isVerticalScrollBarEnabled = false
             addView(column)

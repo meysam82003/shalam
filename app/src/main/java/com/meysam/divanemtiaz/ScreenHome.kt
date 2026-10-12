@@ -55,36 +55,43 @@ class SplashScreen(host: MainActivity) : Screen(host) {
 class HomeScreen(host: MainActivity) : Screen(host) {
     override fun build(): View {
         val column = kit.vertical().apply {
-            setPadding(kit.dp(14), kit.dp(4), kit.dp(14), kit.dp(20))
+            setPadding(kit.dp(16), kit.dp(6), kit.dp(16), kit.dp(18))
             layoutDirection = View.LAYOUT_DIRECTION_RTL
         }
-        column.addView(hero())
-        host.repo.latestUnfinished()?.let { column.addView(continueCard(it)) }
-        column.addView(kit.section("بازی تازه", RoyalIcon.PLAY))
-        GameType.values().forEach { game -> column.addView(gameCard(game), kit.spaced(8)) }
-        column.addView(mafiaCard(), kit.spaced(8))
-        column.addView(partyCard(PantoLook.glyph, PantoLook.TINT, "پانتومیم", "داوری مسابقهٔ تیمی با پنج نوع مسابقه و دور طلایی",
-            host.panto.latestUnfinished()?.let { "مسابقهٔ ${it.mode.title} در جریان" } ?: "عادی • سرعتی • صدابازی • جنگی • پنج‌ثانیه‌ای") { host.push(PantoHomeScreen(host)) }, kit.spaced(8))
-        column.addView(partyCard(SpyLook.glyph, SpyLook.TINT, "جاسوس", "پخش نقش‌ها، کلمهٔ مخفی، زمان‌سنج و نتیجه",
-            host.spy.latestUnfinished()?.let { "بازی در جریان" } ?: "${kit.n(host.spy.settings().players)} بازیکن • ${kit.n(host.spy.settings().spies)} جاسوس • ${kit.n(host.spy.settings().minutes)} دقیقه") { host.push(SpyHomeScreen(host)) }, kit.spaced(8))
-        column.addView(kit.section("دیوان", RoyalIcon.STAR))
-        column.addView(kit.grid(3, listOf(
-            tile(RoyalIcon.TROPHY, "لیگ‌ها", "دو برده، جدول و فینال") { host.push(LeagueListScreen(host)) },
-            tile(RoyalIcon.HISTORY, "تاریخچه", "ادامه و نتیجه‌ها") { host.push(HistoryScreen(host)) },
-            tile(RoyalIcon.PLAYERS, "افراد و تیم‌ها", "کارنامهٔ هر نفر") { host.push(PlayersScreen(host)) },
-            tile(RoyalIcon.CHART, "ماشین‌حساب ورق", "پخش و ورق اضافه") { host.push(DeckCalcScreen(host)) },
-            tile(RoyalIcon.RULES, "قوانین", "شرح هر بازی") { host.push(RulesScreen(host, null)) },
-            tile(RoyalIcon.SETTINGS, "تنظیمات", "همهٔ قوانین") { host.push(SettingsScreen(host)) },
-            tile(RoyalIcon.CROWN, "رنک‌بندی", "رتبه، کارنامه و رکورد") { host.push(RankingScreen(host)) },
-            tile(RoyalIcon.SAVE, "پشتیبان", "ذخیره و بازگردانی") { host.push(BackupScreen(host)) },
-            tile(RoyalIcon.SHARE, "اشتراک", "تصویر آخرین بازی") {
-                val last = host.repo.sessions().firstOrNull()
-                if (last == null) kit.toast("هنوز بازی‌ای ثبت نشده است") else shareSession(last)
-            },
-            tile(RoyalIcon.HEART, "درباره و تماس", "انتقاد و پیشنهاد") { host.push(AboutScreen(host)) },
-            tile(RoyalIcon.STAR, "ظاهر برنامه", "${kit.n(Themes.all.size)} سبک انتخابی") { host.push(ThemeScreen(host)) }
-        ), 8))
-        column.addView(kit.gap(16))
+        column.addView(topBar())
+        column.addView(banner())
+        resume()?.let { column.addView(it) }
+        column.addView(kit.section("انتخاب بازی", RoyalIcon.PLAY))
+        val tiles = GameType.values().map { game ->
+            kit.gameTile(GameSealView(host, game), game.title, gameSummary(game)) { host.push(SetupScreen(host, game)) }
+        } + listOf(
+            kit.gameTile(RoleSealView(host, MafiaGlyph.MASK, MafiaColors.MAFIA), "راوی مافیا", "${kit.n(MafiaScenarios.builtin.size)} سناریو • ${kit.n(MafiaRoleRegistry.available().size)} نقش",
+                host.mafia.latestUnfinished()?.let { "در جریان" }) { host.push(MafiaHomeScreen(host)) },
+            kit.gameTile(RoleSealView(host, PantoLook.glyph, PantoLook.TINT), "پانتومیم", "پنج نوع مسابقه و دور طلایی",
+                host.panto.latestUnfinished()?.let { "در جریان" }) { host.push(PantoHomeScreen(host)) }
+        )
+        column.addView(kit.grid(2, tiles, 10), kit.spaced(10))
+        column.addView(spyTile(), kit.spaced(6))
+        column.addView(kit.section("دیوان", RoyalIcon.CROWN))
+        column.addView(kit.vertical().apply {
+            background = PanelDrawable(kit.density, PanelStyle.NORMAL, 22f)
+            setPadding(kit.dp(6), kit.dp(10), kit.dp(6), kit.dp(12))
+            addView(kit.grid(5, listOf(
+                kit.toolTile(RoyalIcon.TROPHY, "لیگ‌ها") { host.push(LeagueListScreen(host)) },
+                kit.toolTile(RoyalIcon.HISTORY, "تاریخچه") { host.push(HistoryScreen(host)) },
+                kit.toolTile(RoyalIcon.PLAYERS, "افراد و تیم‌ها") { host.push(PlayersScreen(host)) },
+                kit.toolTile(RoyalIcon.CROWN, "رنک‌بندی") { host.push(RankingScreen(host)) },
+                kit.toolTile(RoyalIcon.RULES, "قوانین") { host.push(RulesScreen(host, null)) },
+                kit.toolTile(RoyalIcon.CHART, "ماشین‌حساب ورق") { host.push(DeckCalcScreen(host)) },
+                kit.toolTile(RoyalIcon.SAVE, "پشتیبان") { host.push(BackupScreen(host)) },
+                kit.toolTile(RoyalIcon.SHARE, "اشتراک") {
+                    val last = host.repo.sessions().firstOrNull()
+                    if (last == null) kit.toast("هنوز بازی‌ای ثبت نشده است") else shareSession(last)
+                },
+                kit.toolTile(RoyalIcon.STAR, "ظاهر برنامه") { host.push(ThemeScreen(host)) },
+                kit.toolTile(RoyalIcon.HEART, "درباره") { host.push(AboutScreen(host)) }
+            ), 4))
+        }, kit.spaced(12))
         column.addView(kit.text("$APP_VERSION_LABEL  •  آفلاین  •  بدون تبلیغ", TextStyle.CAPTION, Royal.dim, Gravity.CENTER))
         return kit.vertical().apply {
             addView(ScrollView(host).apply {
@@ -95,108 +102,86 @@ class HomeScreen(host: MainActivity) : Screen(host) {
         }
     }
 
-    private fun hero(): View = FrameLayout(host).apply {
-        layoutParams = kit.spaced(6)
-        addView(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
-            setPadding(0, kit.dp(14), 0, kit.dp(6))
-            addView(HeroCrestView(host), LinearLayout.LayoutParams(kit.dp(250), kit.dp(192)).apply { bottomMargin = -kit.dp(6) })
-            addView(kit.text("دیوان امتیاز", TextStyle.DISPLAY, Royal.goldLight, Gravity.CENTER))
-            addView(kit.text("داوری، دفتر امتیاز و تاریخچهٔ بازی‌ها", TextStyle.LABEL, Royal.muted, Gravity.CENTER))
-        }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        addView(kit.iconButton(RoyalIcon.SETTINGS, "تنظیمات", ButtonKind.SECONDARY, 44) { host.push(SettingsScreen(host)) },
-            FrameLayout.LayoutParams(kit.dp(44), kit.dp(44), Gravity.TOP or Gravity.LEFT).apply { topMargin = kit.dp(6) })
+    /** App name and the two shortcuts of the page. */
+    private fun topBar(): View = kit.horizontal().apply {
+        layoutParams = kit.spaced(10)
+        setPadding(kit.dp(2), kit.dp(6), kit.dp(2), 0)
+        addView(kit.vertical().apply {
+            addView(kit.text(greeting(), TextStyle.LABEL, Royal.muted, maxLines = 1))
+            addView(kit.text("دیوان امتیاز", TextStyle.TITLE, Royal.title, maxLines = 1))
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        addView(kit.iconButton(RoyalIcon.STAR, "ظاهر برنامه", ButtonKind.SECONDARY, 42) { host.push(ThemeScreen(host)) })
+        addView(kit.hgap(8))
+        addView(kit.iconButton(RoyalIcon.SETTINGS, "تنظیمات", ButtonKind.SECONDARY, 42) { host.push(SettingsScreen(host)) })
     }
 
-    private fun continueCard(session: GameSession): View {
-        val totals = GameEngine.totals(session)
-        return kit.panel(PanelStyle.SELECTED, 12).apply {
-            layoutParams = kit.spaced(6).apply { topMargin = kit.dp(4) }
-            addView(kit.horizontal().apply {
-                addView(GameSealView(host, session.game), LinearLayout.LayoutParams(kit.dp(48), kit.dp(48)))
-                addView(kit.hgap(10))
-                addView(kit.vertical().apply {
-                    addView(kit.text("ادامهٔ بازی ${session.game.title}", TextStyle.BODY_BOLD, Royal.turquoiseLight))
-                    val score = if (session.game == GameType.MENFI && session.rules.menfi.hidden) "جمع‌ها پنهان است"
-                    else GameEngine.ranking(session).take(3).joinToString("  •  ") { i -> "${session.sides[i].name} ${kit.signed(totals[i])}" } +
-                        if (session.sides.size > 3) "  …" else ""
-                    addView(kit.text(score, TextStyle.LABEL, Royal.ivory, maxLines = 2))
-                    addView(kit.text("${kit.n(GameEngine.playedHands(session))} دست  •  ${timerText(session)}", TextStyle.CAPTION, Royal.muted))
-                }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            })
-            addView(kit.gap(8))
-            addView(kit.button("ادامهٔ داوری", ButtonKind.SUCCESS, RoyalIcon.PLAY, 48) { host.openSession(session) })
+    private fun greeting(): String {
+        val h = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        return when (h) { in 5..11 -> "صبح بخیر"; in 12..16 -> "روز بخیر"; in 17..20 -> "عصر بخیر"; else -> "شب بخیر" }
+    }
+
+    /** Headline card: the card-fan crest, the promise of the app and three counters. */
+    private fun banner(): View = kit.vertical().apply {
+        background = PanelDrawable(kit.density, PanelStyle.RAISED, 26f)
+        setPadding(kit.dp(14), kit.dp(12), kit.dp(14), kit.dp(16))
+        layoutParams = kit.spaced(12)
+        addView(kit.horizontal().apply {
+            addView(kit.vertical().apply {
+                addView(kit.text("دفتر امتیاز دورهمی‌ها", TextStyle.LABEL_BOLD, Royal.gold, maxLines = 1))
+                addView(kit.text("بازی کن،\nامتیاز ثبت کن", TextStyle.TITLE, Royal.title).apply { setLineSpacing(0f, 1.05f) })
+                addView(kit.text("هفت بازی در یک دیوان", TextStyle.CAPTION, Royal.muted, maxLines = 1))
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(HeroCrestView(host), LinearLayout.LayoutParams(kit.dp(138), kit.dp(106)))
+        })
+        addView(kit.gap(10))
+        val games = host.repo.sessions().size + host.mafia.games().count { it.started } + host.panto.matches().size + host.spy.games().size
+        val people = host.repo.roster().count { !it.isTeam }
+        val leagues = host.repo.leagues().size
+        addView(kit.grid(3, listOf(kit.stat(kit.n(games), "بازی ثبت‌شده"), kit.stat(kit.n(people), "نفر"), kit.stat(kit.n(leagues), "لیگ")), 8))
+    }
+
+    /** The most recent game in progress of any kind. */
+    private fun resume(): View? {
+        val options = ArrayList<Triple<Long, () -> View, Unit>>()
+        host.repo.latestUnfinished()?.let { s ->
+            val totals = GameEngine.totals(s)
+            val score = if (s.game == GameType.MENFI && s.rules.menfi.hidden) "جمع‌ها پنهان است"
+            else GameEngine.ranking(s).take(3).joinToString("  •  ") { i -> "${s.sides[i].name} ${kit.signed(totals[i])}" }
+            options += Triple(s.updatedAt, { resumeStrip(GameSealView(host, s.game), "ادامهٔ بازی ${s.game.title}", score) { host.openSession(s) } }, Unit)
         }
+        host.mafia.latestUnfinished()?.let { g ->
+            options += Triple(g.updatedAt, { resumeStrip(RoleSealView(host, MafiaGlyph.MASK, MafiaColors.MAFIA), "ادامهٔ راوی مافیا", "${g.phaseTitle} • ${kit.n(g.alive.size)} نفر در بازی") { host.push(MafiaGameScreen(host, g.id)) } }, Unit)
+        }
+        host.panto.latestUnfinished()?.let { m ->
+            options += Triple(m.updatedAt, { resumeStrip(RoleSealView(host, PantoLook.glyph, PantoLook.TINT), "ادامهٔ پانتومیم • ${m.mode.title}", m.standings.take(3).joinToString("  •  ") { "${m.teams[it].name} ${kit.n(m.teams[it].points)}" }) { host.push(PantoBoardScreen(host, m.id)) } }, Unit)
+        }
+        host.spy.latestUnfinished()?.let { g ->
+            options += Triple(g.updatedAt, { resumeStrip(RoleSealView(host, SpyLook.glyph, SpyLook.TINT), "ادامهٔ جاسوس", "${kit.n(g.players.size)} بازیکن") { host.push(if (g.allViewed) SpyTimerScreen(host, g.id) else SpyRevealScreen(host, g.id)) } }, Unit)
+        }
+        return options.maxByOrNull { it.first }?.second?.invoke()
     }
 
-    private fun gameCard(game: GameType): View = kit.horizontal().apply {
-        background = PanelDrawable(kit.density, PanelStyle.RAISED, 18f)
-        setPadding(kit.dp(14), kit.dp(12), kit.dp(14), kit.dp(15))
-        addView(GameSealView(host, game), LinearLayout.LayoutParams(kit.dp(70), kit.dp(70)))
+    /** Wide tile of «جاسوس» closing the game grid. */
+    private fun spyTile(): View = kit.horizontal().apply {
+        background = PanelDrawable(kit.density, PanelStyle.RAISED, 22f)
+        setPadding(kit.dp(12), kit.dp(12), kit.dp(14), kit.dp(15))
+        addView(RoleSealView(host, SpyLook.glyph, SpyLook.TINT), LinearLayout.LayoutParams(kit.dp(56), kit.dp(56)))
         addView(kit.hgap(12))
         addView(kit.vertical().apply {
-            addView(kit.text(game.title, TextStyle.TITLE, Royal.goldLight))
-            addView(kit.text(game.subtitle, TextStyle.CAPTION, Royal.muted, maxLines = 2))
-            addView(kit.gap(4))
-            addView(kit.badge(gameSummary(game), Royal.turquoise))
+            addView(kit.text("جاسوس", TextStyle.HEADING, Royal.title))
+            addView(kit.text("پخش نقش، کلمهٔ مخفی، زمان‌سنج و رأی‌گیری", TextStyle.CAPTION, Royal.muted, maxLines = 2))
+            host.spy.latestUnfinished()?.let { addView(kit.gap(4)); addView(kit.badge("در جریان", Royal.turquoise, true)) }
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        addView(kit.icon(RoyalIcon.NEXT, Royal.gold, 24))
+        addView(kit.icon(RoyalIcon.NEXT, Royal.goldLight, 18))
         isClickable = true
-        contentDescription = "شروع ${game.title}"
-        setOnClickListener { kit.tap(it); host.push(SetupScreen(host, game)) }
-    }
-
-    private fun mafiaCard(): View = kit.horizontal().apply {
-        background = PanelDrawable(kit.density, PanelStyle.RAISED, 18f)
-        setPadding(kit.dp(14), kit.dp(12), kit.dp(14), kit.dp(15))
-        addView(RoleSealView(host, MafiaGlyph.MASK, MafiaColors.MAFIA), LinearLayout.LayoutParams(kit.dp(70), kit.dp(70)))
-        addView(kit.hgap(12))
-        addView(kit.vertical().apply {
-            addView(kit.text("راوی مافیا", TextStyle.TITLE, Royal.goldLight))
-            addView(kit.text("گردانندگی شب و روز، نقش‌ها، رأی‌گیری و کارت حرکت آخر", TextStyle.CAPTION, Royal.muted, maxLines = 2))
-            addView(kit.gap(4))
-            val live = host.mafia.latestUnfinished()
-            addView(kit.badge(if (live != null) "بازی در جریان — ${live.phaseTitle}" else "${kit.n(MafiaRoleRegistry.available().size)} نقش • ${kit.n(MafiaLastCard.values().size)} کارت", Royal.turquoise))
-        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        addView(kit.icon(RoyalIcon.NEXT, Royal.gold, 24))
-        isClickable = true
-        contentDescription = "راوی مافیا"
-        setOnClickListener { kit.tap(it); host.push(MafiaHomeScreen(host)) }
-    }
-
-    private fun partyCard(glyph: MafiaGlyph, tint: Int, title: String, caption: String, badge: String, open: () -> Unit): View = kit.horizontal().apply {
-        background = PanelDrawable(kit.density, PanelStyle.RAISED, 18f)
-        setPadding(kit.dp(14), kit.dp(12), kit.dp(14), kit.dp(15))
-        addView(RoleSealView(host, glyph, tint), LinearLayout.LayoutParams(kit.dp(70), kit.dp(70)))
-        addView(kit.hgap(12))
-        addView(kit.vertical().apply {
-            addView(kit.text(title, TextStyle.TITLE, Royal.goldLight))
-            addView(kit.text(caption, TextStyle.CAPTION, Royal.muted, maxLines = 2))
-            addView(kit.gap(4))
-            addView(kit.badge(badge, Royal.turquoise))
-        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        addView(kit.icon(RoyalIcon.NEXT, Royal.gold, 24))
-        isClickable = true
-        contentDescription = title
-        setOnClickListener { kit.tap(it); open() }
+        contentDescription = "جاسوس"
+        setOnClickListener { kit.tap(it); host.push(SpyHomeScreen(host)) }
     }
 
     private fun gameSummary(game: GameType): String = when (game) {
         GameType.SHALAM -> "تا ${kit.n(settings.shalam.mode(settings.shalam.defaultJoker).defaultEndPoint)} • ${if (settings.shalam.defaultJoker) "با جوکر" else "بدون جوکر"}"
-        GameType.MENFI -> "${kit.n(settings.menfi.hands)} دست • اعداد ${kit.n(3)} تا ${kit.n(13)}"
-        GameType.HEZARTAII -> "هدف ${kit.n(settings.hezar.target)} • بدون سقف بازیکن"
-        GameType.DOLO -> "حداقل ${kit.n(settings.dolo.rules.minUpTo4)} / ${kit.n(settings.dolo.rules.min5to6)} / ${kit.n(settings.dolo.rules.minFrom7)} • حذفی"
+        GameType.MENFI -> "${kit.n(settings.menfi.hands)} دست • اعداد پنهان"
+        GameType.HEZARTAII -> "پاسور تا ${kit.n(settings.hezar.target)}"
+        GameType.DOLO -> "حکم و حذف • بی‌سقف"
     }
-
-    private fun tile(icon: RoyalIcon, title: String, caption: String, onClick: () -> Unit): View =
-        kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
-            background = PanelDrawable(kit.density, PanelStyle.NORMAL, 16f)
-            setPadding(kit.dp(6), kit.dp(13), kit.dp(6), kit.dp(15))
-            addView(kit.icon(icon, Royal.gold, 30))
-            addView(kit.gap(4))
-            addView(kit.text(title, TextStyle.BODY_BOLD, Royal.ivory, Gravity.CENTER, 1))
-            addView(kit.text(caption, TextStyle.CAPTION, Royal.muted, Gravity.CENTER, 2))
-            isClickable = true
-            contentDescription = title
-            setOnClickListener { kit.tap(it); onClick() }
-        }
 }

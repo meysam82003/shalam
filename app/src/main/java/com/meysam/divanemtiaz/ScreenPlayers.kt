@@ -156,8 +156,9 @@ fun Screen.peopleRanking(parent: LinearLayout, sessions: List<GameSession>, game
     chips += kit.chip("مافیا", mafia) { onFilter(null, true, null) }
     chips += kit.chip("پانتومیم", party == PersonStats.PANTO) { onFilter(null, false, PersonStats.PANTO) }
     chips += kit.chip("جاسوس", party == PersonStats.SPY) { onFilter(null, false, PersonStats.SPY) }
-    chips.forEach { it.setPadding(kit.dp(10), kit.dp(4), kit.dp(10), kit.dp(6)) }
-    parent.addView(kit.flow(chips, 6), kit.spaced(8))
+    chips.forEach { it.setPadding(kit.dp(12), kit.dp(4), kit.dp(12), kit.dp(6)) }
+    val selectedChip = when { party == PersonStats.SPY -> chips.lastIndex; party == PersonStats.PANTO -> chips.size - 2; mafia -> chips.size - 3; game != null -> 1 + GameType.values().indexOf(game); else -> 0 }
+    parent.addView(kit.chipRail(chips, selectedChip), kit.spaced(10))
     }
     val list = PersonStats.leaderboard(all, game, mafia && party == null, party)
     if (list.isEmpty()) {
@@ -168,15 +169,20 @@ fun Screen.peopleRanking(parent: LinearLayout, sessions: List<GameSession>, game
         return
     }
     val roster = host.repo.roster()
-    list.forEachIndexed { place, r ->
-        val avatar = roster.firstOrNull { it.name == r.name && !it.isTeam }?.avatar ?: 0
-        val (value, caption, rate) = when {
+    fun figures(r: PersonRecord): Triple<String, String, Float> = when {
             party == PersonStats.PANTO -> Triple(kit.n((r.panto.winRate * 100).roundToInt()) + "٪", "${kit.n(r.panto.wins)} برد از ${kit.n(r.panto.games)} مسابقه • ${kit.n(r.panto.points)} امتیاز", r.panto.winRate)
             party == PersonStats.SPY -> Triple(kit.n((r.spy.winRate * 100).roundToInt()) + "٪", "${kit.n(r.spy.wins)} برد از ${kit.n(r.spy.games)} بازی • جاسوس ${kit.n(r.spy.special)} بار", r.spy.winRate)
             mafia -> Triple(kit.n((r.mafia.winRate * 100).roundToInt()) + "٪", "${kit.n(r.mafia.wins)} برد از ${kit.n(r.mafia.games)} بازی • شهر ${kit.n(r.mafia.sideGames[MafiaSide.CITY] ?: 0)} • مافیا ${kit.n(r.mafia.sideGames[MafiaSide.MAFIA] ?: 0)}", r.mafia.winRate)
             game != null -> r.byGame[game]!!.let { l -> Triple(kit.n(l.rating.roundToInt()), "${kit.n(l.wins)} برد • ${kit.n(l.draws)} مساوی • ${kit.n(l.losses)} باخت • ${StatsEngine.tier(l.rating)}", l.winRate) }
             else -> Triple(kit.n(PersonStats.overall(r).roundToInt()), "${kit.n(r.totalGames)} بازی • ${kit.n(r.totalWins)} برد", if (r.totalGames == 0) 0f else r.totalWins.toFloat() / r.totalGames)
         }
+    if (list.size >= 3) parent.addView(podium(list.take(3).map { r ->
+        PodiumItem(r.name, roster.firstOrNull { it.name == r.name && !it.isTeam }?.avatar ?: 0, figures(r).first, figures(r).second.substringBefore(" • ")) { host.push(PersonProfileScreen(host, r.name)) }
+    }))
+    list.forEachIndexed { place, r ->
+        if (list.size >= 3 && place < 3) return@forEachIndexed
+        val avatar = roster.firstOrNull { it.name == r.name && !it.isTeam }?.avatar ?: 0
+        val (value, caption, rate) = figures(r)
         parent.addView(kit.horizontal().apply {
             background = PanelDrawable(kit.density, if (place == 0) PanelStyle.RAISED else PanelStyle.NORMAL, 16f)
             setPadding(kit.dp(10), kit.dp(6), kit.dp(10), kit.dp(9))

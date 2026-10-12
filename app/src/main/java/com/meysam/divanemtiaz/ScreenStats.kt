@@ -163,11 +163,10 @@ class RankingScreen(host: MainActivity) : Screen(host) {
         val sessions = host.repo.sessions()
         val list = StatsEngine.leaderboard(sessions, teams, game?.takeIf { it.isTeamGame == teams })
         return scaffold(title = "رنک‌بندی", subtitle = "رتبهٔ Elo از همهٔ بازی‌های پایان‌یافته") {
-            addView(kit.grid(3, listOf(
-                kit.chip("افراد", people, ButtonKind.CHIP_GOLD) { people = true; game = null; mafia = false; party = null; host.refresh() },
-                kit.chip("تیم‌ها", !people && teams, ButtonKind.CHIP_GOLD) { people = false; teams = true; game = null; mafia = false; party = null; host.refresh() },
-                kit.chip("بازیکنان", !people && !teams, ButtonKind.CHIP_GOLD) { people = false; teams = false; game = null; mafia = false; party = null; host.refresh() }
-            ), 6), kit.spaced(6))
+            addView(SlidingTabs(host, kit, listOf("افراد", "تیم‌ها", "بازیکنان"), if (people) 0 else if (teams) 1 else 2) { i ->
+                people = i == 0; teams = i == 1; game = null; mafia = false; party = null
+                host.post(Motion.ITEM.toLong()) { host.refresh() }
+            }, kit.spaced(8))
             if (people) {
                 peopleRanking(this, sessions, game, mafia, party) { g, m, p -> game = g; mafia = m; party = p; host.refresh() }
                 return@scaffold
@@ -182,7 +181,15 @@ class RankingScreen(host: MainActivity) : Screen(host) {
             if (!teams) chips += kit.chip("مافیا", mafia) { game = null; mafia = true; party = null; host.refresh() }
             chips += kit.chip("پانتومیم", party == PersonStats.PANTO) { game = null; mafia = false; party = PersonStats.PANTO; host.refresh() }
             if (!teams) chips += kit.chip("جاسوس", party == PersonStats.SPY) { game = null; mafia = false; party = PersonStats.SPY; host.refresh() }
-            addView(kit.flow(chips.map { it.apply { setPadding(kit.dp(10), kit.dp(4), kit.dp(10), kit.dp(6)) } }, 6), kit.spaced(8))
+            val gameChips = GameType.values().filter { !teams || it.isTeamGame }
+            val selectedChip = when {
+                game != null -> 1 + gameChips.indexOf(game)
+                mafia -> 1 + gameChips.size
+                party == PersonStats.PANTO -> 1 + gameChips.size + if (teams) 0 else 1
+                party == PersonStats.SPY -> chips.lastIndex
+                else -> 0
+            }
+            addView(kit.chipRail(chips.map { it.apply { setPadding(kit.dp(12), kit.dp(4), kit.dp(12), kit.dp(6)) } }, selectedChip), kit.spaced(10))
             if (teams && party == PersonStats.PANTO) { pantoTeamRanking(this); return@scaffold }
             if (!teams && (mafia || party != null || game?.isTeamGame == true)) {
                 peopleRanking(this, sessions, game, mafia, party, withChips = false) { g, m, p -> game = g; mafia = m; party = p; host.refresh() }
@@ -192,8 +199,13 @@ class RankingScreen(host: MainActivity) : Screen(host) {
                 addView(emptyState(RoyalIcon.TROPHY, "هنوز بازی پایان‌یافته‌ای نیست", "با پایان هر بازی، رتبهٔ ${if (teams) "تیم‌ها" else "بازیکنان"} اینجا ساخته می‌شود."))
             }
             val roster = host.repo.roster()
+            fun avatarOf(p: PlayerStats) = roster.firstOrNull { it.name == p.id.name && it.isTeam == p.id.isTeam }?.avatar ?: sessions.firstNotNullOfOrNull { s -> s.sides.firstOrNull { it.name == p.id.name }?.avatar } ?: 0
+            if (list.size >= 3) addView(podium(list.take(3).map { p ->
+                PodiumItem(p.id.name, avatarOf(p), kit.n(p.rating.roundToInt()), "${kit.n(p.wins)} برد") { host.push(ProfileScreen(host, p.id.name, p.id.isTeam)) }
+            }))
             list.forEachIndexed { place, p ->
-                val avatar = roster.firstOrNull { it.name == p.id.name && it.isTeam == p.id.isTeam }?.avatar ?: sessions.firstNotNullOfOrNull { s -> s.sides.firstOrNull { it.name == p.id.name }?.avatar } ?: 0
+                if (list.size >= 3 && place < 3) return@forEachIndexed
+                val avatar = avatarOf(p)
                 addView(kit.horizontal().apply {
                     background = PanelDrawable(kit.density, if (place == 0) PanelStyle.RAISED else PanelStyle.NORMAL, 16f)
                     setPadding(kit.dp(10), kit.dp(6), kit.dp(10), kit.dp(9))
@@ -398,7 +410,9 @@ private fun Screen.pantoTeamRanking(parent: LinearLayout) {
         parent.addView(emptyState(RoyalIcon.TROPHY, "هنوز مسابقه‌ای پایان نیافته", "با پایان هر مسابقهٔ پانتومیم، رتبهٔ تیم‌ها اینجا ساخته می‌شود."))
         return
     }
+    if (list.size >= 3) parent.addView(podium(list.take(3).map { r -> PodiumItem(r.name, r.avatar, "${kit.n(r.wins)} برد", "${kit.n(r.points)} امتیاز") }))
     list.forEachIndexed { place, r ->
+        if (list.size >= 3 && place < 3) return@forEachIndexed
         parent.addView(kit.horizontal().apply {
             background = PanelDrawable(kit.density, if (place == 0) PanelStyle.RAISED else PanelStyle.NORMAL, 16f)
             setPadding(kit.dp(10), kit.dp(6), kit.dp(10), kit.dp(9))

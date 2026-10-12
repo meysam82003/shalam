@@ -228,22 +228,31 @@ class HistoryScreen(host: MainActivity) : Screen(host) {
             (filter == null || e.kind == filter) && when (status) { 1 -> !e.finished; 2 -> e.finished; else -> true }
         }.sortedByDescending { it.time }
         return scaffold(title = "تاریخچهٔ بازی‌ها", subtitle = "${kit.n(entries.size)} بازی ذخیره‌شده") {
-            addView(kit.grid(3, listOf(
-                kit.chip("همه", status == 0) { status = 0; host.refresh() },
-                kit.chip("در جریان", status == 1) { status = 1; host.refresh() },
-                kit.chip("پایان‌یافته", status == 2) { status = 2; host.refresh() }
-            ), 6), kit.spaced(6))
-            addView(kit.flow((listOf(
+            addView(SlidingTabs(host, kit, listOf("همه", "در جریان", "پایان‌یافته"), status) { i ->
+                status = i
+                host.post(Motion.ITEM.toLong()) { host.refresh() }
+            }, kit.spaced(8))
+            val kinds = listOf<String?>(null) + GameType.values().map { it.key } + listOf("mafia", "panto", "spy")
+            addView(kit.chipRail((listOf(
                 kit.chip("همهٔ بازی‌ها", gameFilter == null && party == null, ButtonKind.CHIP_GOLD) { gameFilter = null; party = null; host.refresh() }
             ) + GameType.values().map { g ->
                 kit.chip(g.title, gameFilter == g && party == null, ButtonKind.CHIP_GOLD) { gameFilter = g; party = null; host.refresh() }
             } + listOf("mafia" to "راوی مافیا", "panto" to "پانتومیم", "spy" to "جاسوس").map { (k, t) ->
                 kit.chip(t, party == k, ButtonKind.CHIP_GOLD) { party = k; gameFilter = null; host.refresh() }
-            }).map { it.apply { setPadding(kit.dp(10), kit.dp(4), kit.dp(10), kit.dp(6)) } }, 6), kit.spaced(10))
+            }).map { it.apply { setPadding(kit.dp(12), kit.dp(4), kit.dp(12), kit.dp(6)) } }, kinds.indexOf(filter).coerceAtLeast(0)), kit.spaced(12))
             if (shown.isEmpty()) {
                 addView(emptyState(RoyalIcon.HISTORY, "بازی‌ای پیدا نشد", "پس از ثبت اولین دست، بازی اینجا ذخیره می‌شود."))
             }
-            shown.forEach { addView(it.view()) }
+            // Grouped by day: today, yesterday, then each date.
+            var lastDay = ""
+            shown.forEach { e ->
+                val day = dayLabel(e.time)
+                if (day != lastDay) {
+                    lastDay = day
+                    addView(kit.text(day, TextStyle.LABEL_BOLD, Royal.muted).apply { setPadding(kit.dp(6), kit.dp(8), kit.dp(6), kit.dp(6)) })
+                }
+                addView(e.view())
+            }
             if (entries.isNotEmpty()) {
                 addView(kit.gap(12))
                 addView(kit.button("پاک‌کردن کل تاریخچه", ButtonKind.DANGER, RoyalIcon.TRASH, 48) {
@@ -256,6 +265,17 @@ class HistoryScreen(host: MainActivity) : Screen(host) {
                     }
                 })
             }
+        }
+    }
+
+    private fun dayLabel(time: Long): String {
+        fun start(t: Long) = java.util.Calendar.getInstance().apply { timeInMillis = t; set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0); set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0) }.timeInMillis
+        val days = ((start(System.currentTimeMillis()) - start(time)) / 86_400_000L).toInt()
+        return when (days) {
+            0 -> "امروز"
+            1 -> "دیروز"
+            in 2..6 -> "${kit.n(days)} روز پیش"
+            else -> JalaliDate.format(time, settings.general.persianDigits).substringBefore("  ")
         }
     }
 

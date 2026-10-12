@@ -44,13 +44,10 @@ class SpyHomeScreen(host: MainActivity) : Screen(host) {
         return scaffold("جاسوس", "پیدا کردن جاسوس با سؤال و جواب",
             actions = listOf(kit.iconButton(RoyalIcon.RULES, "قوانین", ButtonKind.SECONDARY, 44) { host.push(SpyRulesScreen(host)) }),
             bottom = kit.button("شروع بازی", ButtonKind.PRIMARY, RoyalIcon.PLAY, 54) { start() }) {
-            addView(gameHero(SpyLook.glyph, SpyLook.TINT, "جاسوس", "${kit.n(spyAllWords().size)} کلمه در ${kit.n(SpyCategory.values().size)} دسته • پیش‌فرض ۶ بازیکن، ۱ جاسوس، ۵ دقیقه"))
+            addView(gameHero(SpyLook.glyph, SpyLook.TINT, "جاسوس", "${kit.n(spyAllWords().size)} کلمه در ${kit.n(SpyCategory.values().size)} دسته"))
             if (live != null) {
-                addView(kit.panel(PanelStyle.SELECTED, 12).apply {
-                    layoutParams = kit.spaced(10)
-                    addView(kit.text("بازی در جریان • ${kit.n(live.players.size)} بازیکن", TextStyle.BODY_BOLD, Royal.turquoiseLight))
-                    addView(kit.gap(8))
-                    addView(kit.button("ادامهٔ بازی", ButtonKind.SUCCESS, RoyalIcon.PLAY, 46) { host.push(if (live.allViewed) SpyTimerScreen(host, live.id) else SpyRevealScreen(host, live.id)) })
+                addView(resumeStrip(RoleSealView(host, SpyLook.glyph, SpyLook.TINT), "بازی در جریان", "${kit.n(live.players.size)} بازیکن • ${if (live.allViewed) "زمان‌سنج" else "پخش نقش‌ها"}") {
+                    host.push(if (live.allViewed) SpyTimerScreen(host, live.id) else SpyRevealScreen(host, live.id))
                 })
             }
             addView(kit.section("تنظیمات بازی", RoyalIcon.SLIDERS))
@@ -115,6 +112,8 @@ class SpyHomeScreen(host: MainActivity) : Screen(host) {
 
 /** Hidden cards passed around: each player touches his card, sees his role, and covers it again. */
 class SpyRevealScreen(host: MainActivity, private val gameId: Long) : Screen(host) {
+    override val compactHeader: Boolean get() = true
+
     override fun build(): View {
         val g = host.spy.game(gameId) ?: return scaffold("جاسوس") {}
         if (g.allViewed) { host.post(0) { host.replace(SpyTimerScreen(host, gameId)) }; return scaffold("جاسوس") {} }
@@ -164,6 +163,8 @@ class SpyRevealScreen(host: MainActivity, private val gameId: Long) : Screen(hos
 
 /** Countdown of the questioning, the bell at the end, and how the game ended. */
 class SpyTimerScreen(host: MainActivity, private val gameId: Long) : Screen(host) {
+    override val compactHeader: Boolean get() = true
+
     private var timer: Countdown? = null
     private var timeText: TextView? = null
     private var ring: RingTimerView? = null

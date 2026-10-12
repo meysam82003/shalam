@@ -11,6 +11,8 @@ import android.widget.LinearLayout
 
 /** Loads the game for a mafia screen; every screen re-reads it so the stack never shows stale state. */
 abstract class MafiaScreen(host: MainActivity, val gameId: Long) : Screen(host) {
+    override val compactHeader: Boolean get() = true
+
     lateinit var g: MafiaGame
 
     /** True once [load] has read the game (onShow can run before the first build). */

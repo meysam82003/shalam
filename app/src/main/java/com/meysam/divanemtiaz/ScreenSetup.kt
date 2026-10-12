@@ -4,6 +4,7 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.widget.LinearLayout
 
 class SetupScreen(host: MainActivity, private val game: GameType) : Screen(host) {
@@ -33,7 +34,7 @@ class SetupScreen(host: MainActivity, private val game: GameType) : Screen(host)
         bottom = kit.button("شروع داوری ${game.title}", ButtonKind.PRIMARY, RoyalIcon.PLAY) { start() }
     ) {
         addView(kit.section(if (game.isTeamGame) "تیم‌ها" else "بازیکنان (${kit.n(sides.size)})", RoyalIcon.PLAYERS))
-        if (game.isTeamGame) sides.indices.forEach { addView(sideEditor(it)) }
+        if (game.isTeamGame) addView(versus())
         else {
             sides.indices.forEach { addView(playerRow(it)) }
             addView(kit.grid(3, listOf(
@@ -120,50 +121,51 @@ class SetupScreen(host: MainActivity, private val game: GameType) : Screen(host)
                 }
             })
         }
-        return kit.horizontal().apply {
-            background = PanelDrawable(kit.density, PanelStyle.NORMAL, 16f)
-            setPadding(kit.dp(10), kit.dp(8), kit.dp(10), kit.dp(11))
-            layoutParams = kit.spaced(6)
-            addView(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
-                addView(kit.avatar(side.avatar, 48).apply {
-                    setOnClickListener {
-                        kit.tap(it)
-                        avatarPicker(sides[index].avatar) { picked ->
-                            sides[index] = sides[index].copy(avatar = picked)
-                            host.refresh()
-                        }
-                    }
-                })
-                addView(kit.text("نشان", TextStyle.CAPTION, Royal.dim, Gravity.CENTER))
-            })
-            addView(kit.hgap(10))
-            addView(kit.vertical().apply {
-                addView(kit.text(if (game.isTeamGame) "تیم ${kit.n(index + 1)}" else "بازیکن ${kit.n(index + 1)}", TextStyle.LABEL_BOLD, Royal.gold))
-                addView(kit.gap(4))
-                addView(nameField, kit.fill())
-                if (game.isTeamGame) {
-                    addView(kit.gap(4))
-                    addView(kit.chip(if (side.members.isEmpty()) "انتخاب اعضای تیم از افراد" else "اعضا: " + side.members.joinToString(" و "), side.members.isNotEmpty()) {
-                        memberPicker(sides[index].members) { members ->
-                            val old = sides[index]
-                            val autoName = old.name.isBlank() || old.name == initialSides().getOrNull(index)?.name || old.name == old.members.joinToString(" و ")
-                            sides[index] = old.copy(members = members, name = if (autoName && members.isNotEmpty()) members.joinToString(" و ") else old.name)
-                            host.refresh()
-                        }
-                    }.apply { setPadding(kit.dp(10), kit.dp(4), kit.dp(10), kit.dp(6)) })
-                }
-            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-            addView(kit.hgap(8))
-            addView(kit.vertical(Gravity.CENTER).apply {
-                addView(kit.iconButton(RoyalIcon.USER, "انتخاب از فهرست", ButtonKind.CHIP, 44) {
-                    rosterPicker(game.isTeamGame) { entry ->
-                        sides[index] = Side(entry.name, entry.avatar, entry.members)
+        return kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
+            addView(kit.avatar(side.avatar, 66).apply {
+                setOnClickListener {
+                    kit.tap(it)
+                    avatarPicker(sides[index].avatar) { picked ->
+                        sides[index] = sides[index].copy(avatar = picked)
                         host.refresh()
                     }
-                })
-
+                }
             })
+            addView(kit.text("تیم ${kit.n(index + 1)}", TextStyle.LABEL_BOLD, Royal.gold, Gravity.CENTER, 1))
+            addView(kit.gap(6))
+            addView(nameField.apply { gravity = Gravity.CENTER }, kit.fill())
+            addView(kit.gap(6))
+            addView(kit.chip(if (side.members.isEmpty()) "انتخاب اعضا" else side.members.joinToString(" و "), side.members.isNotEmpty()) {
+                memberPicker(sides[index].members) { members ->
+                    val old = sides[index]
+                    val autoName = old.name.isBlank() || old.name == initialSides().getOrNull(index)?.name || old.name == old.members.joinToString(" و ")
+                    sides[index] = old.copy(members = members, name = if (autoName && members.isNotEmpty()) members.joinToString(" و ") else old.name)
+                    host.refresh()
+                }
+            }.apply { setPadding(kit.dp(8), kit.dp(4), kit.dp(8), kit.dp(6)) }, kit.fill())
+            addView(kit.gap(6))
+            addView(kit.button("از فهرست تیم‌ها", ButtonKind.GHOST, RoyalIcon.USER, 38) {
+                rosterPicker(game.isTeamGame) { entry ->
+                    sides[index] = Side(entry.name, entry.avatar, entry.members)
+                    host.refresh()
+                }
+            }, kit.fill())
         }
+    }
+
+    /** The two teams face to face with the game's seal between them. */
+    private fun versus(): View = kit.horizontal(Gravity.TOP).apply {
+        background = PanelDrawable(kit.density, PanelStyle.RAISED, 24f)
+        setPadding(kit.dp(10), kit.dp(14), kit.dp(10), kit.dp(16))
+        layoutParams = kit.spaced(10)
+        addView(sideEditor(0), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        addView(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
+            setPadding(kit.dp(6), kit.dp(14), kit.dp(6), 0)
+            addView(GameSealView(host, game), LinearLayout.LayoutParams(kit.dp(38), kit.dp(38)))
+            addView(kit.gap(6))
+            addView(kit.text("در\nبرابر", TextStyle.CAPTION, Royal.goldLight, Gravity.CENTER).apply { typeface = RoyalFonts.get(context, true) })
+        })
+        addView(sideEditor(1), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
     }
 
     private fun shalamOptions(parent: LinearLayout) {

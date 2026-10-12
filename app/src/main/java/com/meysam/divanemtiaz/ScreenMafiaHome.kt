@@ -12,34 +12,32 @@ class MafiaHomeScreen(host: MainActivity) : Screen(host) {
 
     private fun page(): View = scaffold("راوی مافیا", "گردانندگی بازی مافیا به سبکی نو",
         actions = listOf(kit.iconButton(RoyalIcon.SETTINGS, "تنظیمات راوی", ButtonKind.SECONDARY, 44) { host.push(MafiaSettingsScreen(host)) })) {
-        addView(hero())
+        addView(kit.vertical().apply {
+            background = PanelDrawable(kit.density, PanelStyle.RAISED, 26f)
+            setPadding(kit.dp(12), kit.dp(14), kit.dp(12), kit.dp(16))
+            layoutParams = kit.spaced(12)
+            addView(hero())
+            addView(kit.button("شروع بازی جدید", ButtonKind.PRIMARY, RoyalIcon.PLAY, 52) { host.push(MafiaScenarioListScreen(host)) }, kit.fill())
+        })
         host.mafia.latestUnfinished()?.let { g ->
-            addView(kit.panel(PanelStyle.SELECTED, 12).apply {
-                layoutParams = kit.spaced(8)
-                addView(kit.horizontal().apply {
-                    addView(seal(if (g.isDay) MafiaGlyph.CROWN else MafiaGlyph.MOON, null, 48))
-                    addView(kit.hgap(10))
-                    addView(kit.vertical().apply {
-                        addView(kit.text("ادامهٔ بازی — ${g.phaseTitle}", TextStyle.BODY_BOLD, Royal.turquoiseLight))
-                        addView(kit.text("${kit.n(g.alive.size)} نفر در بازی  •  ${kit.n(g.out.size)} نفر بیرون", TextStyle.CAPTION, Royal.muted))
-                        addView(kit.text(JalaliDate.format(g.updatedAt, settings.general.persianDigits), TextStyle.CAPTION, Royal.dim))
-                    }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-                })
-                addView(kit.gap(8))
-                addView(kit.button("ادامه بازی گذشته", ButtonKind.SUCCESS, RoyalIcon.PLAY, 48) { host.push(MafiaGameScreen(host, g.id)) })
-            })
+            addView(resumeStrip(seal(if (g.isDay) MafiaGlyph.CROWN else MafiaGlyph.MOON, null, 46), "ادامهٔ بازی — ${g.phaseTitle}",
+                "${kit.n(g.alive.size)} نفر در بازی  •  ${kit.n(g.out.size)} نفر بیرون") { host.push(MafiaGameScreen(host, g.id)) })
         }
-        addView(kit.button("شروع بازی جدید", ButtonKind.PRIMARY, RoyalIcon.PLAY, 54) { host.push(MafiaScenarioListScreen(host)) }, kit.spaced(10))
-        addView(kit.grid(2, listOf(
-            tile(MafiaGlyph.SCROLL, "سناریوها", "${kit.n(MafiaScenarios.builtin.size)} سناریو + سناریوی خودت") { host.push(MafiaScenarioListScreen(host, browse = true)) },
-            tile(MafiaGlyph.MASK, "نقش‌ها و قوانین", "${kit.n(MafiaRoleRegistry.available().size)} نقش • افزودن و ویرایش") { host.push(MafiaRolesScreen(host)) },
-            tile(MafiaGlyph.CARDS, "کارت حرکت آخر", "${kit.n(MafiaLastCard.values().size)} کارت") { host.push(MafiaCardsScreen(host)) },
-            tile(MafiaGlyph.SCROLL, "گروه بازی", "بازیکنان و نقش‌های ذخیره‌شده") { host.push(MafiaGroupsScreen(host)) },
-            tile(MafiaGlyph.HOURGLASS, "بازی‌های گذشته", "ادامه و گزارش بازی") { host.push(MafiaGamesScreen(host)) },
-            tile(MafiaGlyph.BOOK, "قوانین بازی", "روند شب و روز") { host.push(MafiaRulesScreen(host)) },
-            tile(MafiaGlyph.BELL, "تنظیمات راوی", "زمان‌ها، صداها و تصاویر") { host.push(MafiaSettingsScreen(host)) }
-        ), 8))
+        addView(kit.listGroup(listOf(
+            row(MafiaGlyph.SCROLL, "سناریوها", "${kit.n(MafiaScenarios.builtin.size)} سناریو + سناریوی خودت") { host.push(MafiaScenarioListScreen(host, browse = true)) },
+            row(MafiaGlyph.MASK, "نقش‌ها و قوانین", "${kit.n(MafiaRoleRegistry.available().size)} نقش • افزودن و ویرایش") { host.push(MafiaRolesScreen(host)) },
+            row(MafiaGlyph.CARDS, "کارت حرکت آخر", "${kit.n(MafiaLastCard.values().size)} کارت") { host.push(MafiaCardsScreen(host)) },
+            row(MafiaGlyph.SCROLL, "گروه بازی", "بازیکنان و نقش‌های ذخیره‌شده") { host.push(MafiaGroupsScreen(host)) }
+        ), "بازی و نقش‌ها"))
+        addView(kit.listGroup(listOf(
+            row(MafiaGlyph.HOURGLASS, "بازی‌های گذشته", "ادامه و گزارش بازی") { host.push(MafiaGamesScreen(host)) },
+            row(MafiaGlyph.BOOK, "قوانین بازی", "روند شب و روز") { host.push(MafiaRulesScreen(host)) },
+            row(MafiaGlyph.BELL, "تنظیمات راوی", "زمان‌ها، صداها و تصاویر") { host.push(MafiaSettingsScreen(host)) }
+        ), "راوی"))
     }
+
+    private fun row(glyph: MafiaGlyph, title: String, caption: String, onClick: () -> Unit): View =
+        kit.listRow(seal(glyph, null, 40), title, caption, onClick = onClick)
 
     private fun hero(): View = kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
         layoutParams = kit.spaced(8)
@@ -48,7 +46,7 @@ class MafiaHomeScreen(host: MainActivity) : Screen(host) {
             addView(roleCard(MafiaRole.DETECTIVE).apply { rotation = -8f }, FrameLayout.LayoutParams(kit.dp(108), kit.dp(153), Gravity.CENTER).apply { rightMargin = kit.dp(110) })
             addView(roleCard(MafiaRole.CITIZEN), FrameLayout.LayoutParams(kit.dp(120), kit.dp(170), Gravity.CENTER))
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(186)))
-        addView(kit.text("مافیا بازی، گردانندگی به سبکی نو", TextStyle.LABEL, Royal.muted, Gravity.CENTER))
+        addView(kit.text("گردانندگی شب و روز، رأی‌گیری و کارت حرکت آخر", TextStyle.LABEL, Royal.muted, Gravity.CENTER), kit.spaced(12))
     }
 
     private fun tile(glyph: MafiaGlyph, title: String, caption: String, onClick: () -> Unit): View =

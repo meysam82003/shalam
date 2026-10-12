@@ -30,17 +30,8 @@ private object PantoSoundHolder {
 }
 
 /** Big emblem card used at the top of the game pages. */
-fun Screen.gameHero(glyph: MafiaGlyph, tint: Int, title: String, caption: String): View = kit.horizontal().apply {
-    background = PanelDrawable(kit.density, PanelStyle.RAISED, 20f)
-    setPadding(kit.dp(14), kit.dp(12), kit.dp(14), kit.dp(15))
-    layoutParams = kit.spaced(10)
-    addView(RoleSealView(host, glyph, tint), LinearLayout.LayoutParams(kit.dp(76), kit.dp(76)))
-    addView(kit.hgap(12))
-    addView(kit.vertical().apply {
-        addView(kit.text(title, TextStyle.DISPLAY, Royal.goldLight))
-        addView(kit.text(caption, TextStyle.LABEL, Royal.muted))
-    }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-}
+fun Screen.gameHero(glyph: MafiaGlyph, tint: Int, title: String, caption: String, action: View? = null): View =
+    hubBanner(RoleSealView(host, glyph, tint), title, caption, action)
 
 /** Square menu tile (icon, title, caption). */
 fun Screen.menuTile(icon: RoyalIcon, title: String, caption: String, onClick: () -> Unit): View = kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
@@ -61,24 +52,18 @@ class PantoHomeScreen(host: MainActivity) : Screen(host) {
         preloadPantoBank()
         val live = host.panto.latestUnfinished()
         return scaffold("پانتومیم", "داوری مسابقهٔ پانتومیم تیمی") {
-            addView(gameHero(PantoLook.glyph, PantoLook.TINT, "پانتومیم", "۲۰ دستهٔ واژه • پنج نوع مسابقه و دور طلایی"))
+            addView(gameHero(PantoLook.glyph, PantoLook.TINT, "پانتومیم", "۲۰ دستهٔ واژه • پنج نوع مسابقه و دور طلایی",
+                kit.button("مسابقهٔ جدید", ButtonKind.PRIMARY, RoyalIcon.PLUS, 52) { host.push(PantoSetupScreen(host)) }))
             if (live != null) {
-                addView(kit.panel(PanelStyle.SELECTED, 12).apply {
-                    layoutParams = kit.spaced(10)
-                    addView(kit.text("ادامهٔ مسابقهٔ ${live.mode.title}", TextStyle.BODY_BOLD, Royal.turquoiseLight))
-                    addView(kit.text(live.standings.take(3).joinToString("  •  ") { "${live.teams[it].name} ${kit.n(live.teams[it].points)}" }, TextStyle.LABEL, Royal.ivory, maxLines = 2))
-                    addView(kit.gap(8))
-                    addView(kit.button("ادامهٔ داوری", ButtonKind.SUCCESS, RoyalIcon.PLAY, 48) { host.push(PantoBoardScreen(host, live.id)) })
-                })
+                addView(resumeStrip(RoleSealView(host, PantoLook.glyph, PantoLook.TINT), "ادامهٔ مسابقهٔ ${live.mode.title}",
+                    live.standings.take(3).joinToString("  •  ") { "${live.teams[it].name} ${kit.n(live.teams[it].points)}" }) { host.push(PantoBoardScreen(host, live.id)) })
             }
-            addView(kit.button("مسابقهٔ جدید", ButtonKind.PRIMARY, RoyalIcon.PLUS, 54) { host.push(PantoSetupScreen(host)) }, kit.spaced(10))
-            addView(kit.grid(2, listOf(
-                menuTile(RoyalIcon.EDIT, "کلمات من", "${kit.n(host.panto.userWords().size)} کلمه") { host.push(PantoWordsScreen(host)) },
-                menuTile(RoyalIcon.CARDS, "بانک واژه‌ها", "جست‌وجو در دسته‌ها") { host.push(PantoBankScreen(host)) },
-                menuTile(RoyalIcon.RULES, "قوانین", "قوانین هر نوع مسابقه") { host.push(PantoRulesScreen(host)) },
-                menuTile(RoyalIcon.HISTORY, "مسابقه‌های گذشته", "${kit.n(host.panto.index().size)} مسابقه") { host.push(PantoMatchesScreen(host)) }
-            ), 8))
-            addView(kit.gap(8))
+            addView(kit.listGroup(listOf(
+                kit.listRow(kit.iconChip(RoyalIcon.CARDS), "بانک واژه‌ها", "جست‌وجو در ۲۰ دسته و سطح‌ها") { host.push(PantoBankScreen(host)) },
+                kit.listRow(kit.iconChip(RoyalIcon.EDIT), "کلمات من", "${kit.n(host.panto.userWords().size)} کلمه • از ۱۰ کلمه وارد مسابقه می‌شود") { host.push(PantoWordsScreen(host)) },
+                kit.listRow(kit.iconChip(RoyalIcon.HISTORY), "مسابقه‌های گذشته", "${kit.n(host.panto.index().size)} مسابقه") { host.push(PantoMatchesScreen(host)) },
+                kit.listRow(kit.iconChip(RoyalIcon.RULES), "قوانین", "قوانین مشترک و هر نوع مسابقه") { host.push(PantoRulesScreen(host)) }
+            ), "ابزارها"))
             addView(kit.switchRow("صدای بازی", "صدای پاسخ درست و نادرست، ثانیه‌های آخر و زنگ پایان", host.spy.sound()) { host.spy.setSound(it) })
         }
     }
@@ -240,6 +225,8 @@ class PantoSetupScreen(host: MainActivity) : Screen(host) {
 
 /** Base of the match pages: loads and saves the match. */
 abstract class PantoScreen(host: MainActivity, protected val matchId: Long) : Screen(host) {
+    override val compactHeader: Boolean get() = true
+
     protected lateinit var m: PantoMatch
     protected val loaded: Boolean get() = ::m.isInitialized
 

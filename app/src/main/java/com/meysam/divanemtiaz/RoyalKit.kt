@@ -138,17 +138,15 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
         contentDescription = if (PhotoStore.isPhoto(index)) "عکس" else Emblems.names[((index % Emblems.COUNT) + Emblems.COUNT) % Emblems.COUNT]
     }
 
-    fun section(title: String, icon: RoyalIcon? = null, trailing: View? = null): View = vertical().apply {
-        layoutParams = fill().apply { topMargin = dp(10); bottomMargin = dp(6) }
-        addView(horizontal().apply {
-            if (icon != null) {
-                addView(icon(icon, Royal.gold, 18))
-                addView(hgap(8))
-            }
-            addView(weight(text(title, TextStyle.HEADING, Royal.goldLight)))
-            if (trailing != null) addView(trailing)
-        })
-        addView(divider())
+    /** Section title: a tinted icon chip, the title and an optional trailing control. */
+    fun section(title: String, icon: RoyalIcon? = null, trailing: View? = null): View = horizontal().apply {
+        layoutParams = fill().apply { topMargin = dp(14); bottomMargin = dp(10) }
+        if (icon != null) {
+            addView(iconChip(icon, 30))
+            addView(hgap(10))
+        }
+        addView(weight(text(title, TextStyle.HEADING, Royal.title)))
+        if (trailing != null) addView(trailing)
     }
 
     fun button(

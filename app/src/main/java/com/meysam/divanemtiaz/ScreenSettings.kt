@@ -11,9 +11,9 @@ class SettingsScreen(host: MainActivity, private var tab: Int = TAB_GENERAL) : S
     private var shalamTab = 0
 
     override fun build(): View = scaffold(title = "تنظیمات", subtitle = "همهٔ تغییرات خودکار ذخیره می‌شوند") {
-        addView(kit.grid(3, listOf("عمومی", "شلم", "منفی", "هزارتایی", "دو لو گشنیز", "لیگ").mapIndexed { i, label ->
-            kit.chip(label, tab == i, ButtonKind.CHIP_GOLD) { tab = i; host.refresh() }
-        }, 6), kit.spaced(8))
+        addView(kit.chipRail(listOf("عمومی", "شلم", "منفی", "هزارتایی", "دو لو گشنیز", "لیگ").mapIndexed { i, label ->
+            kit.chip(label, tab == i, ButtonKind.CHIP_GOLD) { tab = i; host.refresh() }.apply { setPadding(kit.dp(14), kit.dp(4), kit.dp(14), kit.dp(6)) }
+        }, tab), kit.spaced(8))
         when (tab) {
             TAB_SHALAM -> shalam(this)
             TAB_MENFI -> {
