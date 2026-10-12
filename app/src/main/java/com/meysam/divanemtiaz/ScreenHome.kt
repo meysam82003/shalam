@@ -7,7 +7,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 
-const val APP_VERSION_LABEL = "نسخهٔ ۴.۷.۰"
+const val APP_VERSION_LABEL = "نسخهٔ ۴.۸.۰"
 
 class SplashScreen(host: MainActivity) : Screen(host) {
     override fun build(): View = FrameLayout(host).apply {
@@ -32,8 +32,8 @@ class SplashScreen(host: MainActivity) : Screen(host) {
 
     /** Every game of the app (new score games are added automatically), then the mafia narrator. */
     private fun gameNames(): String {
-        val names = GameType.values().map { it.title } + "راوی مافیا"
-        return names.chunked(3).joinToString("\n") { it.joinToString("  •  ") }
+        val names = GameType.values().map { it.title } + listOf("راوی مافیا", "پانتومیم", "جاسوس")
+        return names.chunked(4).joinToString("\n") { it.joinToString("  •  ") }
     }
 
     private fun goHome() {
@@ -63,6 +63,10 @@ class HomeScreen(host: MainActivity) : Screen(host) {
         column.addView(kit.section("بازی تازه", RoyalIcon.PLAY))
         GameType.values().forEach { game -> column.addView(gameCard(game), kit.spaced(8)) }
         column.addView(mafiaCard(), kit.spaced(8))
+        column.addView(partyCard(PantoLook.glyph, PantoLook.TINT, "پانتومیم", "داوری مسابقه با ۱۸٬۰۱۷ واژه، پنج نوع مسابقه و دور طلایی",
+            host.panto.latestUnfinished()?.let { "مسابقهٔ ${it.mode.title} در جریان" } ?: "عادی • سرعتی • صدابازی • جنگی • پنج‌ثانیه‌ای") { host.push(PantoHomeScreen(host)) }, kit.spaced(8))
+        column.addView(partyCard(SpyLook.glyph, SpyLook.TINT, "جاسوس", "پخش نقش‌ها، کلمهٔ مخفی، زمان‌سنج و نتیجه",
+            host.spy.latestUnfinished()?.let { "بازی در جریان" } ?: "${kit.n(host.spy.settings().players)} بازیکن • ${kit.n(host.spy.settings().spies)} جاسوس • ${kit.n(host.spy.settings().minutes)} دقیقه") { host.push(SpyHomeScreen(host)) }, kit.spaced(8))
         column.addView(kit.section("دیوان", RoyalIcon.STAR))
         column.addView(kit.grid(3, listOf(
             tile(RoyalIcon.TROPHY, "لیگ‌ها", "دو برده، جدول و فینال") { host.push(LeagueListScreen(host)) },
@@ -153,6 +157,23 @@ class HomeScreen(host: MainActivity) : Screen(host) {
         isClickable = true
         contentDescription = "راوی مافیا"
         setOnClickListener { kit.tap(it); host.push(MafiaHomeScreen(host)) }
+    }
+
+    private fun partyCard(glyph: MafiaGlyph, tint: Int, title: String, caption: String, badge: String, open: () -> Unit): View = kit.horizontal().apply {
+        background = PanelDrawable(kit.density, PanelStyle.RAISED, 18f)
+        setPadding(kit.dp(14), kit.dp(12), kit.dp(14), kit.dp(15))
+        addView(RoleSealView(host, glyph, tint), LinearLayout.LayoutParams(kit.dp(70), kit.dp(70)))
+        addView(kit.hgap(12))
+        addView(kit.vertical().apply {
+            addView(kit.text(title, TextStyle.TITLE, Royal.goldLight))
+            addView(kit.text(caption, TextStyle.CAPTION, Royal.muted, maxLines = 2))
+            addView(kit.gap(4))
+            addView(kit.badge(badge, Royal.turquoise))
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        addView(kit.icon(RoyalIcon.NEXT, Royal.gold, 24))
+        isClickable = true
+        contentDescription = title
+        setOnClickListener { kit.tap(it); open() }
     }
 
     private fun gameSummary(game: GameType): String = when (game) {

@@ -43,6 +43,8 @@ class SpyGame(val id: Long) {
     var remainingMs: Long = 0
     var finished: Boolean = false
     var outcome: SpyOutcome? = null
+    /** Players were chosen from the people list (their games count in the rankings). */
+    var named: Boolean = false
     var createdAt: Long = System.currentTimeMillis()
     var updatedAt: Long = createdAt
 
@@ -77,6 +79,7 @@ object SpyEngine {
                 players += p?.first?.takeIf { it.isNotBlank() } ?: "بازیکن ${PersianText.digits(i + 1)}"
                 avatars += p?.second ?: (i * 5 + 2) % Emblems.COUNT
             }
+            named = names.isNotEmpty()
             spies += (0 until s.players).shuffled(rng).take(s.spies)
             word = w.text
             category = w.category
@@ -132,7 +135,7 @@ object SpyCodec {
     fun encode(g: SpyGame): JSONObject = JSONObject().apply {
         put("id", g.id); put("players", JSONArray(g.players)); put("avatars", JSONArray(g.avatars)); put("spies", JSONArray(g.spies.toList()))
         put("word", g.word); put("cat", g.category.name); put("min", g.minutes); put("ri", g.revealIndex); put("rv", g.revealed)
-        put("rem", g.remainingMs); put("fin", g.finished); g.outcome?.let { put("out", it.name) }; put("created", g.createdAt); put("updated", g.updatedAt)
+        put("rem", g.remainingMs); put("fin", g.finished); put("named", g.named); g.outcome?.let { put("out", it.name) }; put("created", g.createdAt); put("updated", g.updatedAt)
     }
 
     fun decode(o: JSONObject): SpyGame = SpyGame(o.optLong("id")).apply {
@@ -141,7 +144,7 @@ object SpyCodec {
         o.optJSONArray("spies")?.let { a -> for (i in 0 until a.length()) spies += a.optInt(i) }
         word = o.optString("word"); category = SpyCategory.of(o.optString("cat")); minutes = o.optInt("min", 5)
         revealIndex = o.optInt("ri"); revealed = o.optBoolean("rv"); remainingMs = o.optLong("rem")
-        finished = o.optBoolean("fin"); outcome = SpyOutcome.of(o.optString("out")); createdAt = o.optLong("created"); updatedAt = o.optLong("updated", createdAt)
+        finished = o.optBoolean("fin"); named = o.optBoolean("named"); outcome = SpyOutcome.of(o.optString("out")); createdAt = o.optLong("created"); updatedAt = o.optLong("updated", createdAt)
     }
 
     fun encodeWords(list: List<SpyWord>): String = JSONArray(list.map { JSONObject().put("i", it.id).put("t", it.text).put("c", it.category.name) }).toString()

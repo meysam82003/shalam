@@ -438,7 +438,8 @@ class MainActivity : Activity() {
             container.addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             view.alpha = 0f
             view.translationX = if (forward) -shift else shift
-            ArtWarmer.hold(Motion.PAGE_IN + 120)
+            val entrance = Entrance.prepare(view, resources.displayMetrics.density)
+            ArtWarmer.hold(Motion.PAGE_IN + 400)
             val start = Runnable {
                 if (id != transition) return@Runnable
                 olds.forEach { old ->
@@ -446,6 +447,7 @@ class MainActivity : Activity() {
                         .setInterpolator(Motion.EASE_IN_OUT).withLayer().withEndAction { container.removeView(old) }.start()
                 }
                 view.animate().alpha(1f).translationX(0f).setDuration(Motion.PAGE_IN).setInterpolator(Motion.EASE_OUT).withLayer().start()
+                Entrance.play(entrance)
             }
             view.viewTreeObserver.addOnPreDrawListener(object : android.view.ViewTreeObserver.OnPreDrawListener {
                 override fun onPreDraw(): Boolean {

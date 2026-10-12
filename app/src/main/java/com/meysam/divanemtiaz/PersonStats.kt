@@ -30,18 +30,31 @@ class PersonMafia {
     val winRate: Float get() = if (games == 0) 0f else wins.toFloat() / games
 }
 
+/** A person's record in a party game (pantomime or spy). */
+class PersonParty {
+    var games = 0
+    var wins = 0
+    var points = 0
+    /** Spy: games played as the spy and won as the spy. */
+    var special = 0
+    var specialWins = 0
+    val winRate: Float get() = if (games == 0) 0f else wins.toFloat() / games
+}
+
 class PersonRecord(val name: String) {
     val byGame = linkedMapOf<GameType, PersonGameLine>()
     /** Partner → (games together, wins together) in team games. */
     val partners = linkedMapOf<String, Pair<Int, Int>>()
     val teams = linkedMapOf<String, Int>()
     val mafia = PersonMafia()
+    val panto = PersonParty()
+    val spy = PersonParty()
     val sessions = mutableListOf<Long>()
 
     val cardGames: Int get() = byGame.values.sumOf { it.games }
     val cardWins: Int get() = byGame.values.sumOf { it.wins }
-    val totalGames: Int get() = cardGames + mafia.games
-    val totalWins: Int get() = cardWins + mafia.wins
+    val totalGames: Int get() = cardGames + mafia.games + panto.games + spy.games
+    val totalWins: Int get() = cardWins + mafia.wins + panto.wins + spy.wins
     fun line(game: GameType) = byGame.getOrPut(game) { PersonGameLine() }
 }
 
@@ -50,11 +63,14 @@ class PersonRecord(val name: String) {
  * partners, and the mafia narrator's games (side, role, win, exit).
  */
 object PersonStats {
+    const val PANTO = "panto"
+    const val SPY = "spy"
+
     /** The people behind a side: the team's members, or the player himself in individual games. */
     fun people(s: GameSession, side: Side): List<String> =
         if (s.game.isTeamGame) side.members.map { it.trim() }.filter { it.isNotEmpty() } else listOf(side.name.trim())
 
-    fun compute(sessions: List<GameSession>, mafiaGames: List<MafiaGame>): Map<String, PersonRecord> {
+    fun compute(sessions: List<GameSession>, mafiaGames: List<MafiaGame>, pantoMatches: List<PantoMatch> = emptyList(), spyGames: List<SpyGame> = emptyList()): Map<String, PersonRecord> {
         val out = linkedMapOf<String, PersonRecord>()
         fun of(name: String) = out.getOrPut(name) { PersonRecord(name) }
         sessions.filter { it.finished && it.sides.size >= 2 }.sortedWith(compareBy<GameSession> { StatsEngine.time(it) }.thenBy { it.id }).forEach { s ->
@@ -104,6 +120,28 @@ object PersonStats {
             }
         }
         mafiaGames.filter { it.finished && it.started }.sortedBy { it.updatedAt }.forEach { g -> mafiaGame(g).forEach { e -> addMafia(of(e.name).mafia, e) } }
+        // Pantomime: every person of a team shares its result and points.
+        pantoMatches.filter { it.finished }.forEach { m ->
+            val win = m.winner
+            m.teams.forEachIndexed { i, t ->
+                t.members.map { it.trim() }.filter { it.isNotEmpty() }.distinct().forEach { name ->
+                    val p = of(name).panto
+                    p.games++; p.points += t.points
+                    if (i == win) p.wins++
+                }
+            }
+        }
+        // Spy: the spies win together, or the other players do.
+        spyGames.filter { it.finished && it.named && it.outcome != null }.forEach { g ->
+            val spiesWin = g.spiesWin == true
+            g.players.forEachIndexed { i, name ->
+                val p = of(name.trim()).spy
+                val won = if (g.isSpy(i)) spiesWin else !spiesWin
+                p.games++
+                if (won) p.wins++
+                if (g.isSpy(i)) { p.special++; if (won) p.specialWins++ }
+            }
+        }
         return out
     }
 
@@ -143,7 +181,11 @@ object PersonStats {
     }
 
     /** Ranking of people for one card game, all card games (null), or mafia ([mafia] true). */
-    fun leaderboard(all: Map<String, PersonRecord>, game: GameType?, mafia: Boolean): List<PersonRecord> = when {
+    fun leaderboard(all: Map<String, PersonRecord>, game: GameType?, mafia: Boolean, party: String? = null): List<PersonRecord> = when {
+        party == PANTO -> all.values.filter { it.panto.games > 0 }
+            .sortedWith(compareByDescending<PersonRecord> { it.panto.winRate }.thenByDescending { it.panto.wins }.thenByDescending { it.panto.points }.thenBy { it.name })
+        party == SPY -> all.values.filter { it.spy.games > 0 }
+            .sortedWith(compareByDescending<PersonRecord> { it.spy.winRate }.thenByDescending { it.spy.wins }.thenBy { it.name })
         mafia -> all.values.filter { it.mafia.games > 0 }
             .sortedWith(compareByDescending<PersonRecord> { it.mafia.winRate }.thenByDescending { it.mafia.wins }.thenBy { it.name })
         game != null -> all.values.filter { (it.byGame[game]?.games ?: 0) > 0 }

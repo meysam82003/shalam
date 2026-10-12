@@ -33,6 +33,8 @@ class AboutScreen(host: MainActivity) : Screen(host) {
         addView(kit.panel(PanelStyle.FLAT).apply {
             (GameType.values().map { "${it.title}: ${it.subtitle}" } + listOf(
                 "راوی مافیا: سناریوها، نقش‌ها، کارت‌ها و داوری کامل شب و روز",
+                "پانتومیم: ۱۸٬۰۱۷ واژه و پرسش، مسابقهٔ عادی، سرعتی، صدابازی، جنگی، پنج‌ثانیه‌ای و دور طلایی",
+                "جاسوس: پخش پنهان نقش‌ها، کلمهٔ مخفی از چهار دسته و کلمات شما، زمان‌سنج و زنگ پایان",
                 "لیگ، رنک‌بندی، کارنامهٔ افراد و تاریخچهٔ کامل بازی‌ها",
                 "ذخیرهٔ خودکار، ادامهٔ بازی، ویرایش دست‌ها و پشتیبان‌گیری"
             )).forEach { addView(kit.text("•  $it", TextStyle.LABEL, Royal.ivory), kit.spaced(4)) }

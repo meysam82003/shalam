@@ -413,6 +413,8 @@ class PantoCategoryScreen(host: MainActivity, matchId: Long) : PantoScreen(host,
 class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, matchId) {
     /** 0 = word hidden, 1 = word shown to the performer, 2 = timer started. */
     private var phase = 0
+    /** The timer should run (kept across page rebuilds; the timer itself is recreated on each build). */
+    private var wantRunning = false
     private var timer: Countdown? = null
     private var timeText: TextView? = null
     private var lastSecond = -1
@@ -425,6 +427,7 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
         val team = m.teams[t.team]
         timer?.pause()
         timer = Countdown(t.remainingMs, { ms -> onTick(ms) }, { onTimeUp() })
+        if (wantRunning && !ended) host.post(0) { if (wantRunning && !ended) timer?.start() }
         return scaffold(if (m.mode == PantoMode.JANGI) roundTitle() else team.name, "${m.mode.title} • ${roundTitle()}" + (t.choice?.let { " • ${it.title}" } ?: ""),
             actions = listOf(kit.iconButton(RoyalIcon.RULES, "قوانین", ButtonKind.SECONDARY, 44) { rulesDialog() }),
             bottom = controls(t)) {
@@ -461,7 +464,7 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
             layoutDirection = View.LAYOUT_DIRECTION_LTR
         }
         addView(timeText)
-        if (phase == 2 && timer?.running != true && !ended) addView(kit.text("زمان متوقف است", TextStyle.CAPTION, Royal.muted, Gravity.CENTER))
+        if (phase == 2 && !wantRunning && !ended) addView(kit.text("زمان متوقف است", TextStyle.CAPTION, Royal.muted, Gravity.CENTER))
     }
 
     private fun wordCard(t: PantoTurn): View = kit.vertical(Gravity.CENTER).apply {
@@ -489,12 +492,12 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
     private fun controls(t: PantoTurn): View = kit.vertical().apply {
         when {
             phase == 0 -> addView(kit.button("نمایش کلمه به اجراکننده", ButtonKind.PRIMARY, RoyalIcon.EYE, 56) { phase = 1; host.refresh() })
-            phase == 1 || timer?.running != true && phase == 2 -> {
+            phase == 1 || !wantRunning && phase == 2 -> {
                 if (m.mode == PantoMode.NORMAL && !t.wordChanged && phase == 1) {
                     addView(kit.button("عوض کردن کلمه (۱ امتیاز کم می‌شود)", ButtonKind.GHOST, RoyalIcon.SWAP, 42) { changeWord() }, kit.spaced(6))
                 }
                 addView(kit.button(if (phase == 1) (if (m.mode == PantoMode.FIVE) "شروع ۵ ثانیه" else "شروع زمان") else "ادامهٔ زمان", ButtonKind.PRIMARY, RoyalIcon.PLAY, 56) {
-                    phase = 2; host.refresh(); timer?.start()
+                    phase = 2; wantRunning = true; host.refresh()
                 })
                 if (phase == 2) addView(actionRow(t), kit.spaced(0).apply { topMargin = kit.dp(6) })
             }
@@ -514,7 +517,7 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
                 addView(kit.horizontal().apply {
                     addView(kit.weight(kit.button("خطا (لب زدن / اشاره)", ButtonKind.SECONDARY, RoyalIcon.WARNING, 46) { fault() }))
                     addView(kit.hgap(8))
-                    addView(kit.iconButton(RoyalIcon.TIMER, "توقف زمان", ButtonKind.SECONDARY, 46) { timer?.pause(); store(); host.refresh() })
+                    addView(kit.iconButton(RoyalIcon.TIMER, "توقف زمان", ButtonKind.SECONDARY, 46) { pauseTimer() })
                     if (m.mode == PantoMode.NORMAL && !t.wordChanged) {
                         addView(kit.hgap(6))
                         addView(kit.iconButton(RoyalIcon.SWAP, "عوض کردن کلمه", ButtonKind.SECONDARY, 46) { changeWord() })
@@ -530,7 +533,7 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
                     store(); host.refresh()
                 })
                 addView(kit.gap(6))
-                addView(kit.button("توقف زمان", ButtonKind.SECONDARY, RoyalIcon.TIMER, 44) { timer?.pause(); store(); host.refresh() })
+                addView(kit.button("توقف زمان", ButtonKind.SECONDARY, RoyalIcon.TIMER, 44) { pauseTimer() })
             }
             PantoMode.FIVE -> {
                 addView(kit.horizontal().apply {
@@ -543,6 +546,13 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
     }
 
     private var pendingUsed: MutableSet<Int>? = null
+
+    private fun pauseTimer() {
+        wantRunning = false
+        timer?.pause()
+        m.turn?.remainingMs = timer?.remaining ?: (m.turn?.remainingMs ?: 0)
+        store(); host.refresh()
+    }
 
     private fun onTick(ms: Long) {
         m.turn?.remainingMs = ms
@@ -563,7 +573,7 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
             PantoMode.NORMAL -> finishWith(PantoEngine.incorrect(m, timeUp = true))
             PantoMode.SPEEDY, PantoMode.SEDA -> finishWith(PantoEngine.endList(m))
             PantoMode.JANGI -> finishWith(PantoEngine.jangiTimeUp(m))
-            PantoMode.FIVE -> { store(); host.refresh() } // the referee judges the answer
+            PantoMode.FIVE -> { wantRunning = false; store(); host.refresh() } // the referee judges the answer
         }
     }
 
@@ -598,6 +608,7 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
     }
 
     private fun five(full: Boolean) {
+        wantRunning = false
         timer?.pause()
         if (full) pantoSounds.correct() else pantoSounds.wrong()
         val roundBefore = m.round
@@ -621,6 +632,7 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
 
     /** Shows the turn's result and returns to the rounds page (or the result when the match is over). */
     private fun finishWith(end: PantoEngine.TurnEnd?, played: PantoTurn? = null) {
+        wantRunning = false
         timer?.pause()
         ended = true
         store()
@@ -648,12 +660,14 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
     }
 
     override fun onHide() {
+        wantRunning = false
         timer?.pause()
         if (loaded && m.turn != null) { m.turn?.remainingMs = timer?.remaining ?: (m.turn?.remainingMs ?: 0); store() }
     }
 
     override fun onBack(): Boolean {
         if (timer?.running == true) {
+            wantRunning = false
             timer?.pause()
             m.turn?.remainingMs = timer?.remaining ?: 0
             store()

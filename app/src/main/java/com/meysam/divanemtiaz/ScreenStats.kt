@@ -154,18 +154,19 @@ class RankingScreen(host: MainActivity) : Screen(host) {
     private var people = true
     private var game: GameType? = null
     private var mafia = false
+    private var party: String? = null
 
     override fun build(): View {
         val sessions = host.repo.sessions()
         val list = StatsEngine.leaderboard(sessions, teams, game)
         return scaffold(title = "رنک‌بندی", subtitle = "رتبهٔ Elo از همهٔ بازی‌های پایان‌یافته") {
             addView(kit.grid(3, listOf(
-                kit.chip("افراد", people, ButtonKind.CHIP_GOLD) { people = true; game = null; mafia = false; host.refresh() },
+                kit.chip("افراد", people, ButtonKind.CHIP_GOLD) { people = true; game = null; mafia = false; party = null; host.refresh() },
                 kit.chip("تیم‌ها", !people && teams, ButtonKind.CHIP_GOLD) { people = false; teams = true; game = null; host.refresh() },
                 kit.chip("بازیکنان", !people && !teams, ButtonKind.CHIP_GOLD) { people = false; teams = false; game = null; host.refresh() }
             ), 6), kit.spaced(6))
             if (people) {
-                peopleRanking(this, sessions, game, mafia) { g, m -> game = g; mafia = m; host.refresh() }
+                peopleRanking(this, sessions, game, mafia, party) { g, m, p -> game = g; mafia = m; party = p; host.refresh() }
                 return@scaffold
             }
             val games = GameType.values().filter { it.isTeamGame == teams }

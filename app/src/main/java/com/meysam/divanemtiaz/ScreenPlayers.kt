@@ -17,7 +17,7 @@ class PlayersScreen(host: MainActivity) : Screen(host) {
     override fun build(): View {
         val roster = host.repo.roster()
         val shown = roster.filter { it.isTeam == teams }
-        val stats = PersonStats.compute(host.repo.sessions(), host.mafia.games())
+        val stats = allPeopleStats()
         val sessions = host.repo.sessions()
         return scaffold(
             title = "افراد و تیم‌ها",
@@ -134,17 +134,24 @@ class PlayersScreen(host: MainActivity) : Screen(host) {
 }
 
 /** Ranking of people for one game, all card games, or the mafia narrator. */
-fun Screen.peopleRanking(parent: LinearLayout, sessions: List<GameSession>, game: GameType?, mafia: Boolean, onFilter: (GameType?, Boolean) -> Unit) {
-    val all = PersonStats.compute(sessions, host.mafia.games())
+/** Every person's record in every game of the app (card games, mafia, pantomime and spy). */
+fun Screen.allPeopleStats(): Map<String, PersonRecord> = PersonStats.compute(host.repo.sessions(), host.mafia.games(), host.panto.matches(), host.spy.games())
+
+fun Screen.peopleRanking(parent: LinearLayout, sessions: List<GameSession>, game: GameType?, mafia: Boolean, party: String? = null, onFilter: (GameType?, Boolean, String?) -> Unit) {
+    val all = PersonStats.compute(sessions, host.mafia.games(), host.panto.matches(), host.spy.games())
     val chips = ArrayList<android.widget.TextView>()
-    chips += kit.chip("همهٔ بازی‌های ورق", game == null && !mafia) { onFilter(null, false) }
-    GameType.values().forEach { g -> chips += kit.chip(g.title, game == g && !mafia) { onFilter(g, false) } }
-    chips += kit.chip("مافیا", mafia) { onFilter(null, true) }
+    chips += kit.chip("همهٔ بازی‌ها", game == null && !mafia && party == null) { onFilter(null, false, null) }
+    GameType.values().forEach { g -> chips += kit.chip(g.title, game == g && !mafia && party == null) { onFilter(g, false, null) } }
+    chips += kit.chip("مافیا", mafia) { onFilter(null, true, null) }
+    chips += kit.chip("پانتومیم", party == PersonStats.PANTO) { onFilter(null, false, PersonStats.PANTO) }
+    chips += kit.chip("جاسوس", party == PersonStats.SPY) { onFilter(null, false, PersonStats.SPY) }
     chips.forEach { it.setPadding(kit.dp(10), kit.dp(4), kit.dp(10), kit.dp(6)) }
     parent.addView(kit.flow(chips, 6), kit.spaced(8))
-    val list = PersonStats.leaderboard(all, game, mafia)
+    val list = PersonStats.leaderboard(all, game, mafia && party == null, party)
     if (list.isEmpty()) {
-        parent.addView(emptyState(RoyalIcon.TROPHY, "هنوز آماری نیست", if (mafia) "با پایان هر بازی مافیا، آمار هر نفر اینجا ساخته می‌شود." else
+        parent.addView(emptyState(RoyalIcon.TROPHY, "هنوز آماری نیست", if (party == PersonStats.PANTO) "اعضای تیم‌ها را از افراد انتخاب کنید تا با پایان هر مسابقه، آمار هر نفر ساخته شود."
+            else if (party == PersonStats.SPY) "بازیکنان جاسوس را از افراد انتخاب کنید تا نتیجهٔ هر بازی برای هر نفر ثبت شود."
+            else if (mafia) "با پایان هر بازی مافیا، آمار هر نفر اینجا ساخته می‌شود." else
             "تیم‌ها را از افراد بسازید تا با پایان هر بازی، رتبهٔ هر نفر ساخته شود."))
         return
     }
@@ -152,6 +159,8 @@ fun Screen.peopleRanking(parent: LinearLayout, sessions: List<GameSession>, game
     list.forEachIndexed { place, r ->
         val avatar = roster.firstOrNull { it.name == r.name && !it.isTeam }?.avatar ?: 0
         val (value, caption, rate) = when {
+            party == PersonStats.PANTO -> Triple(kit.n((r.panto.winRate * 100).roundToInt()) + "٪", "${kit.n(r.panto.wins)} برد از ${kit.n(r.panto.games)} مسابقه • ${kit.n(r.panto.points)} امتیاز", r.panto.winRate)
+            party == PersonStats.SPY -> Triple(kit.n((r.spy.winRate * 100).roundToInt()) + "٪", "${kit.n(r.spy.wins)} برد از ${kit.n(r.spy.games)} بازی • جاسوس ${kit.n(r.spy.special)} بار", r.spy.winRate)
             mafia -> Triple(kit.n((r.mafia.winRate * 100).roundToInt()) + "٪", "${kit.n(r.mafia.wins)} برد از ${kit.n(r.mafia.games)} بازی • شهر ${kit.n(r.mafia.sideGames[MafiaSide.CITY] ?: 0)} • مافیا ${kit.n(r.mafia.sideGames[MafiaSide.MAFIA] ?: 0)}", r.mafia.winRate)
             game != null -> r.byGame[game]!!.let { l -> Triple(kit.n(l.rating.roundToInt()), "${kit.n(l.wins)} برد • ${kit.n(l.draws)} مساوی • ${kit.n(l.losses)} باخت • ${StatsEngine.tier(l.rating)}", l.winRate) }
             else -> Triple(kit.n(PersonStats.overall(r).roundToInt()), "${kit.n(r.totalGames)} بازی • ${kit.n(r.totalWins)} برد", if (r.totalGames == 0) 0f else r.totalWins.toFloat() / r.totalGames)
@@ -184,7 +193,7 @@ fun Screen.peopleRanking(parent: LinearLayout, sessions: List<GameSession>, game
 /** One person's record in every game: card-game ratings and partners, and a full mafia analysis. */
 class PersonProfileScreen(host: MainActivity, private val name: String) : Screen(host) {
     override fun build(): View {
-        val all = PersonStats.compute(host.repo.sessions(), host.mafia.games())
+        val all = allPeopleStats()
         val r = all[name]
         val avatar = host.repo.roster().firstOrNull { it.name == name && !it.isTeam }?.avatar ?: 0
         return scaffold(name, "کارنامهٔ فردی") {
@@ -226,6 +235,25 @@ class PersonProfileScreen(host: MainActivity, private val name: String) : Screen
             if (r.teams.isNotEmpty()) {
                 addView(kit.section("تیم‌ها", RoyalIcon.FLAG))
                 r.teams.entries.sortedByDescending { it.value }.forEach { (team, n) -> addView(line(team, "${kit.n(n)} بازی") { host.push(ProfileScreen(host, team, true)) }) }
+            }
+            if (r.panto.games > 0) {
+                addView(kit.section("پانتومیم", RoyalIcon.STAR))
+                addView(tiles(listOf(
+                    "مسابقه" to kit.n(r.panto.games),
+                    "برد" to kit.n(r.panto.wins),
+                    "درصد برد" to kit.n((r.panto.winRate * 100).roundToInt()) + "٪",
+                    "امتیاز" to kit.n(r.panto.points)
+                )))
+            }
+            if (r.spy.games > 0) {
+                addView(kit.section("جاسوس", RoyalIcon.EYE))
+                addView(tiles(listOf(
+                    "بازی" to kit.n(r.spy.games),
+                    "برد" to kit.n(r.spy.wins),
+                    "درصد برد" to kit.n((r.spy.winRate * 100).roundToInt()) + "٪",
+                    "جاسوس بود" to kit.n(r.spy.special),
+                    "برد جاسوسی" to kit.n(r.spy.specialWins)
+                )))
             }
             val m = r.mafia
             if (m.games > 0) {

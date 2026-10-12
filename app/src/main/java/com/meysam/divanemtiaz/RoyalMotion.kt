@@ -400,3 +400,44 @@ fun RoyalKit.searchFilter(hint: String, entries: List<Pair<View, String>>, initi
     if (initial.isNotEmpty()) apply(initial)
     return searchBox(hint, initial) { q -> apply(q); onChange?.invoke(q) }
 }
+
+/**
+ * Entrance of a page: its cards and rows (and the cells of its grids) rise and fade in one after another. Prepared
+ * before the first frame (items start hidden) and played once the page's first frame is on screen.
+ */
+object Entrance {
+    private const val MAX_ITEMS = 18
+
+    class Plan(val items: List<Pair<View, Float>>)
+
+    private fun firstScroll(v: View): android.widget.ScrollView? {
+        if (v is android.widget.ScrollView) return v
+        if (v is ViewGroup) for (i in 0 until v.childCount) firstScroll(v.getChildAt(i))?.let { return it }
+        return null
+    }
+
+    fun prepare(root: View, density: Float): Plan? {
+        val column = firstScroll(root)?.getChildAt(0) as? ViewGroup ?: return null
+        val items = ArrayList<Pair<View, Float>>()
+        fun add(v: View) { if (items.size < MAX_ITEMS && v.visibility == View.VISIBLE) items += v to v.alpha }
+        for (i in 0 until column.childCount) {
+            if (items.size >= MAX_ITEMS) break
+            val c = column.getChildAt(i)
+            if (c.visibility != View.VISIBLE) continue
+            if (c is EqualGrid || c is CardGrid || c is FlowLayout) {
+                for (j in 0 until (c as ViewGroup).childCount) add(c.getChildAt(j))
+            } else add(c)
+        }
+        val shift = 18f * density
+        items.forEach { (v, _) -> v.alpha = 0f; v.translationY = shift; v.scaleX = 0.96f; v.scaleY = 0.96f }
+        return Plan(items)
+    }
+
+    fun play(plan: Plan?) {
+        plan ?: return
+        plan.items.forEachIndexed { i, (v, alpha) ->
+            v.animate().alpha(alpha).translationY(0f).scaleX(1f).scaleY(1f)
+                .setStartDelay(40L + i * 35L).setDuration(320).setInterpolator(Motion.EASE_OUT).start()
+        }
+    }
+}

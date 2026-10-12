@@ -205,42 +205,83 @@ fun Screen.describeRound(session: GameSession, round: Round): String {
 class HistoryScreen(host: MainActivity) : Screen(host) {
     private var status = 0
     private var gameFilter: GameType? = null
+    /** "mafia", "panto" or "spy" for the narrator and party games. */
+    private var party: String? = null
+
+    /** One saved game of any kind, newest first. */
+    private class Entry(val kind: String, val time: Long, val finished: Boolean, val view: () -> View)
 
     override fun build(): View {
         val all = host.repo.sessions()
-        val shown = all.filter { s ->
-            (gameFilter == null || s.game == gameFilter) &&
-                when (status) {
-                    1 -> !s.finished
-                    2 -> s.finished
-                    else -> true
-                }
-        }
-        return scaffold(title = "تاریخچهٔ بازی‌ها", subtitle = "${kit.n(all.size)} بازی ذخیره‌شده") {
+        val mafiaGames = host.mafia.games().filter { it.started }
+        val panto = host.panto.matches()
+        val spy = host.spy.games()
+        val entries = ArrayList<Entry>()
+        all.forEach { s -> entries += Entry(s.game.key, s.updatedAt, s.finished) { card(s) } }
+        mafiaGames.forEach { g -> entries += Entry("mafia", g.updatedAt, g.finished) { mafiaCard(g) } }
+        panto.forEach { m -> entries += Entry("panto", m.updatedAt, m.finished) { pantoCard(m) } }
+        spy.forEach { g -> entries += Entry("spy", g.updatedAt, g.finished) { spyCard(g) } }
+        val filter = party ?: gameFilter?.key
+        val shown = entries.filter { e ->
+            (filter == null || e.kind == filter) && when (status) { 1 -> !e.finished; 2 -> e.finished; else -> true }
+        }.sortedByDescending { it.time }
+        return scaffold(title = "تاریخچهٔ بازی‌ها", subtitle = "${kit.n(entries.size)} بازی ذخیره‌شده") {
             addView(kit.grid(3, listOf(
                 kit.chip("همه", status == 0) { status = 0; host.refresh() },
                 kit.chip("در جریان", status == 1) { status = 1; host.refresh() },
                 kit.chip("پایان‌یافته", status == 2) { status = 2; host.refresh() }
             ), 6), kit.spaced(6))
-            addView(kit.flow(listOf(
-                kit.chip("همهٔ بازی‌ها", gameFilter == null, ButtonKind.CHIP_GOLD) { gameFilter = null; host.refresh() }
+            addView(kit.flow((listOf(
+                kit.chip("همهٔ بازی‌ها", gameFilter == null && party == null, ButtonKind.CHIP_GOLD) { gameFilter = null; party = null; host.refresh() }
             ) + GameType.values().map { g ->
-                kit.chip(g.title, gameFilter == g, ButtonKind.CHIP_GOLD) { gameFilter = g; host.refresh() }
-            }.map { it.apply { setPadding(kit.dp(10), kit.dp(4), kit.dp(10), kit.dp(6)) } }, 6), kit.spaced(10))
+                kit.chip(g.title, gameFilter == g && party == null, ButtonKind.CHIP_GOLD) { gameFilter = g; party = null; host.refresh() }
+            } + listOf("mafia" to "راوی مافیا", "panto" to "پانتومیم", "spy" to "جاسوس").map { (k, t) ->
+                kit.chip(t, party == k, ButtonKind.CHIP_GOLD) { party = k; gameFilter = null; host.refresh() }
+            }).map { it.apply { setPadding(kit.dp(10), kit.dp(4), kit.dp(10), kit.dp(6)) } }, 6), kit.spaced(10))
             if (shown.isEmpty()) {
                 addView(emptyState(RoyalIcon.HISTORY, "بازی‌ای پیدا نشد", "پس از ثبت اولین دست، بازی اینجا ذخیره می‌شود."))
             }
-            shown.forEach { addView(card(it)) }
-            if (all.isNotEmpty()) {
+            shown.forEach { addView(it.view()) }
+            if (entries.isNotEmpty()) {
                 addView(kit.gap(12))
                 addView(kit.button("پاک‌کردن کل تاریخچه", ButtonKind.DANGER, RoyalIcon.TRASH, 48) {
                     kit.confirm("پاک‌کردن تاریخچه", "تمام بازی‌های ذخیره‌شده برای همیشه حذف شوند؟", "حذف همه", true) {
                         host.repo.clearHistory()
+                        host.mafia.games().forEach { host.mafia.delete(it.id) }
+                        host.panto.matches().forEach { host.panto.delete(it.id) }
+                        host.spy.games().forEach { host.spy.delete(it.id) }
                         host.refresh()
                     }
                 })
             }
         }
+    }
+
+    /** A narrator game: result or phase, players, report. */
+    private fun mafiaCard(g: MafiaGame): View = kit.vertical().apply {
+        background = PanelDrawable(kit.density, PanelStyle.NORMAL, 16f)
+        setPadding(kit.dp(10), kit.dp(9), kit.dp(10), kit.dp(12))
+        layoutParams = kit.spaced(8)
+        addView(kit.horizontal().apply {
+            addView(RoleSealView(host, MafiaGlyph.MASK, MafiaColors.MAFIA), LinearLayout.LayoutParams(kit.dp(36), kit.dp(36)))
+            addView(kit.hgap(10))
+            addView(kit.vertical().apply {
+                addView(kit.horizontal().apply {
+                    addView(kit.text("راوی مافیا", TextStyle.BODY_BOLD, Royal.goldLight))
+                    addView(kit.hgap(8))
+                    addView(if (g.finished) kit.badge("پایان‌یافته", Royal.gold) else kit.badge("در جریان", Royal.turquoise, true))
+                })
+                addView(kit.text(JalaliDate.format(g.updatedAt, settings.general.persianDigits), TextStyle.CAPTION, Royal.muted))
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(kit.iconButton(RoyalIcon.TRASH, "حذف بازی", ButtonKind.CHIP, 40) {
+                kit.confirm("حذف بازی", "این بازی و گزارش آن حذف شود؟", "حذف", true) { host.mafia.delete(g.id); host.refresh() }
+            })
+        })
+        addView(kit.gap(6))
+        addView(kit.text(if (g.finished) g.winner else "${g.phaseTitle} • ${kit.n(g.players.size)} بازیکن", TextStyle.LABEL, Royal.ivory, maxLines = 2))
+        isClickable = true
+        contentDescription = "بازی مافیا"
+        setOnClickListener { kit.tap(it); host.push(if (g.finished) MafiaReportScreen(host, g.id) else MafiaGameScreen(host, g.id)) }
     }
 
     private fun card(session: GameSession): View {
