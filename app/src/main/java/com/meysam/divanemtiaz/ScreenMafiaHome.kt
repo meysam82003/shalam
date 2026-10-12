@@ -167,11 +167,12 @@ class MafiaGamesScreen(host: MainActivity) : Screen(host) {
 
 /** «گروه بازی»: saved line-ups with roles, options and cards; starting one goes straight to distribution. */
 class MafiaGroupsScreen(host: MainActivity) : Screen(host) {
-    override fun build(): View = scaffold("گروه بازی", "بازیکنان، نقش‌ها و کارت‌های ذخیره‌شده") {
+    override fun build(): View = scaffold("گروه بازی", "بازیکنان، نقش‌ها و کارت‌های ذخیره‌شده",
+        bottom = kit.button("ساخت گروه جدید", ButtonKind.PRIMARY, RoyalIcon.PLUS, 52) { create() }) {
         val groups = host.mafia.groups()
         if (groups.length() == 0) {
             addView(kit.text("هیچ گروهی وجود ندارد", TextStyle.BODY, Royal.muted, Gravity.CENTER), kit.spaced(8))
-            addView(kit.text("در صفحهٔ طراحی بازی با «ذخیره به عنوان گروه» یک گروه بسازید.", TextStyle.CAPTION, Royal.dim, Gravity.CENTER))
+            addView(kit.text("با «ساخت گروه جدید» نام گروه و بازیکنانش را انتخاب کنید؛ در صفحهٔ طراحی بازی هم «ذخیره به عنوان گروه» هست.", TextStyle.CAPTION, Royal.dim, Gravity.CENTER))
             return@scaffold
         }
         for (i in 0 until groups.length()) {
@@ -192,6 +193,27 @@ class MafiaGroupsScreen(host: MainActivity) : Screen(host) {
                         host.mafia.saveDraft(g)
                         host.push(MafiaDesignScreen(host))
                     }))
+                })
+                addView(kit.gap(6))
+                addView(kit.horizontal().apply {
+                    addView(kit.hgap(6))
+                    addView(kit.iconButton(RoyalIcon.PLAYERS, "بازیکنان گروه", ButtonKind.SECONDARY, 44) {
+                        memberPicker(g.players.map { it.name }, 999, "بازیکنان «${o.optString("name")}»") { names ->
+                            setPlayers(g, names)
+                            o.put("game", MafiaCodec.encodeGame(g, withSnapshots = false))
+                            host.mafia.saveGroups(groups)
+                            host.refresh()
+                        }
+                    })
+                    addView(kit.hgap(6))
+                    addView(kit.iconButton(RoyalIcon.EDIT, "تغییر نام", ButtonKind.SECONDARY, 44) {
+                        kit.textPrompt("نام گروه", o.optString("name")) { name ->
+                            if (name.isBlank()) return@textPrompt
+                            o.put("name", name.trim())
+                            host.mafia.saveGroups(groups)
+                            host.refresh()
+                        }
+                    })
                     addView(kit.hgap(6))
                     addView(kit.iconButton(RoyalIcon.TRASH, "حذف", ButtonKind.DANGER, 44) {
                         kit.confirm("حذف گروه", "گروه «${o.optString("name")}» حذف شود؟", "حذف", true) {
@@ -204,6 +226,35 @@ class MafiaGroupsScreen(host: MainActivity) : Screen(host) {
                 })
             })
         }
+    }
+
+    /** New group: a name, then its players from the people list (any number); roles are chosen later. */
+    private fun create() {
+        kit.textPrompt("نام گروه", "") { name ->
+            if (name.isBlank()) { kit.toast("نام گروه را بنویسید"); return@textPrompt }
+            memberPicker(emptyList(), 999, "بازیکنان «${name.trim()}»") { names ->
+                if (names.isEmpty()) { kit.toast("دست‌کم یک بازیکن انتخاب کنید"); return@memberPicker }
+                val g = MafiaGame(0L)
+                setPlayers(g, names)
+                val groups = host.mafia.groups()
+                groups.put(org.json.JSONObject().put("name", name.trim()).put("game", MafiaCodec.encodeGame(g, withSnapshots = false)))
+                host.mafia.saveGroups(groups)
+                kit.toast("گروه «${name.trim()}» ساخته شد")
+                host.refresh()
+            }
+        }
+    }
+
+    /** Players of a group in the chosen order; players who stay keep their place data. */
+    private fun setPlayers(g: MafiaGame, names: List<String>) {
+        val roster = host.repo.roster()
+        val old = g.players.associateBy { it.name }
+        val list = names.mapIndexed { i, n ->
+            old[n] ?: MafiaPlayer(i + 1, n, roster.firstOrNull { it.name == n && !it.isTeam }?.avatar ?: (i * 7 + 3) % Emblems.COUNT)
+        }
+        g.players.clear()
+        var next = (list.maxOfOrNull { it.id } ?: 0)
+        list.forEach { p -> g.players += if (g.players.any { it.id == p.id }) MafiaPlayer(++next, p.name, p.avatar) else p }
     }
 }
 

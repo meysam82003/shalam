@@ -105,7 +105,7 @@ fun Screen.avatarPicker(current: Int, onPick: (Int) -> Unit) {
  * Chooses the people of a team (up to [max]) from the saved people, or adds a new person.
  * Teams built from people let every person have his own record in every game.
  */
-fun Screen.memberPicker(current: List<String>, max: Int = 2, onDone: (List<String>) -> Unit) {
+fun Screen.memberPicker(current: List<String>, max: Int = 2, title: String = "اعضای تیم", onDone: (List<String>) -> Unit) {
     val chosen = ArrayList(current)
     lateinit var dialog: Dialog
     val grid = kit.grid(3, emptyList(), 6)
@@ -145,7 +145,7 @@ fun Screen.memberPicker(current: List<String>, max: Int = 2, onDone: (List<Strin
         if (host.repo.roster().count { !it.isTeam } >= 7) addView(kit.searchBox("جست‌وجوی نام") { q -> query = q; fill() }, kit.spaced(8))
         addView(grid)
     }
-    dialog = kit.dialog("اعضای تیم", "تا ${kit.n(max)} نفر از افراد را انتخاب کنید", body, listOf(
+    dialog = kit.dialog(title, if (max >= 99) "هر تعداد از افراد را انتخاب کنید" else "تا ${kit.n(max)} نفر از افراد را انتخاب کنید", body, listOf(
         DialogAction("تایید", ButtonKind.PRIMARY) { onDone(chosen.toList()) },
         DialogAction("لغو")
     ))
