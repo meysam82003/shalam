@@ -110,6 +110,10 @@ class MainActivity : Activity() {
     /** Mafia narrator games and settings, kept in the same store as the score games. */
     val mafia: MafiaRepository by lazy { MafiaRepository(repo.store) }
 
+    /** «پانتومیم» matches and words, and «جاسوس» games and words, in the same store. */
+    val panto: PantoRepository by lazy { PantoRepository(repo.store) }
+    val spy: SpyRepository by lazy { SpyRepository(repo.store) }
+
     /** Narrator cues, night music and voice recording. */
     val audio: MafiaAudio by lazy { MafiaAudio(this) }
     private var audioUsed = false

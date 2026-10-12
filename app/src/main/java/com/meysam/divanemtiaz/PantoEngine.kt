@@ -167,6 +167,8 @@ class PantoMatch(val id: Long) {
     /** Index of the team whose turn it is. */
     var current: Int = 0
     var golden: Boolean = false
+    /** Optional neutral referee. */
+    var referee: String = ""
     /** Golden round announced to the players (shown once when it begins). */
     var goldenShown: Boolean = false
     /** Subjects each team has played: "team:cat:level" (each subject once per team in a match). */
@@ -551,7 +553,7 @@ object PantoCodec {
 
     fun encode(m: PantoMatch): JSONObject = JSONObject().apply {
         put("id", m.id); put("mode", m.mode.code); put("rounds", m.rounds); m.manualSeconds?.let { put("manual", it) }
-        put("round", m.round); put("current", m.current); put("golden", m.golden); put("goldenShown", m.goldenShown)
+        put("round", m.round); put("current", m.current); put("golden", m.golden); put("goldenShown", m.goldenShown); put("referee", m.referee)
         put("finished", m.finished); put("created", m.createdAt); put("updated", m.updatedAt)
         put("used", JSONArray(m.usedSubjects.toList()))
         put("teams", JSONArray(m.teams.map { t ->
@@ -572,7 +574,7 @@ object PantoCodec {
     fun decode(o: JSONObject): PantoMatch = PantoMatch(o.optLong("id")).apply {
         mode = PantoMode.of(o.optInt("mode", 1)); rounds = o.optInt("rounds", 3)
         manualSeconds = if (o.has("manual")) o.optInt("manual") else null
-        round = o.optInt("round", 1); current = o.optInt("current"); golden = o.optBoolean("golden"); goldenShown = o.optBoolean("goldenShown")
+        round = o.optInt("round", 1); current = o.optInt("current"); golden = o.optBoolean("golden"); goldenShown = o.optBoolean("goldenShown"); referee = o.optString("referee")
         finished = o.optBoolean("finished"); createdAt = o.optLong("created"); updatedAt = o.optLong("updated", createdAt)
         o.optJSONArray("used")?.let { a -> for (i in 0 until a.length()) usedSubjects += a.optString(i) }
         o.optJSONArray("teams")?.let { a ->
