@@ -1,0 +1,7 @@
+# Generated on the host — never commit.
+public/storage/config.php
+public/storage/install.lock
+public/storage/keys/
+public/storage/backups/
+public/storage/logs/
+public/media/*/
