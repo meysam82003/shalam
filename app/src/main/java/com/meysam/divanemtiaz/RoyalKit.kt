@@ -466,28 +466,22 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
 class EqualGrid(context: Context, private val columns: Int, private val gapPx: Int) : ViewGroup(context) {
     init { layoutDirection = View.LAYOUT_DIRECTION_RTL }
 
+    /** Children that take a cell (hidden ones, e.g. filtered out by a search, are skipped). */
+    private fun cells(): List<View> = (0 until childCount).map { getChildAt(it) }.filter { it.visibility != View.GONE }
+
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val width = MeasureSpec.getSize(widthMeasureSpec)
         val cell = ((width - paddingLeft - paddingRight - gapPx * (columns - 1)) / columns).coerceAtLeast(0)
+        val list = cells()
         var height = paddingTop + paddingBottom
-        var rowHeight = 0
-        for (i in 0 until childCount) {
-            val child = getChildAt(i)
-            child.measure(MeasureSpec.makeMeasureSpec(cell, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
-            rowHeight = max(rowHeight, child.measuredHeight)
-            if (i % columns == columns - 1 || i == childCount - 1) {
-                height += rowHeight + if (i == childCount - 1) 0 else gapPx
-                rowHeight = 0
-            }
-        }
-        for (i in 0 until childCount step columns) {
-            val rowMax = (i until min(i + columns, childCount)).maxOf { getChildAt(it).measuredHeight }
-            (i until min(i + columns, childCount)).forEach {
-                val child = getChildAt(it)
-                if (child.measuredHeight != rowMax) {
-                    child.measure(MeasureSpec.makeMeasureSpec(cell, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(rowMax, MeasureSpec.EXACTLY))
-                }
-            }
+        var i = 0
+        while (i < list.size) {
+            val row = list.subList(i, min(i + columns, list.size))
+            row.forEach { it.measure(MeasureSpec.makeMeasureSpec(cell, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED)) }
+            val rowMax = row.maxOf { it.measuredHeight }
+            row.forEach { if (it.measuredHeight != rowMax) it.measure(MeasureSpec.makeMeasureSpec(cell, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(rowMax, MeasureSpec.EXACTLY)) }
+            height += rowMax + if (i + columns < list.size) gapPx else 0
+            i += columns
         }
         setMeasuredDimension(width, height)
     }
@@ -496,20 +490,19 @@ class EqualGrid(context: Context, private val columns: Int, private val gapPx: I
         val width = r - l
         val cell = ((width - paddingLeft - paddingRight - gapPx * (columns - 1)) / columns).coerceAtLeast(0)
         val rtl = layoutDirection == View.LAYOUT_DIRECTION_RTL
+        val list = cells()
         var y = paddingTop
         var i = 0
-        while (i < childCount) {
-            val rowEnd = min(i + columns, childCount)
+        while (i < list.size) {
+            val row = list.subList(i, min(i + columns, list.size))
             var rowHeight = 0
-            for (j in i until rowEnd) {
-                val child = getChildAt(j)
-                val col = j - i
+            row.forEachIndexed { col, child ->
                 val x = if (rtl) width - paddingRight - (col + 1) * cell - col * gapPx else paddingLeft + col * (cell + gapPx)
                 child.layout(x, y, x + cell, y + child.measuredHeight)
                 rowHeight = max(rowHeight, child.measuredHeight)
             }
             y += rowHeight + gapPx
-            i = rowEnd
+            i += columns
         }
     }
 }

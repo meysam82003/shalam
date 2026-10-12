@@ -31,9 +31,10 @@ abstract class MafiaScreen(host: MainActivity, val gameId: Long) : Screen(host) 
         if (candidates.isEmpty()) { kit.toast("بازیکنی برای انتخاب نیست"); return }
         val chosen = LinkedHashSet(preset)
         val grid = kit.grid(3, emptyList(), 6)
+        var query = ""
         fun fill() {
             grid.removeAllViews()
-            candidates.forEach { p ->
+            candidates.filter { SearchText.matches(query, it.name) }.forEach { p ->
                 grid.addView(playerTile(p, showRole, p.id in chosen) {
                     if (p.id in chosen) chosen.remove(p.id)
                     else { if (chosen.size >= max) chosen.remove(chosen.first()); chosen += p.id }
@@ -42,8 +43,12 @@ abstract class MafiaScreen(host: MainActivity, val gameId: Long) : Screen(host) 
             }
         }
         fill()
+        val body = kit.vertical().apply {
+            if (candidates.size >= 7) addView(kit.searchBox("جست‌وجوی بازیکن") { q -> query = q; fill() }, kit.spaced(8))
+            addView(grid)
+        }
         lateinit var dialog: Dialog
-        dialog = kit.dialog(title, if (max > 1) "${kit.n(min)} تا ${kit.n(max)} نفر" else null, grid, listOf(
+        dialog = kit.dialog(title, if (max > 1) "${kit.n(min)} تا ${kit.n(max)} نفر" else null, body, listOf(
             DialogAction("تایید", ButtonKind.PRIMARY, dismiss = false) {
                 if (chosen.size < min) kit.toast("دست‌کم ${kit.n(min)} نفر را انتخاب کنید") else { dialog.dismiss(); onDone(chosen.toList()) }
             },
@@ -498,6 +503,7 @@ class MafiaIntroScreen(host: MainActivity, gameId: Long) : MafiaScreen(host, gam
 
 /** One night job: wake text, its cue, target choice, immediate answer, done / cancel. */
 class MafiaJobScreen(host: MainActivity, gameId: Long, private val key: String) : MafiaScreen(host, gameId) {
+    private var targetQuery = ""
     private var modeIndex = 0
     private val chosen = ArrayList<Int>()
     private var guess: MafiaRole? = null
@@ -605,14 +611,16 @@ class MafiaJobScreen(host: MainActivity, gameId: Long, private val key: String) 
                 val candidates = MafiaNight.candidates(g, job, mode)
                 addView(kit.section(when { mode.max > 1 && mode.min == mode.max -> "انتخاب ${kit.n(mode.max)} نفر"; mode.max > 1 -> "انتخاب ${kit.n(mode.min)} تا ${kit.n(mode.max)} نفر"; else -> "انتخاب یک نفر" }, RoyalIcon.USER))
                 if (candidates.isEmpty()) addView(kit.text("بازیکنی برای انتخاب نیست", TextStyle.LABEL, Royal.muted, Gravity.CENTER))
-                addView(kit.grid(3, candidates.map { p ->
+                val tiles = candidates.map { p ->
                     val i = chosen.indexOf(p.id)
-                    playerTile(p, true, i >= 0, if (i >= 0 && mode.max > 1) kit.n(i + 1) else null) {
+                    p to playerTile(p, true, i >= 0, if (i >= 0 && mode.max > 1) kit.n(i + 1) else null) {
                         if (p.id in chosen) chosen.remove(p.id)
                         else { if (chosen.size >= mode.max) chosen.removeAt(0); chosen += p.id }
                         host.refresh()
                     }
-                }, 6), kit.spaced(8))
+                }
+                kit.searchFilter("جست‌وجوی بازیکن", tiles.map { (p, v) -> v to p.name }, targetQuery, minItems = 7) { targetQuery = it }?.let { addView(it, kit.spaced(8)) }
+                addView(kit.grid(3, tiles.map { it.second }, 6), kit.spaced(8))
             }
             if (mode.typed.isNotEmpty() && chosen.isNotEmpty()) {
                 chosen.forEach { id ->

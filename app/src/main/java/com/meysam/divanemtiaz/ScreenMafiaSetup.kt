@@ -24,6 +24,7 @@ class MafiaDesignScreen(host: MainActivity, private var tab: Int = 0) : Screen(h
     private var cardGrid: CardGrid? = null
     private var emptyRoles: TextView? = null
     private var roleQuery = ""
+    private var rosterQuery = ""
     private var cardQuery = ""
     /** One cell per role / card for the life of the page (stable keys). */
     private val roleCells = HashMap<MafiaRole, RoleCell>()
@@ -154,7 +155,7 @@ class MafiaDesignScreen(host: MainActivity, private var tab: Int = 0) : Screen(h
         }
         parent.addView(kit.section("فهرست بازیکنان", RoyalIcon.USER, kit.iconButton(RoyalIcon.PLUS, "بازیکن جدید", ButtonKind.CHIP_GOLD, 40) { addPlayer() }))
         if (roster.isEmpty()) parent.addView(kit.text("هنوز بازیکنی ثبت نشده است؛ با + اضافه کنید.", TextStyle.LABEL, Royal.muted, Gravity.CENTER))
-        parent.addView(kit.grid(3, roster.map { e ->
+        val tiles = roster.map { e ->
             val inGame = draft.players.any { it.name == e.name }
             kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
                 background = PanelDrawable(kit.density, if (inGame) PanelStyle.SELECTED else PanelStyle.FLAT, 14f)
@@ -170,7 +171,9 @@ class MafiaDesignScreen(host: MainActivity, private var tab: Int = 0) : Screen(h
                     save()
                 }
             }
-        }, 6))
+        }
+        kit.searchFilter("جست‌وجوی بازیکن", tiles.zip(roster.map { it.name }), rosterQuery, minItems = 7) { rosterQuery = it }?.let { parent.addView(it, kit.spaced(8)) }
+        parent.addView(kit.grid(3, tiles, 6))
     }
 
     private fun addPlayer() {
@@ -235,14 +238,17 @@ class MafiaDesignScreen(host: MainActivity, private var tab: Int = 0) : Screen(h
 
     /** A role card with its selection frame and count badge; re-bound in place when the draft changes. */
     private inner class RoleCell(val role: MafiaRole) : FrameLayout(host) {
-        private val card = roleCard(role)
-        private val badge = kit.badge("✓", Royal.turquoise, true)
+        val card = roleCard(role)
+        private var badgeView: TextView? = null
+        private val badge: TextView get() = badgeView ?: kit.badge("✓", Royal.turquoise, true).also {
+            badgeView = it
+            addView(it, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.LEFT).apply { topMargin = kit.dp(4); leftMargin = kit.dp(4) })
+        }
         private var state = -1
 
         init {
             setPadding(kit.dp(4), kit.dp(4), kit.dp(4), kit.dp(5))
             addView(card, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-            addView(badge, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.LEFT).apply { topMargin = kit.dp(4); leftMargin = kit.dp(4) })
             isClickable = true
             contentDescription = role.faName
             setOnClickListener { kit.tap(it); roleDialog(role) }
@@ -255,8 +261,10 @@ class MafiaDesignScreen(host: MainActivity, private var tab: Int = 0) : Screen(h
             state = count
             background = PanelDrawable(kit.density, if (count > 0) PanelStyle.SELECTED else PanelStyle.GHOST, 14f)
             card.alpha = if (count > 0) 1f else 0.78f
-            badge.text = if (count > 1) "×" + kit.n(count) else "✓"
-            badge.visibility = if (count > 0) View.VISIBLE else View.GONE
+            if (count > 0) {
+                badge.text = if (count > 1) "×" + kit.n(count) else "✓"
+                badge.visibility = View.VISIBLE
+            } else badgeView?.visibility = View.GONE
             if (was >= 0 && count > 0 && was != count && kit.settings.general.animations) kit.pulse(badge)
         }
     }
@@ -304,6 +312,29 @@ class MafiaDesignScreen(host: MainActivity, private var tab: Int = 0) : Screen(h
         roleGrid = CardGrid(host, 3, kit.dp(6))
         parent.addView(roleGrid, kit.fill())
         updateRoleGrid(false)
+        prebuildRoles()
+    }
+
+    /**
+     * Everything a tab or filter switch can show is prepared while the app is idle: one cell per role and its
+     * card art at the grid's card size. A later switch then only re-arranges views that already exist.
+     */
+    private fun prebuildRoles() {
+        val grid = roleGrid ?: return
+        val order = MafiaRoleRegistry.available().sortedBy { if (it.side == side) 0 else 1 }
+        val it = order.iterator()
+        fun step(): Boolean {
+            if (roleGrid !== grid || !grid.isAttachedToWindow) return false
+            if (!it.hasNext()) return false
+            val r = it.next()
+            val fresh = !roleCells.containsKey(r)
+            val cell = roleCell(r)
+            val sample = grid.keys.firstOrNull()?.let { k -> (grid.viewFor(k) as? RoleCell)?.card }
+            val warmed = sample != null && sample.width > 0 && cell.card.warmAt(sample.width, sample.height)
+            ArtWarmer.post { step() }
+            return fresh || warmed
+        }
+        ArtWarmer.post { step() }
     }
 
     private fun roleDialog(role: MafiaRole) {
@@ -368,13 +399,16 @@ class MafiaDesignScreen(host: MainActivity, private var tab: Int = 0) : Screen(h
     /** A last-move card with its selection frame; tapping toggles it in the deck in place. */
     private inner class CardCell(val card: MafiaLastCard) : FrameLayout(host) {
         private val view = lastCard(card)
-        private val badge = kit.badge("✓", Royal.turquoise, true)
+        private var badgeView: TextView? = null
+        private val badge: TextView get() = badgeView ?: kit.badge("✓", Royal.turquoise, true).also {
+            badgeView = it
+            addView(it, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.LEFT).apply { topMargin = kit.dp(4); leftMargin = kit.dp(4) })
+        }
         private var state: Boolean? = null
 
         init {
             setPadding(kit.dp(4), kit.dp(4), kit.dp(4), kit.dp(5))
             addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-            addView(badge, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.LEFT).apply { topMargin = kit.dp(4); leftMargin = kit.dp(4) })
             isClickable = true
             contentDescription = card.faName
             setOnClickListener {
@@ -392,7 +426,7 @@ class MafiaDesignScreen(host: MainActivity, private var tab: Int = 0) : Screen(h
             state = on
             background = PanelDrawable(kit.density, if (on) PanelStyle.SELECTED else PanelStyle.GHOST, 14f)
             view.alpha = if (on) 1f else 0.75f
-            badge.visibility = if (on) View.VISIBLE else View.GONE
+            if (on) badge.visibility = View.VISIBLE else badgeView?.visibility = View.GONE
             if (was != null && on && kit.settings.general.animations) kit.pulse(badge)
         }
     }

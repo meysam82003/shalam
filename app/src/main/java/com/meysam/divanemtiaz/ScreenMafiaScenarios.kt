@@ -6,6 +6,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 
 // ------------------------------------------------------------------ shared editors
@@ -42,32 +43,45 @@ fun Screen.optionPicker(title: String, options: List<String>, selected: Int, col
 /** Several roles at once (toggle chips grouped by side). */
 fun Screen.multiRolePicker(title: String, initial: Collection<MafiaRole>, onDone: (List<MafiaRole>) -> Unit) {
     val chosen = LinkedHashSet(initial)
+    var query = ""
     val box = kit.vertical()
     fun fill() {
         box.removeAllViews()
         MafiaSide.values().forEach { s ->
+            val roles = MafiaRoleRegistry.available().filter { it.side == s && SearchText.matches(query, it.faName, it.defaultName) }
+            if (roles.isEmpty()) return@forEach
             box.addView(kit.text(s.title, TextStyle.LABEL_BOLD, s.textColor()))
-            box.addView(kit.flow(MafiaRoleRegistry.available().filter { it.side == s }.map { r ->
+            box.addView(kit.flow(roles.map { r ->
                 kit.chip(r.faName, r in chosen, ButtonKind.CHIP_GOLD) { if (!chosen.remove(r)) chosen += r; fill() }
             }, 4), kit.spaced(8))
         }
+        if (box.childCount == 0) box.addView(kit.text("نقشی پیدا نشد", TextStyle.LABEL, Royal.muted, Gravity.CENTER))
     }
     fill()
-    kit.dialog(title, null, box, listOf(DialogAction("تأیید", ButtonKind.PRIMARY) { onDone(chosen.toList()) }, DialogAction("انصراف"))).show()
+    val body = kit.vertical().apply {
+        addView(kit.searchBox("جست‌وجوی نقش") { q -> query = q; fill() }, kit.spaced(8))
+        addView(box)
+    }
+    kit.dialog(title, null, body, listOf(DialogAction("تأیید", ButtonKind.PRIMARY) { onDone(chosen.toList()) }, DialogAction("انصراف"))).show()
 }
 
 /** Several last-move cards at once. */
 fun Screen.multiCardPicker(title: String, initial: Collection<MafiaLastCard>, onDone: (List<MafiaLastCard>) -> Unit) {
     val chosen = LinkedHashSet(initial)
+    var query = ""
     val box = kit.vertical()
     fun fill() {
         box.removeAllViews()
-        box.addView(kit.flow(MafiaLastCard.values().map { c ->
+        box.addView(kit.flow(MafiaLastCard.values().filter { SearchText.matches(query, it.faName, it.tagline) }.map { c ->
             kit.chip(c.faName.replace("\n", " "), c in chosen, ButtonKind.CHIP_GOLD) { if (!chosen.remove(c)) chosen += c; fill() }
         }, 4))
     }
     fill()
-    kit.dialog(title, null, box, listOf(DialogAction("تأیید", ButtonKind.PRIMARY) { onDone(chosen.toList()) }, DialogAction("انصراف"))).show()
+    val body = kit.vertical().apply {
+        addView(kit.searchBox("جست‌وجوی کارت") { q -> query = q; fill() }, kit.spaced(8))
+        addView(box)
+    }
+    kit.dialog(title, null, body, listOf(DialogAction("تأیید", ButtonKind.PRIMARY) { onDone(chosen.toList()) }, DialogAction("انصراف"))).show()
 }
 
 private fun Screen.valueRow(title: String, value: String, onClick: () -> Unit): View =
@@ -98,6 +112,11 @@ fun Screen.startScenario(s: MafiaScenario) {
 
 /** «انتخاب سناریو»: built-in scenarios (families together), the narrator's own ones and «سناریوی آزاد». */
 class MafiaScenarioListScreen(host: MainActivity, private val browse: Boolean = false) : Screen(host) {
+    private var query = ""
+
+    /** A scenario is found by its name, summary or the names of its roles. */
+    private fun searchText(s: MafiaScenario) = s.name + " " + s.summary + " " + s.pool.joinToString(" ") { it.faName }
+
     override fun build(): View {
         MafiaRoleRegistry.activate(null)
         val saved = host.mafia.scenarios()
@@ -106,16 +125,25 @@ class MafiaScenarioListScreen(host: MainActivity, private val browse: Boolean = 
             actions = listOf(kit.iconButton(RoyalIcon.USER, "نقش‌ها و قوانین", ButtonKind.SECONDARY, 44) { host.push(MafiaRolesScreen(host)) }),
             bottom = kit.button("سناریوی خودت را بساز", ButtonKind.PRIMARY, RoyalIcon.PLUS, 52) { host.push(MafiaScenarioEditScreen(host, null)) }) {
             addView(kit.text("ترکیب نقش و کارت هر سناریو فقط پیشنهاد اولیه است و در صفحهٔ طراحی بازی قابل تغییر است.", TextStyle.LABEL, Royal.muted, Gravity.CENTER), kit.spaced(8))
+            val rows = ArrayList<Pair<View, String>>()
+            val headers = ArrayList<View>()
+            val searchSlot = FrameLayout(host)
+            addView(searchSlot, kit.spaced(8))
             val shownFamilies = HashSet<String>()
             list.forEach { s ->
                 val fam = s.family
                 if (fam != null) {
                     if (!shownFamilies.add(fam)) return@forEach
-                    addView(kit.section("خانوادهٔ $fam", RoyalIcon.CROWN))
-                    list.filter { it.family == fam }.forEach { addView(row(it, saved)) }
-                    addView(kit.gap(4))
-                } else addView(row(s, saved))
+                    addView(kit.section("خانوادهٔ $fam", RoyalIcon.CROWN).also { headers += it })
+                    list.filter { it.family == fam }.forEach { f -> addView(row(f, saved).also { rows += it to searchText(f) }) }
+                    addView(kit.gap(4).also { headers += it })
+                } else addView(row(s, saved).also { rows += it to searchText(s) })
             }
+            searchSlot.addView(kit.searchFilter("جست‌وجوی سناریو یا نقش", rows, query) { q ->
+                query = q
+                headers.forEach { it.visibility = if (q.isBlank()) View.VISIBLE else View.GONE }
+            })
+            if (query.isNotBlank()) headers.forEach { it.visibility = View.GONE }
         }
     }
 
@@ -128,7 +156,6 @@ class MafiaScenarioListScreen(host: MainActivity, private val browse: Boolean = 
                 addView(kit.text(s.name, TextStyle.BODY_BOLD, Royal.goldLight, maxLines = 2))
                 addView(kit.text(s.summary, TextStyle.CAPTION, Royal.muted, maxLines = 2))
                 val tags = ArrayList<View>()
-                MafiaScenarios.status[s.id]?.takeIf { !s.custom }?.let { tags += kit.badge(it, Royal.muted) }
                 if (s.custom) tags += kit.badge("سناریوی شما", Royal.turquoise)
                 else if (saved.any { it.id == s.id }) tags += kit.badge("ویرایش‌شده", Royal.turquoise)
                 if (s.presets.isNotEmpty()) tags += kit.badge("ترکیب مرجع: " + s.presets.keys.sorted().joinToString("، ") { kit.n(it) } + " نفر", Royal.gold)
@@ -152,7 +179,6 @@ class MafiaScenarioScreen(host: MainActivity, private val id: String) : Screen(h
         return scaffold(s.name, s.summary,
             actions = listOf(kit.iconButton(RoyalIcon.EDIT, "ویرایش سناریو", ButtonKind.SECONDARY, 44) { host.push(MafiaScenarioEditScreen(host, s.id)) }),
             bottom = kit.button("شروع با این سناریو", ButtonKind.PRIMARY, RoyalIcon.PLAY, 52) { startScenario(s) }) {
-            MafiaScenarios.status[s.id]?.takeIf { !s.custom }?.let { addView(kit.badge("وضعیت تطبیق با نقش‌های برنامه: $it", Royal.goldLight), kit.spaced(8)) }
             addView(kit.section("قوانین", RoyalIcon.RULES))
             addView(kit.panel(PanelStyle.FLAT, 12).apply {
                 layoutParams = kit.spaced(8)
@@ -418,11 +444,11 @@ class MafiaRoleEditScreen(host: MainActivity, role: MafiaRole?) : Screen(host) {
             }
 
             addView(kit.section("کار شب", RoyalIcon.SLIDERS))
-            if (coded) addView(kit.text("کار شب این نقش در برنامه پیاده‌سازی شده است. اگر «کار شب» دیگری انتخاب کنید، قانون شما جایگزین آن می‌شود؛ «قانون اصلی برنامه» آن را برمی‌گرداند.", TextStyle.CAPTION, Royal.muted))
+            if (coded) addView(kit.text("کار شب این نقش از پیش تعریف شده است. اگر «کار شب» دیگری انتخاب کنید، قانون شما جایگزین آن می‌شود؛ «قانون اصلی نقش» آن را برمی‌گرداند.", TextStyle.CAPTION, Royal.muted))
             val abilities = MafiaAbility.values().toList()
-            val abilityLabels = (if (coded) listOf("قانون اصلی برنامه") else emptyList()) + abilities.map { it.title }
+            val abilityLabels = (if (coded) listOf("قانون اصلی نقش") else emptyList()) + abilities.map { it.title }
             val abilityIndex = if (ability == null) 0 else abilities.indexOf(ability) + (if (coded) 1 else 0)
-            addView(valueRow("کار شب", if (ability == null) "قانون اصلی برنامه" else ability.title + " — " + ability.hint) {
+            addView(valueRow("کار شب", if (ability == null) "قانون اصلی نقش" else ability.title + " — " + ability.hint) {
                 optionPicker("کار شب", abilityLabels, abilityIndex) { i ->
                     d = d.copy(ability = if (coded && i == 0) null else abilities[i - if (coded) 1 else 0])
                     if (coded && i == 0) d = MafiaRoleDef.fromJson(d.toJson().apply { remove("ability"); remove("alt") })

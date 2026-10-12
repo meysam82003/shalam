@@ -12,6 +12,7 @@ import kotlin.math.roundToInt
  */
 class PlayersScreen(host: MainActivity) : Screen(host) {
     private var teams = false
+    private var query = ""
 
     override fun build(): View {
         val roster = host.repo.roster()
@@ -31,6 +32,9 @@ class PlayersScreen(host: MainActivity) : Screen(host) {
             if (shown.isEmpty()) {
                 addView(emptyState(RoyalIcon.PLAYERS, if (teams) "هنوز تیمی ثبت نشده" else "هنوز کسی ثبت نشده", if (teams) "هر تیم را از دو نفر از افراد بسازید." else "با «افزودن فرد» نام‌ها را یکی‌یکی وارد کنید."))
             }
+            val rows = ArrayList<Pair<View, String>>()
+            val searchSlot = android.widget.FrameLayout(host)
+            if (shown.size >= 7) addView(searchSlot, kit.spaced(8))
             shown.forEach { entry ->
                 val caption = if (teams) {
                     val related = sessions.filter { s -> s.game.isTeamGame && s.sides.any { it.name == entry.name } }
@@ -42,6 +46,7 @@ class PlayersScreen(host: MainActivity) : Screen(host) {
                     else "${kit.n(r.totalGames)} بازی  •  ${kit.n(r.totalWins)} برد" + if (r.mafia.games > 0) "  •  مافیا ${kit.n(r.mafia.games)}" else ""
                 }
                 addView(kit.horizontal().apply {
+                    rows += this to entry.name
                     background = PanelDrawable(kit.density, PanelStyle.NORMAL, 16f)
                     setPadding(kit.dp(10), kit.dp(7), kit.dp(10), kit.dp(10))
                     layoutParams = kit.spaced(6)
@@ -66,6 +71,7 @@ class PlayersScreen(host: MainActivity) : Screen(host) {
                     })
                 })
             }
+            if (shown.size >= 7) kit.searchFilter("جست‌وجوی نام", rows, query) { query = it }?.let { searchSlot.addView(it) }
         }
     }
 

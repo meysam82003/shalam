@@ -68,47 +68,64 @@ class MafiaHomeScreen(host: MainActivity) : Screen(host) {
 /** «نقش‌ها و قوانین»: every role card with its rules, filtered by side; add a role or edit any role's rules. */
 class MafiaRolesScreen(host: MainActivity) : Screen(host) {
     private var side = MafiaSide.CITY
+    private var query = ""
+    private var grid: CardGrid? = null
+    private val cells = HashMap<MafiaRole, View>()
 
     override fun build(): View {
         MafiaRoleRegistry.activate(null)
+        cells.clear()
         val roles = MafiaRoleRegistry.available()
         return scaffold("نقش‌ها و قوانین", "${kit.n(roles.size)} نقش  •  روی هر نقش بزنید",
             bottom = kit.button("افزودن نقش", ButtonKind.PRIMARY, RoyalIcon.PLUS, 52) { host.push(MafiaRoleEditScreen(host, null)) }) {
-            addView(kit.grid(3, MafiaSide.values().map { s ->
-                kit.chip("${s.title} (${kit.n(roles.count { it.side == s })})", side == s, ButtonKind.CHIP_GOLD) { side = s; host.refresh() }
-            }, 6), kit.spaced(10))
-            val mine = roles.filter { it.side == side && it.isCustomSlot }
-            if (mine.isNotEmpty()) {
-                addView(kit.section("نقش‌های ساخت شما", RoyalIcon.STAR))
-                addView(grid(mine), kit.spaced(10))
-                addView(kit.section("نقش‌های برنامه", RoyalIcon.CROWN))
-            }
-            addView(grid(roles.filter { it.side == side && !it.isCustomSlot }))
+            addView(SlidingTabs(host, kit, MafiaSide.values().map { s -> "${s.title} (${kit.n(roles.count { it.side == s })})" }, side.ordinal) { i ->
+                side = MafiaSide.values()[i]
+                update(true)
+            }, kit.spaced(8))
+            addView(kit.searchBox("جست‌وجوی نقش (همهٔ سایدها)", query) { q -> query = q; update(true) }, kit.spaced(10))
+            grid = CardGrid(host, 3, kit.dp(8))
+            addView(grid, kit.fill())
+            update(false)
         }
     }
 
-    private fun grid(list: List<MafiaRole>): View = kit.grid(3, list.map { r ->
+    /** Roles of the chosen side (or, while searching, of every side); the narrator's own roles first. */
+    private fun update(animate: Boolean) {
+        val g = grid ?: return
+        val roles = MafiaRoleRegistry.available()
+            .filter { if (query.isBlank()) it.side == side else SearchText.matches(query, it.faName, it.defaultName, it.tagline) }
+            .sortedBy { if (it.isCustomSlot) 0 else 1 }
+        g.submit(roles.map { it.name }, animate) { key -> cell(MafiaRole.valueOf(key)) }
+    }
+
+    private fun cell(r: MafiaRole): View = cells.getOrPut(r) {
         android.widget.FrameLayout(host).apply {
             addView(roleCard(r), android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-            if (MafiaRoleRegistry.user.containsKey(r) && !r.isCustomSlot) addView(kit.badge("ویرایش‌شده", Royal.turquoise, true),
-                android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.LEFT))
+            when {
+                r.isCustomSlot -> addView(kit.badge("ساخت شما", Royal.gold, true),
+                    android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.LEFT))
+                MafiaRoleRegistry.user.containsKey(r) -> addView(kit.badge("ویرایش‌شده", Royal.turquoise, true),
+                    android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.LEFT))
+            }
             isClickable = true
             contentDescription = r.faName
             setOnClickListener { kit.tap(it); roleInfo(r, extraActions = listOf(DialogAction("ویرایش قوانین", ButtonKind.PRIMARY) { host.push(MafiaRoleEditScreen(host, r)) })) }
         }
-    }, 8)
+    }
 }
 
 /** «کارت حرکت آخر» catalogue. */
 class MafiaCardsScreen(host: MainActivity) : Screen(host) {
     override fun build(): View = scaffold("کارت حرکت آخر", "${kit.n(MafiaLastCard.values().size)} کارت") {
         addView(kit.text("بازیکنی که در روز از بازی خارج می‌شود، در صورت داشتن حق انتخاب، یکی از کارت‌های برعکس را برمی‌دارد.", TextStyle.LABEL, Royal.muted, Gravity.CENTER), kit.spaced(10))
-        addView(kit.grid(3, MafiaLastCard.values().map { c ->
-            lastCard(c).apply {
+        val cards = MafiaLastCard.values().map { c ->
+            c to lastCard(c).apply {
                 isClickable = true
                 setOnClickListener { kit.tap(it); cardInfo(c) }
             }
-        }, 8))
+        }
+        kit.searchFilter("جست‌وجوی کارت", cards.map { (c, v) -> v to c.faName + " " + c.tagline })?.let { addView(it, kit.spaced(10)) }
+        addView(kit.grid(3, cards.map { it.second }, 8))
     }
 }
 

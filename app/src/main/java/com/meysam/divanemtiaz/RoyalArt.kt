@@ -539,6 +539,19 @@ abstract class CachedArtView(context: Context) : View(context) {
         return bitmap
     }
 
+    /** Renders the art at a given size ahead of time, even before the view is laid out; true if work was done. */
+    fun warmAt(w: Int, h: Int): Boolean {
+        if (w <= 0 || h <= 0) return false
+        if (width != w || height != h) {
+            if (isAttachedToWindow) return false
+            layout(0, 0, w, h)
+        }
+        val key = key()
+        if (ArtCache.get(key) != null) return false
+        render(key)
+        return true
+    }
+
     /** Renders the art into the shared cache ahead of time (called by [ArtWarmer]); true if work was done. */
     fun warm(): Boolean {
         if (width <= 0 || height <= 0 || !isAttachedToWindow) return false

@@ -205,7 +205,7 @@ class MafiaToolsScreen(host: MainActivity, gameId: Long) : MafiaScreen(host, gam
             }
             if (roster.isNotEmpty()) actions += DialogAction("از فهرست افراد") {
                 lateinit var d: android.app.Dialog
-                d = kit.dialog("فرد جدید", null, kit.grid(3, roster.map { e ->
+                val tiles = roster.map { e ->
                     kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
                         background = PanelDrawable(kit.density, PanelStyle.FLAT, 14f)
                         setPadding(kit.dp(4), kit.dp(8), kit.dp(4), kit.dp(10))
@@ -214,7 +214,12 @@ class MafiaToolsScreen(host: MainActivity, gameId: Long) : MafiaScreen(host, gam
                         isClickable = true
                         setOnClickListener { d.dismiss(); done(leaving, null, e.name, e.avatar) }
                     }
-                }, 6), listOf(DialogAction("لغو")))
+                }
+                val body = kit.vertical().apply {
+                    kit.searchFilter("جست‌وجوی نام", tiles.zip(roster.map { it.name }), minItems = 7)?.let { addView(it, kit.spaced(8)) }
+                    addView(kit.grid(3, tiles, 6))
+                }
+                d = kit.dialog("فرد جدید", null, body, listOf(DialogAction("لغو")))
                 d.show()
             }
             actions += DialogAction("نام جدید") {

@@ -260,7 +260,12 @@ fun Screen.rolePicker(title: String, roles: List<MafiaRole>, onPick: (MafiaRole)
             setOnClickListener { kit.tap(it); dialog.dismiss(); onPick(r) }
         }
     }
-    dialog = kit.dialog(title, null, kit.grid(3, cells, 6), listOf(DialogAction("بستن")))
+    val grid = kit.grid(3, cells, 6)
+    val body = kit.vertical().apply {
+        kit.searchFilter("جست‌وجوی نقش", roles.zip(cells).map { (r, v) -> v to r.faName + " " + r.defaultName }, minItems = 7)?.let { addView(it, kit.spaced(8)) }
+        addView(grid)
+    }
+    dialog = kit.dialog(title, null, body, listOf(DialogAction("بستن")))
     dialog.show()
 }
 

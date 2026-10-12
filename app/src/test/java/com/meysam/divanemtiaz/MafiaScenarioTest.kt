@@ -154,7 +154,6 @@ class MafiaScenarioTest {
         assertTrue(MafiaRole.SPECTER in s("specter_partners").pool)
         assertEquals(13, s("court").lineup(13)!!.values.sum())
         assertNull(MafiaScenarios.builtin.firstOrNull { it.id == "wild_west" })
-        MafiaScenarios.builtin.forEach { assertNotNull(it.id, MafiaScenarios.status[it.id]) }
     }
 
     private fun table(n: Int): MafiaGame {

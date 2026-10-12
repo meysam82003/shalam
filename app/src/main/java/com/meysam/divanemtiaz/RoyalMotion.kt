@@ -42,14 +42,14 @@ object Motion {
  * Held back while transitions run, so it never competes with an animation frame.
  */
 object ArtWarmer {
-    private val queue = ArrayDeque<WeakReference<CachedArtView>>()
+    /** Small units of work; each returns true when it did something worth a frame's time. */
+    private val queue = ArrayDeque<() -> Boolean>()
     private var holdUntil = 0L
     private var installed = false
-
     private val handler by lazy { android.os.Handler(Looper.getMainLooper()) }
     private val resume = Runnable { install() }
 
-    // One card per idle moment of the main thread: each render is a few milliseconds and never blocks a frame.
+    // One unit per idle moment of the main thread: each is a few milliseconds and never blocks a frame.
     private val idle = MessageQueue.IdleHandler {
         val wait = holdUntil - SystemClock.uptimeMillis()
         if (wait > 0) {
@@ -59,8 +59,7 @@ object ArtWarmer {
             return@IdleHandler false
         }
         while (queue.isNotEmpty()) {
-            val v = queue.removeFirst().get() ?: continue
-            if (v.warm()) break
+            if (queue.removeFirst().invoke()) break
         }
         if (queue.isEmpty()) { installed = false; false } else true
     }
@@ -73,8 +72,14 @@ object ArtWarmer {
     }
 
     fun enqueue(v: CachedArtView) {
+        val ref = WeakReference(v)
+        post { ref.get()?.warm() ?: false }
+    }
+
+    /** Queues [task] to run while the main thread is idle. */
+    fun post(task: () -> Boolean) {
         if (Looper.myLooper() != Looper.getMainLooper()) return
-        queue.addLast(WeakReference(v))
+        queue.addLast(task)
         install()
     }
 
@@ -161,8 +166,13 @@ class CardGrid(context: Context, private val columns: Int, private val gapPx: In
     }
 
     private fun leave(v: View) {
-        leaving += v
         v.animate().cancel()
+        if (!isNearScreen(v)) {
+            v.visibility = View.GONE
+            v.alpha = 1f; v.scaleX = 1f; v.scaleY = 1f; v.translationX = 0f; v.translationY = 0f
+            return
+        }
+        leaving += v
         v.animate().alpha(0f).scaleX(0.82f).scaleY(0.82f).setDuration(Motion.ITEM - 60).setStartDelay(0).setInterpolator(Motion.EASE_IN)
             .withEndAction {
                 if (v in leaving) {
@@ -219,11 +229,14 @@ class CardGrid(context: Context, private val columns: Int, private val gapPx: In
             var n = 0
             list.forEach { v ->
                 val old = oldFrames[v]
-                if (v in entering) {
+                val visible = isNearScreen(v) || (old != null && isNearScreen(old.top, old.height()))
+                if (!visible) {
+                    // Off screen: no animation, just the final state.
+                    if (v in entering || old != null) { v.animate().cancel(); v.alpha = 1f; v.scaleX = 1f; v.scaleY = 1f; v.translationX = 0f; v.translationY = 0f }
+                } else if (v in entering) {
                     v.animate().cancel()
                     v.translationX = 0f; v.translationY = 0f
                     v.alpha = 0f; v.scaleX = 0.86f; v.scaleY = 0.86f
-                    val visible = isNearScreen(v)
                     v.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(Motion.ITEM).setInterpolator(Motion.EASE_OUT)
                         .setStartDelay(if (visible) min(n++, 10) * Motion.STAGGER else 0L).start()
                 } else if (old != null && (old.left != v.left || old.top != v.top)) {
@@ -240,11 +253,12 @@ class CardGrid(context: Context, private val columns: Int, private val gapPx: In
     }
 
     private val tmp = IntArray(2)
-    private fun isNearScreen(v: View): Boolean {
+    private fun isNearScreen(v: View): Boolean = isNearScreen(v.top, v.height)
+    private fun isNearScreen(top: Int, height: Int): Boolean {
         getLocationOnScreen(tmp)
         val h = resources.displayMetrics.heightPixels
-        val top = tmp[1] + v.top
-        return top < h && top + v.height > 0
+        val y = tmp[1] + top
+        return y < h && y + height > 0
     }
 }
 
@@ -374,4 +388,15 @@ fun RoyalKit.searchBox(hint: String, initial: String = "", onQuery: (String) -> 
     box.addView(icon(RoyalIcon.SEARCH, Royal.gold, 20), FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER_VERTICAL or Gravity.RIGHT).apply { rightMargin = dp(12) })
     box.addView(clear, FrameLayout.LayoutParams(dp(18), dp(18), Gravity.CENTER_VERTICAL or Gravity.LEFT).apply { leftMargin = dp(14) })
     return box
+}
+
+/**
+ * Search box that filters existing views in place (no rebuild): each entry is a view and the text it is found by.
+ * [minItems]: below this many entries no box is shown (short lists need none).
+ */
+fun RoyalKit.searchFilter(hint: String, entries: List<Pair<View, String>>, initial: String = "", minItems: Int = 0, onChange: ((String) -> Unit)? = null): View? {
+    if (entries.size < minItems) return null
+    fun apply(q: String) { entries.forEach { (v, text) -> v.visibility = if (SearchText.matches(q, text)) View.VISIBLE else View.GONE } }
+    if (initial.isNotEmpty()) apply(initial)
+    return searchBox(hint, initial) { q -> apply(q); onChange?.invoke(q) }
 }

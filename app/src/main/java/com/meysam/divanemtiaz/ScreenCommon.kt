@@ -109,9 +109,10 @@ fun Screen.memberPicker(current: List<String>, max: Int = 2, onDone: (List<Strin
     val chosen = ArrayList(current)
     lateinit var dialog: Dialog
     val grid = kit.grid(3, emptyList(), 6)
+    var query = ""
     fun fill() {
         grid.removeAllViews()
-        host.repo.roster().filter { !it.isTeam }.forEach { e ->
+        host.repo.roster().filter { !it.isTeam && SearchText.matches(query, it.name) }.forEach { e ->
             val on = e.name in chosen
             grid.addView(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
                 background = PanelDrawable(kit.density, if (on) PanelStyle.SELECTED else PanelStyle.FLAT, 14f)
@@ -141,6 +142,7 @@ fun Screen.memberPicker(current: List<String>, max: Int = 2, onDone: (List<Strin
                 fill()
             }
         }, kit.spaced(8))
+        if (host.repo.roster().count { !it.isTeam } >= 7) addView(kit.searchBox("جست‌وجوی نام") { q -> query = q; fill() }, kit.spaced(8))
         addView(grid)
     }
     dialog = kit.dialog("اعضای تیم", "تا ${kit.n(max)} نفر از افراد را انتخاب کنید", body, listOf(
@@ -175,7 +177,12 @@ fun Screen.rosterPicker(isTeam: Boolean, onPick: (RosterEntry) -> Unit) {
             })
         }
     }
-    dialog = kit.dialog(if (isTeam) "انتخاب از تیم‌ها" else "انتخاب از بازیکنان", null, list, listOf(DialogAction("بستن")))
+    val rows = (0 until list.childCount).map { list.getChildAt(it) }.zip(entries.map { it.name })
+    val body = kit.vertical().apply {
+        kit.searchFilter("جست‌وجوی نام", rows, minItems = 7)?.let { addView(it, kit.spaced(8)) }
+        addView(list)
+    }
+    dialog = kit.dialog(if (isTeam) "انتخاب از تیم‌ها" else "انتخاب از بازیکنان", null, body, listOf(DialogAction("بستن")))
     dialog.show()
 }
 
