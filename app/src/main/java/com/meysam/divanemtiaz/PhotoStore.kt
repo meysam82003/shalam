@@ -30,6 +30,9 @@ object PhotoStore {
 
     fun isPhoto(avatar: Int): Boolean = avatar >= BASE
 
+    /** Photos chosen so far (for the free-version limit). */
+    fun count(): Int = dir?.listFiles()?.count { it.name.endsWith(".jpg") } ?: 0
+
     private fun file(avatar: Int): File? = dir?.let { File(it, "p${avatar - BASE}.jpg") }
 
     fun exists(avatar: Int): Boolean = isPhoto(avatar) && file(avatar)?.exists() == true

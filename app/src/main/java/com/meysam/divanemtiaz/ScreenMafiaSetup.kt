@@ -413,9 +413,12 @@ class MafiaDesignScreen(host: MainActivity, private var tab: Int = 0) : Screen(h
             contentDescription = card.faName
             setOnClickListener {
                 kit.tap(it)
-                if (draft.deck.any { s -> s.card == card }) draft.deck.removeAll { s -> s.card == card } else draft.deck += MafiaCardState(card)
+                if (draft.deck.any { s -> s.card == card }) draft.deck.removeAll { s -> s.card == card }
+                else if (!MafiaCardRules.usable(card)) { Gate.lockedItem(this@MafiaDesignScreen, "کارت " + card.faName); return@setOnClickListener }
+                else draft.deck += MafiaCardState(card)
                 save()
             }
+            if (!MafiaCardRules.usable(card)) addView(Gate.badge(this@MafiaDesignScreen), FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.RIGHT).apply { topMargin = kit.dp(4); rightMargin = kit.dp(4) })
             setOnLongClickListener { cardInfo(card); true }
         }
 
@@ -438,11 +441,19 @@ class MafiaDesignScreen(host: MainActivity, private var tab: Int = 0) : Screen(h
     }
 
     private fun cardsTab(parent: LinearLayout) {
+        if (!ProState.feature("mafia_last_cards").second) {
+            parent.addView(kit.panel(PanelStyle.RAISED).apply {
+                addView(kit.text("«کارت حرکت آخر» از قابلیت‌های Pro است؛ بازی بدون این کارت‌ها انجام می‌شود.", TextStyle.BODY, Royal.ivory))
+                addView(kit.gap(8))
+                addView(kit.button("دیوان Pro", ButtonKind.PRIMARY, RoyalIcon.CROWN, 44) { host.push(ProScreen(host)) })
+            }, kit.spaced(8))
+            return
+        }
         parent.addView(kit.horizontal().apply {
             layoutParams = kit.spaced(8)
             addView(kit.weight(kit.button("انتخاب همه", ButtonKind.SECONDARY, RoyalIcon.CHECK, 42) {
                 draft.deck.clear()
-                MafiaLastCard.values().filter { c -> c.requires == null || (draft.roleCounts[c.requires] ?: 0) > 0 }.forEach { draft.deck += MafiaCardState(it) }
+                MafiaLastCard.values().filter { c -> (c.requires == null || (draft.roleCounts[c.requires] ?: 0) > 0) && MafiaCardRules.usable(c) }.forEach { draft.deck += MafiaCardState(it) }
                 save()
             }))
             addView(kit.hgap(6))
@@ -452,7 +463,7 @@ class MafiaDesignScreen(host: MainActivity, private var tab: Int = 0) : Screen(h
             parent.addView(kit.button("کارت‌های مرجع سناریو", ButtonKind.SECONDARY, RoyalIcon.CARDS, 42) {
                 draft.deck.clear()
                 val roles = draft.roleCounts.filter { it.value > 0 }.keys
-                (if (roles.isEmpty()) sc.cards else MafiaScenarios.matchMind(sc.cards, roles)).forEach { draft.deck += MafiaCardState(it) }
+                (if (roles.isEmpty()) sc.cards else MafiaScenarios.matchMind(sc.cards, roles)).filter { MafiaCardRules.usable(it) }.forEach { draft.deck += MafiaCardState(it) }
                 save()
             }, kit.spaced(8))
         }
@@ -537,7 +548,7 @@ class MafiaDistributeScreen(host: MainActivity) : Screen(host) {
         draft.players.forEach { d -> g.players += MafiaPlayer(d.id, d.name, d.avatar).apply { role = d.role; seen = true } }
         g.roleCounts.putAll(draft.roleCounts)
         draft.options.forEach { (r, m) -> g.options[r] = HashMap(m) }
-        draft.deck.forEach { g.deck += MafiaCardState(it.card) }
+        draft.deck.filter { MafiaCardRules.usable(it.card) }.forEach { g.deck += MafiaCardState(it.card) }
         MafiaScenarios.KEYS.forEach { k -> draft.extra[k]?.let { g.extra[k] = it } }
         MafiaFlow.start(g, mafiaSettings)
         host.mafia.save(g)

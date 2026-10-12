@@ -18,7 +18,7 @@ final class Admin
     ];
     private const ACCESS = [
         'owner' => ['*'],
-        'manager' => ['dashboard', 'users', 'user', 'plans', 'subscriptions', 'transactions', 'transaction', 'features', 'campaigns', 'ads', 'ad', 'placements', 'media', 'reports', 'stores', 'adnetwork', 'gifts', 'support', 'ticket', 'audit', 'account', 'backups'],
+        'manager' => ['dashboard', 'promos', 'users', 'user', 'plans', 'subscriptions', 'transactions', 'transaction', 'features', 'campaigns', 'ads', 'ad', 'placements', 'media', 'reports', 'stores', 'adnetwork', 'gifts', 'support', 'ticket', 'audit', 'account', 'backups'],
         'support' => ['dashboard', 'users', 'user', 'subscriptions', 'transactions', 'transaction', 'gifts', 'support', 'ticket', 'account'],
         'analyst' => ['dashboard', 'reports', 'subscriptions', 'transactions', 'ads', 'placements', 'account'],
     ];
@@ -183,6 +183,7 @@ final class Admin
         ['transactions', 'پرداخت‌ها و تراکنش‌ها'],
         ['support', 'پشتیبانی اشتراک‌ها'],
         ['gifts', 'هدیه و دسترسی ویژه'],
+        ['promos', 'کد تخفیف و کد هدیه'],
         ['', 'قیمت و دسترسی'],
         ['plans', 'پلن‌ها و قیمت‌ها'],
         ['campaigns', 'کمپین‌های تخفیف'],
@@ -267,6 +268,45 @@ final class Admin
         }
         fclose($out);
         exit;
+    }
+
+    /**
+     * Searchable multi-select list of accounts (no typing usernames by hand): search, filters,
+     * «select all shown» and a counter. Posts the chosen ids as $name[].
+     */
+    public static function userPicker(string $name, array $selected = []): string
+    {
+        $now = Clock::sql();
+        $rows = Db::all("SELECT u.id, u.username, u.created_at, u.last_login_at,
+            EXISTS (SELECT 1 FROM {entitlements} e WHERE e.user_id = u.id AND e.status = 'active' AND e.starts_at <= ? AND (e.expires_at IS NULL OR e.expires_at > ?)) pro,
+            EXISTS (SELECT 1 FROM {purchases} p WHERE p.user_id = u.id AND p.status IN ('verified','signature_verified')) buyer
+            FROM {users} u WHERE u.status = 'active' ORDER BY u.id DESC LIMIT 5000", [$now, $now]);
+        $week = Clock::now() - 7 * 86400;
+        $sel = array_map('strval', $selected);
+        $h = '<div class="picker" data-name="' . e($name) . '">';
+        $h .= '<div class="row" style="gap:6px;margin-bottom:6px"><input type="search" class="pk-q" placeholder="جست‌وجوی نام کاربری…" style="flex:2">';
+        $h .= '<select class="pk-f" style="flex:1"><option value="">همه</option><option value="free">رایگان</option><option value="pro">Pro فعال</option><option value="buyer">خریدار</option><option value="new">۷ روز اخیر</option><option value="active">فعال در ۷ روز اخیر</option><option value="sel">فقط انتخاب‌شده‌ها</option></select></div>';
+        $h .= '<div class="row" style="gap:6px;margin-bottom:6px;flex:0"><button type="button" class="btn sm ghost pk-all">انتخاب همهٔ نمایش‌داده‌ها</button><button type="button" class="btn sm ghost pk-none">پاک کردن انتخاب</button><span class="muted pk-count"></span></div>';
+        $h .= '<div class="pk-list" style="max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:6px;background:#fff">';
+        foreach ($rows as $r) {
+            $tags = [];
+            if ($r['pro']) $tags[] = 'pro'; else $tags[] = 'free';
+            if ($r['buyer']) $tags[] = 'buyer';
+            if (Clock::ts($r['created_at']) > $week) $tags[] = 'new';
+            if ($r['last_login_at'] !== null && Clock::ts($r['last_login_at']) > $week) $tags[] = 'active';
+            $h .= '<label class="check pk-item" data-u="' . e(strtolower($r['username'])) . '" data-t="' . implode(' ', $tags) . '"><input type="checkbox" name="' . e($name) . '[]" value="' . (int)$r['id'] . '"' . (in_array((string)$r['id'], $sel, true) ? ' checked' : '') . '> <span class="ltr">' . e($r['username']) . '</span>'
+                . ($r['pro'] ? ' <span class="badge gold">Pro</span>' : '') . ($r['buyer'] ? ' <span class="badge ok">خریدار</span>' : '') . '</label>';
+        }
+        if (!$rows) $h .= '<p class="muted">هنوز حسابی ساخته نشده است.</p>';
+        return $h . '</div></div>';
+    }
+
+    /** Ids posted by a [userPicker], checked against the database. */
+    public static function pickedUsers(string $name): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', (array)($_POST[$name] ?? [])))));
+        if (!$ids) return [];
+        return Db::all('SELECT * FROM {users} WHERE id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')', $ids);
     }
 
     public static function dtInput(?string $sql): string

@@ -143,6 +143,7 @@ fun themeGrid(screen: Screen, onPick: ((ThemeSpec) -> Unit)? = null): View {
             addView(kit.horizontal().apply {
                 addView(kit.weight(kit.text(t.title, TextStyle.BODY_BOLD, if (t.id == current) Royal.turquoiseLight else Royal.goldLight, maxLines = 1)))
                 if (t.id == current) addView(kit.icon(RoyalIcon.CHECK, Royal.turquoiseLight, 18))
+                else if (Gate.itemLocked("themes", t.id)) addView(Gate.badge(screen))
             })
             addView(kit.text(t.latin, TextStyle.CAPTION, Royal.dim, maxLines = 1).apply { textDirection = View.TEXT_DIRECTION_LTR; gravity = Gravity.END })
             addView(kit.text(t.summary, TextStyle.CAPTION, Royal.muted, maxLines = 3))
@@ -150,6 +151,7 @@ fun themeGrid(screen: Screen, onPick: ((ThemeSpec) -> Unit)? = null): View {
             contentDescription = "سبک ${t.title}"
             setOnClickListener {
                 kit.tap(it)
+                if (t.id != current && Gate.itemLocked("themes", t.id)) { Gate.lockedItem(screen, "سبک " + t.title); return@setOnClickListener }
                 if (onPick != null) onPick(t)
                 else if (t.id != ThemeEngine.spec.id) host.updateSettings { s -> s.copy(general = s.general.copy(theme = t.id)) }
             }

@@ -1,7 +1,10 @@
-# Generated on the host — never commit.
+# Generated on the host — never commit (the blank index pages stay so the folders exist in the ZIP).
 public/storage/config.php
 public/storage/install.lock
-public/storage/keys/
-public/storage/backups/
-public/storage/logs/
+public/storage/keys/*
+!public/storage/keys/index.html
+public/storage/backups/*
+!public/storage/backups/index.html
+public/storage/logs/*
+!public/storage/logs/index.html
 public/media/*/

@@ -63,8 +63,10 @@ private fun Screen.elsewherePanel(): View? {
 private fun Screen.watchPro(): () -> Unit = { host.post(0) { if (host.current === this) host.refresh() } }
 
 // ================================================================ plans and purchase
-class ProScreen(host: MainActivity, private val reason: String? = null) : Screen(host) {
+class ProScreen(host: MainActivity, private val reason: String? = null, private val focusPlan: String? = null) : Screen(host) {
     private var busy = false
+    /** Discount code accepted for this visit: code, percent and the plan it is for (null = all plans). */
+    private var promo: Triple<String, Int, String?>? = null
     private val listener = watchPro()
 
     override fun onShow() { ProState.listeners += listener; ProSync.refreshConfig() }
@@ -106,9 +108,11 @@ class ProScreen(host: MainActivity, private val reason: String? = null) : Screen
             }, kit.spaced(12))
         } else {
             val monthly = plans.firstOrNull { it.days == 30 }?.finalPrice
-            plans.forEach { addView(planCard(it, monthly), kit.spaced(10)) }
+            // A plan opened from an ad comes first and highlighted.
+            plans.sortedBy { if (it.code == focusPlan) 0 else 1 }.forEach { addView(planCard(it, monthly), kit.spaced(10)) }
         }
 
+        addView(kit.button(promo?.let { "کد ${it.first}: ${kit.n(it.second)}٪ تخفیف فعال است" } ?: "کد تخفیف یا هدیه دارید؟", ButtonKind.GHOST, RoyalIcon.STAR, 44) { promoDialog() }, kit.spaced(10))
         addView(kit.text("پرداخت فقط از راه ${StoreInfo.storeName} و با همان قیمتی انجام می‌شود که اینجا می‌بینید. اشتراک‌های زمان‌دار خودکار تمدید نمی‌شوند. هر اشتراک در هر زمان فقط روی یک گوشی فعال است؛ اگر گوشی عوض شد، با همان حساب وارد شوید و اشتراک را به گوشی تازه منتقل کنید.",
             TextStyle.CAPTION, Royal.dim), kit.spaced(10))
         addView(kit.horizontal().apply {
@@ -132,7 +136,7 @@ class ProScreen(host: MainActivity, private val reason: String? = null) : Screen
         return out
     }
 
-    private fun planCard(p: PlanOffer, monthly: Int?): View = kit.panel(if (p.badge != null) PanelStyle.RAISED else PanelStyle.NORMAL).apply {
+    private fun planCard(p: PlanOffer, monthly: Int?): View = kit.panel(if (p.code == focusPlan) PanelStyle.SELECTED else if (p.badge != null) PanelStyle.RAISED else PanelStyle.NORMAL).apply {
         contentDescription = p.title
         addView(kit.horizontal().apply {
             addView(kit.text(p.title, TextStyle.HEADING, Royal.title, maxLines = 1), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
@@ -140,7 +144,14 @@ class ProScreen(host: MainActivity, private val reason: String? = null) : Screen
         })
         if (p.description.isNotBlank()) addView(kit.text(p.description, TextStyle.LABEL, Royal.muted))
         addView(kit.gap(6))
-        addView(kit.horizontal().apply {
+        val promoPrice = promo?.takeIf { it.third == null || it.third == p.code }?.let { maxOf(1000, minOf(p.finalPrice, Math.round(p.finalPrice * (100 - it.second) / 100.0 / 100.0).toInt() * 100)) }
+        if (promoPrice != null && promoPrice < p.finalPrice) addView(kit.horizontal().apply {
+            addView(kit.text(toman(promoPrice), TextStyle.NUMBER_L, Royal.turquoiseLight, maxLines = 1))
+            addView(kit.hgap(10))
+            addView(kit.text(toman(p.finalPrice), TextStyle.LABEL, Royal.dim, maxLines = 1).apply { paintFlags = paintFlags or Paint.STRIKE_THRU_TEXT_FLAG })
+            addView(kit.hgap(8))
+            addView(kit.badge("کد ${kit.n(promo!!.second)}٪", Royal.turquoise, filled = true))
+        }) else addView(kit.horizontal().apply {
             addView(kit.text(toman(p.finalPrice), TextStyle.NUMBER_L, Royal.goldLight, maxLines = 1))
             if (p.discountPercent > 0 && p.basePrice > p.finalPrice) {
                 addView(kit.hgap(10))
@@ -177,7 +188,8 @@ class ProScreen(host: MainActivity, private val reason: String? = null) : Screen
         }
         busy = true
         kit.toast("در حال آماده‌سازی خرید…")
-        ProSync.buy(host, p) { status, err ->
+        val code = promo?.takeIf { it.third == null || it.third == p.code }?.first
+        ProSync.buy(host, p, code) { status, err ->
             busy = false
             when {
                 err?.code == "canceled" -> kit.toast(err.message ?: "")
@@ -186,6 +198,41 @@ class ProScreen(host: MainActivity, private val reason: String? = null) : Screen
                 else -> { kit.toast("Pro فعال شد؛ سپاس از حمایت شما"); host.replace(SubscriptionScreen(host)) }
             }
         }
+    }
+
+    private fun promoDialog() {
+        if (!ProState.loggedIn) {
+            kit.dialog("کد تخفیف یا هدیه", "برای استفاده از کد، اول وارد حساب شوید یا حساب بسازید (فقط نام کاربری و رمز).", null, listOf(
+                DialogAction("ورود یا ساخت حساب", ButtonKind.PRIMARY) { host.push(AccountScreen(host) { host.pop(); promoDialog() }) },
+                DialogAction("انصراف")
+            )).show()
+            return
+        }
+        val input = latinField("کد را وارد کنید")
+        val err = errorLine()
+        lateinit var d: android.app.Dialog
+        d = kit.dialog("کد تخفیف یا هدیه", "کد هدیه بلافاصله فعال می‌شود؛ کد تخفیف روی قیمت پلن‌ها اعمال می‌شود.", kit.vertical().apply { addView(input, kit.spaced(8)); addView(err) }, listOf(
+            DialogAction("ثبت کد", ButtonKind.PRIMARY, dismiss = false) {
+                val code = input.text.toString().trim()
+                if (code.isEmpty()) return@DialogAction
+                err.show(null)
+                ProSync.checkPromo(code) { info, e ->
+                    when {
+                        e != null -> err.show(e.message)
+                        info!!.optString("kind") == "discount" && !info.optBoolean("usable_here", true) -> err.show(info.optString("note"))
+                        info.optString("kind") == "discount" -> {
+                            promo = Triple(info.optString("code"), info.optInt("percent"), info.optString("plan").takeIf { it.isNotBlank() && it != "null" })
+                            d.dismiss(); kit.toast(info.optString("title")); host.refresh()
+                        }
+                        else -> ProSync.redeemPromo(code) { got, e2 ->
+                            if (e2 != null) err.show(e2.message) else { d.dismiss(); kit.toast((got?.optString("title") ?: "هدیه") + " فعال شد"); host.refresh() }
+                        }
+                    }
+                }
+            },
+            DialogAction("انصراف")
+        ))
+        d.show()
     }
 
     private fun restore() {
@@ -201,26 +248,56 @@ class ProScreen(host: MainActivity, private val reason: String? = null) : Screen
 
 object Features {
     val titles = mapOf(
-        "shalam" to "داوری شلم", "menfi" to "داوری منفی", "hezartaii" to "هزارتایی", "dolo" to "دو لو گشنیز", "mafia" to "راوی مافیا",
-        "mafia_custom" to "سناریو و نقش دلخواه مافیا", "panto" to "پانتومیم", "panto_words" to "کلمات من در پانتومیم", "spy" to "جاسوس",
-        "leagues" to "لیگ‌ها", "rankings" to "رنک‌بندی و کارنامه", "history" to "تاریخچه", "photos" to "عکس از گالری", "themes" to "سبک‌های ظاهری",
+        "shalam" to "داوری شلم", "menfi" to "داوری منفی", "hezartaii" to "هزارتایی", "dolo" to "دو لو گشنیز",
+        "mafia" to "راوی مافیا", "mafia_scenarios" to "سناریوهای مافیا", "mafia_custom" to "ساخت و ویرایش سناریو و نقش مافیا",
+        "mafia_last_cards" to "کارت حرکت آخر", "mafia_groups" to "گروه‌های بازی مافیا", "mafia_report" to "گزارش بازی مافیا",
+        "mafia_audio" to "موسیقی و صدای راوی", "panto" to "پانتومیم", "panto_modes" to "نوع مسابقهٔ پانتومیم", "panto_words" to "کلمات من در پانتومیم",
+        "spy" to "جاسوس", "spy_words" to "کلمات من در جاسوس", "leagues" to "لیگ‌ها", "rankings" to "رنک‌بندی", "profiles" to "کارنامهٔ افراد و تیم‌ها",
+        "history" to "تاریخچه", "charts" to "نمودار و آمار کامل بازی", "photos" to "عکس از گالری", "themes" to "سبک‌های ظاهری",
         "backup" to "پشتیبان‌گیری", "cloud_backup" to "پشتیبان ابری", "share" to "اشتراک تصویر", "deck_calc" to "ماشین‌حساب ورق"
     )
 }
 
 /**
- * Entry check of a module. With no server configuration every module is free, as before.
- * [used] is how many the player already has, for modules limited by count (leagues, photos).
+ * Free / Pro rules from the panel. With no server configuration every module is free, as before.
+ * Whole modules are checked when their page opens ([Screen.featureKey]); single items (a mafia scenario,
+ * a last-move card, a pantomime mode, a style) with [itemLocked].
  */
 object Gate {
-    fun open(screen: Screen, key: String, used: Int = 0, onAllowed: () -> Unit) {
+    /** Pro-only items of a module for this user (empty for Pro). */
+    fun proItems(key: String): Set<String> {
+        if (ProState.isPro) return emptySet()
+        val signed = if (ProState.loggedIn && ProState.license.valid) ProState.license.features.optJSONObject(key) else null
+        val f = signed ?: ProState.config.optJSONObject("features")?.optJSONObject(key) ?: return emptySet()
+        val a = f.optJSONArray("pro_items") ?: return emptySet()
+        return (0 until a.length()).map { a.optString(it) }.toSet()
+    }
+
+    fun itemLocked(key: String, id: String): Boolean = id in proItems(key)
+
+    /** Opens the Pro page explaining why, for a locked item. */
+    fun lockedItem(screen: Screen, title: String) = screen.host.push(ProScreen(screen.host, "«$title» از امکانات Pro است."))
+
+    /** Small crown badge for locked items in lists. */
+    fun badge(screen: Screen): View = screen.kit.badge("Pro", Royal.gold, filled = true)
+
+    /** True when the page may open; otherwise explains (or opens the Pro page) and returns false. */
+    fun allows(host: MainActivity, screen: Screen): Boolean {
+        val key = screen.featureKey ?: return true
+        val current = host.current ?: return true
+        var ok = false
+        open(current, key, screen.featureUsed) { ok = true }
+        return ok
+    }
+
+    fun open(screen: Screen, key: String, used: Int = -1, onAllowed: () -> Unit) {
         val (mode, allowed, limit) = ProState.feature(key)
         val title = Features.titles[key] ?: key
         when {
             mode == "disabled" -> screen.kit.toast("«$title» موقتاً در دسترس نیست.")
             !allowed && mode == "gift" -> screen.kit.toast("«$title» فعلاً فقط برای کاربران ویژه باز است.")
             !allowed -> screen.host.push(ProScreen(screen.host, "«$title» از قابلیت‌های Pro است."))
-            limit != null && used >= limit -> screen.host.push(ProScreen(screen.host, "در نسخهٔ رایگان تا ${screen.kit.n(limit)} مورد از «$title» می‌توانید بسازید. آنچه ساخته‌اید همیشه می‌ماند."))
+            limit != null && used >= 0 && used >= limit -> screen.host.push(ProScreen(screen.host, "در نسخهٔ رایگان تا ${screen.kit.n(limit)} مورد از «$title» می‌توانید بسازید. آنچه ساخته‌اید همیشه می‌ماند."))
             else -> onAllowed()
         }
     }
@@ -489,4 +566,9 @@ fun supportDialog(screen: Screen, kind: String) {
         DialogAction("انصراف")
     ))
     d.show()
+}
+
+/** Last-move cards the player may use under the panel's rules. */
+object MafiaCardRules {
+    fun usable(c: MafiaLastCard): Boolean = ProState.feature("mafia_last_cards").second && !Gate.itemLocked("mafia_last_cards", c.name)
 }

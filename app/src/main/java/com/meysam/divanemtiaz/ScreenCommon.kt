@@ -105,7 +105,7 @@ fun Screen.avatarPicker(current: Int, onPick: (Int) -> Unit) {
                 addView(kit.hgap(8))
             }
             addView(kit.weight(kit.button(if (PhotoStore.exists(current)) "عکس دیگر از گالری" else "انتخاب عکس از گالری", ButtonKind.PRIMARY, RoyalIcon.PLUS, 46) {
-                host.pickFile(arrayOf("image/*")) { uri ->
+                Gate.open(this@avatarPicker, "photos", PhotoStore.count()) { host.pickFile(arrayOf("image/*")) { uri ->
                     if (uri == null) return@pickFile
                     Thread {
                         val id = PhotoStore.save(host, uri)
@@ -113,7 +113,7 @@ fun Screen.avatarPicker(current: Int, onPick: (Int) -> Unit) {
                             if (id == null) kit.toast("این عکس باز نشد") else { dialog.dismiss(); onPick(id) }
                         }
                     }.start()
-                }
+                } }
             }))
         })
         addView(kit.text("یا یکی از نشان‌ها:", TextStyle.LABEL, Royal.muted), kit.spaced(6))

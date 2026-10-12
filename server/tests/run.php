@@ -14,6 +14,7 @@ define('DIVAN_TEST', true);
 $src = dirname(__DIR__) . '/public';
 require $src . '/app/lib.php';
 require $src . '/app/migrations.php';
+require $src . '/app/catalog.php';
 require $src . '/app/domain.php';
 require $src . '/app/markets.php';
 require $src . '/app/backup.php';
@@ -367,7 +368,16 @@ scenario('features, gifts and ads', function () use ($storeKey) {
     [$pro] = Users::register('feat_pro', 'secret123');
     buy($pro, 'm1', 'bazaar', 'tok-f1', $storeKey);
     $all = Features::forUser((int)$free['id'], false);
-    check(count($all) === 18 && !in_array(false, array_column($all, 'allowed'), true), 'all 18 modules free by default');
+    check(count($all) === 27 && !in_array(false, array_column($all, 'allowed'), true), 'all 27 modules free by default');
+    // Single items as Pro: two mafia scenarios and one last-move card.
+    Db::update('features', ['pro_items' => 'godfather,zodiac'], 'k = ?', ['mafia_scenarios']);
+    Db::update('features', ['pro_items' => 'INTELLIGENCE'], 'k = ?', ['mafia_last_cards']);
+    $fi = Features::forUser((int)$free['id'], false);
+    check($fi['mafia_scenarios']['pro_items'] === ['godfather', 'zodiac'] && $fi['mafia_scenarios']['allowed'], 'Pro-only scenarios listed for a free user; the module stays open');
+    check(Features::forUser((int)$pro['id'], true)['mafia_scenarios']['pro_items'] === [], 'Pro user has no locked items');
+    check($fi['mafia_last_cards']['pro_items'] === ['INTELLIGENCE'], 'single last-move card as Pro');
+    check(count(Catalog::items('mafia_scenarios')) === 48 && isset(Catalog::items('mafia_last_cards')['INTELLIGENCE']) && isset(Catalog::items('themes')['emerald']), 'item catalog from the app');
+    Db::run("UPDATE {features} SET pro_items = NULL");
     Db::update('features', ['mode' => 'pro'], 'k = ?', ['cloud_backup']);
     Db::update('features', ['mode' => 'limited', 'limit_value' => 2], 'k = ?', ['leagues']);
     Db::update('features', ['mode' => 'gift'], 'k = ?', ['share']);
@@ -390,8 +400,15 @@ scenario('features, gifts and ads', function () use ($storeKey) {
     $n = Ads::record([['event' => 'impression', 'ad_id' => $id, 'placement' => 'home_inline', 'count' => 5], ['event' => 'click', 'ad_id' => $id, 'placement' => 'home_inline'], ['event' => 'impression', 'placement' => 'mafia_night'], ['event' => 'hack', 'placement' => 'home_inline']]);
     check($n === 2, 'unknown events and unsafe placements ignored');
     check(count(Ads::configFor('myket', false)['ads']) === 0, 'total cap stops the ad');
+    // Fixed bars: off by default, on for chosen pages only.
+    $cfgSticky = fn() => array_column(Ads::configFor('myket', false)['placements'], null, 'key');
+    $st = $cfgSticky();
+    check(isset($st['sticky_bottom'], $st['sticky_top']) && !$st['sticky_bottom']['active'] && in_array('home', $st['sticky_bottom']['screens'], true), 'fixed bars exist, off by default, with page list');
+    check(!array_intersect($st['sticky_bottom']['screens'], ['game', 'board', 'timer', 'mafia_night', 'vote', 'scoring']), 'fixed bars never on game pages');
+    check(safe_target_url('divan://pro') && safe_target_url('divan://plan/m3') && !safe_target_url('divan://evil/x') && !safe_target_url('javascript:x'), 'ad buttons may open the Pro page or a plan in the app');
     $placements = array_column(Ads::placements(), 'screen');
     check(!array_intersect($placements, ['game', 'timer', 'mafia', 'reveal', 'scoring']), 'no placement on game, timer, mafia or scoring screens');
+    check(Ads::configFor('myket', false)['network']['test'] === true, 'network test flag reaches the app');
     Settings::set('ads_enabled', false);
 });
 
@@ -441,6 +458,44 @@ scenario('backup and safe restore', function () use ($storeKey) {
     throws(fn() => Backup::restore($blob, true), 'not_fresh', 'keys are adopted only on a fresh install');
 });
 
+
+scenario('discount and gift codes', function () use ($storeKey, $bazaar) {
+    freshIp();
+    [$a] = Users::register('code_a', 'secret123');
+    [$b] = Users::register('code_b', 'secret123');
+    $mk = fn(array $row) => Db::insert('promo_codes', $row + ['active' => 1, 'uses' => 0, 'created_at' => Clock::sql()]);
+    $mk(['code' => 'GIFT30', 'kind' => 'gift_pro', 'days' => 30, 'max_uses' => 1]);
+    $p = Promo::redeemGift(' gift-30 ', $a);
+    check(Entitlements::summary((int)$a['id'])['pro'] && Entitlements::summary((int)$a['id'])['days_left'] === 30, 'gift code gives 30 days of Pro (code typed loosely)');
+    throws(fn() => Promo::redeemGift('GIFT30', $a), 'promo_used', 'same account cannot use a code twice');
+    throws(fn() => Promo::redeemGift('GIFT30', $b), 'promo_used_up', 'code with one use is used up');
+    throws(fn() => Promo::redeemGift('NOPE99', $b), 'promo_invalid', 'unknown code rejected');
+    $mk(['code' => 'ONLYA', 'kind' => 'gift_pro', 'days' => null, 'users' => (string)$a['id']]);
+    throws(fn() => Promo::redeemGift('ONLYA', $b), 'promo_not_yours', 'code limited to chosen accounts');
+    $mk(['code' => 'OLD1', 'kind' => 'gift_pro', 'days' => 5, 'ends_at' => Clock::sql(Clock::now() - 10)]);
+    throws(fn() => Promo::redeemGift('OLD1', $b), 'promo_expired', 'expired code rejected');
+    $mk(['code' => 'CARDS', 'kind' => 'gift_feature', 'feature_k' => 'mafia_last_cards', 'days' => 7]);
+    Db::update('features', ['mode' => 'pro'], 'k = ?', ['mafia_last_cards']);
+    Promo::redeemGift('CARDS', $b);
+    check(Features::forUser((int)$b['id'], false)['mafia_last_cards']['allowed'] && !Entitlements::summary((int)$b['id'])['pro'], 'gift code for one module opens just that module');
+    Db::update('features', ['mode' => 'free'], 'k = ?', ['mafia_last_cards']);
+    // Discount: Bazaar only, through the signed dynamic price.
+    $mk(['code' => 'OFF20', 'kind' => 'discount', 'percent' => 20, 'plan_code' => 'm3']);
+    throws(fn() => Purchases::intent($b, 'm3', 'bazaar', 'OFF20'), 'promo_store', 'discount needs the Bazaar dynamic-price key');
+    Settings::setSecret('bazaar_discount_key', 'k3y-for-dynamic-pricing');
+    throws(fn() => Purchases::intent($b, 'm3', 'myket', 'OFF20'), 'promo_store', 'no discount codes in Myket');
+    throws(fn() => Purchases::intent($b, 'm1', 'bazaar', 'OFF20'), 'promo_other_plan', 'discount for another plan rejected');
+    throws(fn() => Promo::redeemGift('OFF20', $b), 'promo_is_discount', 'discount code is not a gift');
+    $i = Purchases::intent($b, 'm3', 'bazaar', 'OFF20');
+    $claims = json_decode(Crypto::b64uDecode(explode('.', (string)$i['dynamic_price_token'])[1]), true);
+    check($i['price'] === 39200 && $claims['price'] === 392000, 'discounted price 49,000 → 39,200 toman, signed for Bazaar in rials');
+    $bazaar->answers['tok-off'] = 'valid';
+    $r = Purchases::verify($b, receipt('bazaar', $i['sku'], 'tok-off', $i['payload'], $storeKey));
+    check((int)$r['purchase']['amount_toman'] === 39200, 'purchase recorded at the discounted price');
+    check((int)Db::value("SELECT uses FROM {promo_codes} WHERE code = 'OFF20'") === 1, 'discount use counted after the purchase is confirmed');
+    throws(fn() => Purchases::intent($b, 'm3', 'bazaar', 'OFF20'), 'promo_used', 'discount used once per account');
+    Settings::setSecret('bazaar_discount_key', '');
+});
 
 scenario('API end to end', function () use ($storeKey, $myket) {
     freshIp();

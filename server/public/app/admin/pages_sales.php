@@ -166,22 +166,28 @@ final class SalesPages
               <form method="post"><?= Admin::csrfField() ?>
                 <label>اقدام</label>
                 <select name="action" id="ua-action">
+                  <option value="gift">هدیه (Pro کامل یا یک قابلیت)</option>
                   <option value="reset_password">بازنشانی رمز (رمز موقت + کلید بازیابی جدید)</option>
                   <option value="unlock">برداشتن قفل ورود</option>
                   <option value="revoke_sessions">خروج از همهٔ دستگاه‌ها</option>
                   <option value="<?= $u['status'] === 'active' ? 'disable' : 'enable' ?>"><?= $u['status'] === 'active' ? 'غیرفعال کردن حساب' : 'فعال کردن حساب' ?></option>
-                  <option value="gift_pro">هدیهٔ Pro</option>
-                  <option value="grant_feature">دسترسی ویژه به یک قابلیت</option>
                   <option value="transfer">انتقال خریدها به حساب دیگر</option>
                   <option value="release_device">آزاد کردن گوشی اشتراک (فعال‌شدن روی گوشی بعدی)</option>
                   <option value="reset_moves">صفر کردن شمارش انتقال‌های گوشی</option>
                   <option value="note">یادداشت داخلی</option>
                 </select>
-                <div class="row">
-                  <div><label>روز (برای هدیه؛ خالی = دائمی)</label><input type="number" name="days" min="1" max="3650"></div>
-                  <div><label>قابلیت</label><select name="feature"><?php foreach ($features as $f) echo '<option value="' . e($f['k']) . '">' . e($f['title']) . '</option>'; ?></select></div>
+                <div data-for="gift">
+                  <label>چه چیزی هدیه شود</label>
+                  <select name="feature"><option value="pro" selected>Pro کامل — همهٔ قابلیت‌ها و بدون تبلیغ</option>
+                    <optgroup label="فقط یک قابلیت (اختیاری)"><?php foreach ($features as $f) echo '<option value="' . e($f['k']) . '">' . e($f['title']) . '</option>'; ?></optgroup></select>
+                  <label>مدت</label>
+                  <div class="row"><div><input type="number" name="days" min="1" max="3650" placeholder="تعداد روز"></div><div class="hint" style="flex:2">خالی = دائمی (مادام‌العمر)</div></div>
                 </div>
-                <label>حساب مقصد (برای انتقال)</label><input type="text" name="target" class="ltr" placeholder="username">
+                <div data-for="transfer" style="display:none">
+                  <label>حساب مقصد</label>
+                  <input type="text" name="target" class="ltr" list="ua-users" placeholder="نام کاربری را بنویسید یا از فهرست انتخاب کنید">
+                  <datalist id="ua-users"><?php foreach (Db::all('SELECT username FROM {users} WHERE id <> ? ORDER BY id DESC LIMIT 3000', [$u['id']]) as $o) echo '<option value="' . e($o['username']) . '">'; ?></datalist>
+                </div>
                 <label>دلیل (اجباری)</label><textarea name="reason" required minlength="5" placeholder="مثلاً: مالکیت با شمارهٔ سفارش بازار ۱۲۳۴ تأیید شد"></textarea>
                 <p><button class="btn gold" data-confirm="این اقدام انجام شود؟">ثبت اقدام</button></p>
               </form>
@@ -258,10 +264,11 @@ final class SalesPages
             case 'revoke_sessions': Db::update('sessions', ['revoked_at' => Clock::sql()], 'user_id = ? AND revoked_at IS NULL', [$id]); break;
             case 'disable': Db::update('users', ['status' => 'disabled', 'updated_at' => Clock::sql()], 'id = ?', [$id]); Db::update('sessions', ['revoked_at' => Clock::sql()], 'user_id = ? AND revoked_at IS NULL', [$id]); break;
             case 'enable': Db::update('users', ['status' => 'active', 'updated_at' => Clock::sql()], 'id = ?', [$id]); break;
+            case 'gift':
             case 'gift_pro':
             case 'grant_feature': {
                 if (!$giftOnly) throw new ApiError('role', 'هدیه دادن فقط برای مدیر اصلی و مدیر مجاز است.');
-                $feature = $action === 'gift_pro' ? 'pro' : (string)($_POST['feature'] ?? '');
+                $feature = $action === 'gift_pro' ? 'pro' : ((string)($_POST['feature'] ?? 'pro') ?: 'pro');
                 if ($feature !== 'pro' && Db::value('SELECT k FROM {features} WHERE k = ?', [$feature]) === null) throw new ApiError('feature', 'قابلیت نامعتبر است.');
                 $days = (int)($_POST['days'] ?? 0);
                 self::grant($id, $feature, $days > 0 ? $days : null, $reason);
@@ -546,20 +553,19 @@ final class SalesPages
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!in_array(Admin::$me['role'], ['owner', 'manager'], true)) throw new ApiError('role', 'هدیه دادن فقط برای مدیر اصلی و مدیر مجاز است.');
             $reason = Admin::requireReason();
-            $names = array_filter(array_map('trim', preg_split('/[\s,،]+/u', (string)($_POST['usernames'] ?? ''))));
-            $feature = (string)($_POST['feature'] ?? 'pro');
+            $users = Admin::pickedUsers('users');
+            if (!$users) throw new ApiError('users', 'دست‌کم یک حساب را از فهرست انتخاب کنید.');
+            $feature = (string)($_POST['feature'] ?? 'pro') ?: 'pro';
             if ($feature !== 'pro' && Db::value('SELECT k FROM {features} WHERE k = ?', [$feature]) === null) throw new ApiError('feature', 'قابلیت نامعتبر است.');
             $days = (int)($_POST['days'] ?? 0);
-            $ok = []; $missing = [];
-            foreach (array_slice($names, 0, 200) as $n) {
-                $u = Users::byName($n);
-                if ($u === null) { $missing[] = $n; continue; }
+            $ok = [];
+            foreach ($users as $u) {
                 self::grant((int)$u['id'], $feature, $days > 0 ? $days : null, $reason);
                 Support::action(null, (int)$u['id'], (int)Admin::$me['id'], 'gift_' . $feature, $reason, ['days' => $days ?: null]);
                 $ok[] = $u['username'];
             }
             Admin::audit('gift', 'user_grants', $feature, $reason, null, ['users' => $ok, 'days' => $days ?: null]);
-            Admin::flash(fa_digits(count($ok)) . ' حساب هدیه گرفت.' . ($missing ? ' پیدا نشد: ' . implode('، ', $missing) : ''), $missing ? 'warn' : 'ok');
+            Admin::flash(fa_digits(count($ok)) . ' حساب هدیه گرفت. اپ هر کاربر با باز شدن برنامه آن را می‌گیرد.');
             Admin::redirect('p=gifts');
         }
         $rows = Db::all('SELECT g.*, u.username, a.username admin_name FROM {user_grants} g JOIN {users} u ON u.id = g.user_id LEFT JOIN {admins} a ON a.id = g.admin_id ORDER BY g.id DESC LIMIT 200');
@@ -568,19 +574,21 @@ final class SalesPages
             ?>
             <div class="card"><h3>هدیهٔ جدید</h3>
               <form method="post"><?= Admin::csrfField() ?>
-                <label>نام‌های کاربری (با فاصله، ویرگول یا خط جدا کنید)</label><textarea name="usernames" class="ltr" required></textarea>
+                <label>حساب‌ها (جست‌وجو کنید و تیک بزنید؛ چند انتخاب ممکن است)</label>
+                <?= Admin::userPicker('users') ?>
                 <div class="row">
-                  <div><label>هدیه</label><select name="feature"><option value="pro">Pro کامل (بدون تبلیغ و همهٔ قابلیت‌ها)</option><?php foreach ($features as $f) echo '<option value="' . e($f['k']) . '">فقط: ' . e($f['title']) . '</option>'; ?></select></div>
+                  <div><label>هدیه</label><select name="feature"><option value="pro" selected>Pro کامل — همهٔ قابلیت‌ها و بدون تبلیغ</option><optgroup label="فقط یک قابلیت (اختیاری)"><?php foreach ($features as $f) echo '<option value="' . e($f['k']) . '">' . e($f['title']) . '</option>'; ?></optgroup></select></div>
                   <div><label>مدت به روز (خالی = دائمی)</label><input type="number" name="days" min="1" max="3650" placeholder="مثلاً ۳۰"></div>
                 </div>
                 <label>دلیل (اجباری)</label><input type="text" name="reason" required minlength="5" placeholder="مثلاً: برندهٔ مسابقهٔ کانال">
                 <p><button class="btn gold">ثبت هدیه</button></p>
               </form>
+              <p class="hint">برای هدیه به کسانی که هنوز حساب ندارند یا برای یک کمپین عمومی، از «کد تخفیف و کد هدیه» یک کد هدیه بسازید.</p>
             </div>
             <div class="table-wrap"><table><thead><tr><th>کاربر</th><th>هدیه</th><th>تا</th><th>دلیل</th><th>توسط</th><th>وضعیت</th></tr></thead><tbody>
             <?php foreach ($rows as $g):
                 $active = $g['revoked_at'] === null && ($g['expires_at'] === null || Clock::ts($g['expires_at']) > Clock::now()); ?>
-              <tr><td><a class="ltr" href="index.php?p=user&id=<?= (int)$g['user_id'] ?>"><?= e($g['username']) ?></a></td><td><?= e($g['feature_k'] === 'pro' ? 'Pro کامل' : $g['feature_k']) ?></td>
+              <tr><td><a class="ltr" href="index.php?p=user&id=<?= (int)$g['user_id'] ?>"><?= e($g['username']) ?></a></td><td><?= e($g['feature_k'] === 'pro' ? 'Pro کامل' : (Db::value('SELECT title FROM {features} WHERE k = ?', [$g['feature_k']]) ?? $g['feature_k'])) ?></td>
                 <td><?= $g['expires_at'] === null ? 'دائمی' : e(jdate($g['expires_at'], false)) ?></td><td><?= e($g['reason']) ?></td><td><?= e($g['admin_name'] ?? '—') ?></td>
                 <td><?= $g['revoked_at'] !== null ? '<span class="badge bad">لغوشده</span>' : ($active ? '<span class="badge ok">فعال</span>' : '<span class="badge">پایان‌یافته</span>') ?></td></tr>
             <?php endforeach; if (!$rows) echo '<tr><td colspan="6" class="muted">هنوز هدیه‌ای ثبت نشده.</td></tr>'; ?>
@@ -588,6 +596,107 @@ final class SalesPages
             <p class="hint">برای لغو یک هدیه، صفحهٔ حساب همان کاربر را باز کنید.</p>
             <?php
         }, 'gifts');
+    }
+
+    // ================================================================ discount and gift codes
+    public static function promos(): void
+    {
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            if (!in_array(Admin::$me['role'], ['owner', 'manager'], true)) throw new ApiError('role', 'ساخت کد فقط برای مدیر اصلی و مدیر مجاز است.');
+            $reason = Admin::requireReason();
+            if (($_POST['action'] ?? '') === 'toggle') {
+                $p = Db::one('SELECT * FROM {promo_codes} WHERE id = ?', [(int)($_POST['id'] ?? 0)]);
+                if ($p === null) throw new ApiError('promo', 'کد پیدا نشد.');
+                Db::update('promo_codes', ['active' => $p['active'] ? 0 : 1], 'id = ?', [$p['id']]);
+                Admin::audit('promo_toggle', 'promo', $p['id'], $reason);
+                Admin::redirect('p=promos');
+            }
+            $kind = (string)($_POST['kind'] ?? 'gift_pro');
+            if (!isset(Promo::KINDS[$kind])) throw new ApiError('kind', 'نوع کد نامعتبر است.');
+            $count = max(1, min(500, (int)($_POST['count'] ?? 1)));
+            $custom = Promo::normalize((string)($_POST['code'] ?? ''));
+            if ($custom !== '' && $count > 1) throw new ApiError('code', 'برای ساخت چند کد، کادر «کد دلخواه» را خالی بگذارید تا کدها خودکار ساخته شوند.');
+            if ($custom !== '' && (strlen($custom) < 4 || strlen($custom) > 32)) throw new ApiError('code', 'کد دلخواه باید ۴ تا ۳۲ حرف لاتین یا رقم باشد.');
+            $days = (int)($_POST['days'] ?? 0);
+            $percent = (int)($_POST['percent'] ?? 0);
+            $feature = (string)($_POST['feature'] ?? '');
+            $plan = (string)($_POST['plan'] ?? '');
+            if ($kind === 'discount' && ($percent < 1 || $percent > 90)) throw new ApiError('percent', 'درصد تخفیف باید بین ۱ تا ۹۰ باشد.');
+            if ($kind === 'gift_feature' && Db::value('SELECT k FROM {features} WHERE k = ?', [$feature]) === null) throw new ApiError('feature', 'قابلیت را انتخاب کنید.');
+            if ($plan !== '' && Plans::byCode($plan) === null) throw new ApiError('plan', 'پلن نامعتبر است.');
+            $users = array_map(fn($u) => (string)$u['id'], Admin::pickedUsers('users'));
+            $made = [];
+            for ($i = 0; $i < $count; $i++) {
+                $code = $custom !== '' ? $custom : Promo::generate((int)($_POST['length'] ?? 8) ?: 8);
+                if (Db::value('SELECT id FROM {promo_codes} WHERE code = ?', [$code]) !== null) { if ($custom !== '') throw new ApiError('taken', 'این کد قبلاً ساخته شده است.'); $i--; continue; }
+                Db::insert('promo_codes', [
+                    'code' => $code, 'kind' => $kind, 'days' => $kind === 'discount' ? null : ($days > 0 ? $days : null),
+                    'feature_k' => $kind === 'gift_feature' ? $feature : null, 'plan_code' => $kind === 'discount' && $plan !== '' ? $plan : null,
+                    'percent' => $kind === 'discount' ? $percent : null, 'max_uses' => ($m = (int)($_POST['max_uses'] ?? 0)) > 0 ? $m : null,
+                    'users' => $users ? implode(',', $users) : null, 'starts_at' => Admin::dtParse($_POST['starts_at'] ?? ''), 'ends_at' => Admin::dtParse($_POST['ends_at'] ?? ''),
+                    'active' => 1, 'note' => mb_substr($reason, 0, 300), 'admin_id' => (int)Admin::$me['id'], 'created_at' => Clock::sql(),
+                ]);
+                $made[] = $code;
+            }
+            Admin::audit('promo_create', 'promo', implode(',', array_slice($made, 0, 5)), $reason, null, ['codes' => count($made), 'kind' => $kind]);
+            $_SESSION['new_codes'] = $made;
+            Admin::flash(fa_digits(count($made)) . ' کد ساخته شد.');
+            if ($kind === 'discount' && !Promo::discountUsable('bazaar')) Admin::flash('برای کار کردن کد تخفیف، «کلید تخفیف پویا»ی بازار را در «بازار و مایکت» ثبت کنید. در مایکت کد تخفیف ممکن نیست؛ از کد هدیه استفاده کنید.', 'warn');
+            Admin::redirect('p=promos');
+        }
+        if (isset($_GET['csv'])) {
+            $rows = Db::all('SELECT c.code, c.kind, c.days, c.percent, c.plan_code, c.uses, c.max_uses, c.active, c.created_at FROM {promo_codes} c ORDER BY c.id DESC');
+            Admin::csv('codes', ['code', 'kind', 'days', 'percent', 'plan', 'uses', 'max_uses', 'active', 'created_utc'], array_map('array_values', $rows));
+        }
+        $new = $_SESSION['new_codes'] ?? null; unset($_SESSION['new_codes']);
+        $rows = Db::all('SELECT c.*, (SELECT GROUP_CONCAT(u.username SEPARATOR ", ") FROM {promo_redemptions} r JOIN {users} u ON u.id = r.user_id WHERE r.code_id = c.id) used_by FROM {promo_codes} c ORDER BY c.id DESC LIMIT 300');
+        $features = Features::all();
+        $plans = Plans::all();
+        Admin::layout('کد تخفیف و کد هدیه', function () use ($rows, $features, $plans, $new) {
+            if ($new) echo '<div class="card"><h3>کدهای تازه</h3><div class="secret" style="font-size:.95rem;text-align:right">' . e(implode("  ", $new)) . '</div></div>';
+            ?>
+            <div class="alert info">
+              <b>کد هدیه</b> (Pro کامل یا یک قابلیت، با مدت یا دائمی) در هر دو نسخه کار می‌کند: کاربر در اپ ← دیوان Pro ← «کد تخفیف یا هدیه دارید؟» آن را وارد می‌کند و بلافاصله فعال می‌شود.
+              <br><b>کد تخفیف</b> قیمت یک خرید را کم می‌کند و فقط در نسخهٔ کافه‌بازار ممکن است (با «کلید تخفیف پویا»؛ <?= Promo::discountUsable('bazaar') ? '<span class="badge ok">ثبت شده</span>' : '<span class="badge warn">ثبت نشده</span>' ?>). مایکت تغییر قیمت یک خرید را پشتیبانی نمی‌کند.
+              <br>هر حساب از هر کد فقط یک بار استفاده می‌کند.
+            </div>
+            <div class="card"><h3>ساخت کد</h3>
+              <form method="post"><?= Admin::csrfField() ?>
+                <div class="row">
+                  <div><label>نوع</label><select name="kind" id="pr-kind"><?php foreach (Promo::KINDS as $k => $l) echo '<option value="' . $k . '">' . $l . '</option>'; ?></select></div>
+                  <div><label>کد دلخواه (خالی = خودکار)</label><input type="text" name="code" class="ltr" placeholder="NOWRUZ1405"></div>
+                  <div><label>تعداد کد</label><input type="number" name="count" value="1" min="1" max="500"></div>
+                </div>
+                <div class="row">
+                  <div data-kind="gift_pro gift_feature"><label>مدت هدیه به روز (خالی = دائمی)</label><input type="number" name="days" min="1" max="3650" placeholder="مثلاً ۳۰"></div>
+                  <div data-kind="gift_feature"><label>قابلیت</label><select name="feature"><?php foreach ($features as $f) echo '<option value="' . e($f['k']) . '">' . e($f['title']) . '</option>'; ?></select></div>
+                  <div data-kind="discount"><label>درصد تخفیف</label><input type="number" name="percent" min="1" max="90" placeholder="مثلاً ۲۰"></div>
+                  <div data-kind="discount"><label>پلن</label><select name="plan"><option value="">همهٔ پلن‌ها</option><?php foreach ($plans as $p) echo '<option value="' . e($p['code']) . '">' . e($p['title']) . '</option>'; ?></select></div>
+                </div>
+                <div class="row">
+                  <div><label>سقف کل استفاده (خالی = نامحدود)</label><input type="number" name="max_uses" min="1"></div>
+                  <div><label>شروع (تهران)</label><input type="datetime-local" name="starts_at"></div>
+                  <div><label>پایان</label><input type="datetime-local" name="ends_at"></div>
+                </div>
+                <details><summary>فقط برای حساب‌های خاص (اختیاری؛ اگر کسی را انتخاب نکنید، کد برای همه است)</summary>
+                  <?= Admin::userPicker('users') ?>
+                </details>
+                <label>توضیح / دلیل (اجباری)</label><input type="text" name="reason" required minlength="5" placeholder="مثلاً: کمپین نوروز کانال تلگرام">
+                <p><button class="btn gold">ساخت کد</button></p>
+              </form>
+            </div>
+            <p><a class="btn ghost sm" href="index.php?p=promos&csv=1">خروجی CSV کدها</a></p>
+            <div class="table-wrap"><table><thead><tr><th>کد</th><th>نوع</th><th>جزئیات</th><th>استفاده</th><th>بازه</th><th>استفاده‌کنندگان</th><th></th></tr></thead><tbody>
+            <?php foreach ($rows as $c): $d = Promo::describe($c, 'bazaar'); ?>
+              <tr><td><code><?= e($c['code']) ?></code></td><td><?= e(Promo::KINDS[$c['kind']] ?? $c['kind']) ?></td><td><?= e($d['title']) ?><?= $c['users'] ? '<br><small class="muted">فقط ' . fa_digits(count(explode(',', $c['users']))) . ' حساب انتخاب‌شده</small>' : '' ?></td>
+                <td><?= fa_digits($c['uses']) ?><?= $c['max_uses'] ? ' از ' . fa_digits($c['max_uses']) : '' ?></td>
+                <td><small><?= e(jdate($c['starts_at'])) ?> تا <?= e(jdate($c['ends_at'])) ?></small></td>
+                <td><small class="ltr"><?= e(mb_substr((string)$c['used_by'], 0, 120)) ?></small></td>
+                <td><form method="post" style="display:inline"><?= Admin::csrfField() ?><input type="hidden" name="action" value="toggle"><input type="hidden" name="id" value="<?= (int)$c['id'] ?>"><input type="hidden" name="reason" value="<?= $c['active'] ? 'توقف کد از فهرست' : 'فعال‌سازی کد از فهرست' ?>"><button class="btn sm <?= $c['active'] ? 'red' : 'teal' ?>"><?= $c['active'] ? 'توقف' : 'فعال' ?></button></form></td></tr>
+            <?php endforeach; if (!$rows) echo '<tr><td colspan="7" class="muted">هنوز کدی ساخته نشده.</td></tr>'; ?>
+            </tbody></table></div>
+            <?php
+        }, 'promos');
     }
 
     // ================================================================ revenue and performance

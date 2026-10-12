@@ -166,13 +166,13 @@ class MafiaSettingsScreen(host: MainActivity, private var tab: Int = 0) : Screen
             d.show()
         }
         actions += DialogAction("انتخاب فایل از گوشی") {
-            host.pickFile(arrayOf("audio/*")) { uri ->
+            Gate.open(this@MafiaSettingsScreen, "mafia_audio") { host.pickFile(arrayOf("audio/*")) { uri ->
                 if (uri == null) return@pickFile
                 val file = host.audio().importFile(uri, if (music) "music" else key)
                 if (file == null) kit.toast("فایل خوانده نشد") else save(key, music, SoundChoice(SoundSource.FILE, "", file.absolutePath, "فایل: " + (uri.lastPathSegment?.substringAfterLast('/') ?: file.name)), after)
-            }
+            } }
         }
-        if (!music) actions += DialogAction("ضبط صدای خودم") { record(title, key, after) }
+        if (!music) actions += DialogAction("ضبط صدای خودم") { Gate.open(this@MafiaSettingsScreen, "mafia_audio") { record(title, key, after) } }
         actions += DialogAction("بدون صدا") { save(key, music, SoundChoice(), after) }
         if (!music && MafiaCues.defaults().containsKey(key)) actions += DialogAction("صدای پیش‌فرض") { save(key, music, null, after) }
         actions += DialogAction("لغو")

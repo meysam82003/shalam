@@ -6,6 +6,7 @@ declare(strict_types=1);
 require __DIR__ . '/app/bootstrap.php';
 if (!App::installed()) { header('Location: install/'); exit; }
 Db::pdo();
+Migrations::ensure();
 
 $secure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
 session_name('divan_site');

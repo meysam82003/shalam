@@ -11,6 +11,7 @@ import kotlin.math.roundToInt
  * (and their leagues), as a player in هزارتایی and دو لو گشنیز, and in the mafia narrator.
  */
 class PlayersScreen(host: MainActivity) : Screen(host) {
+    override val adZone: String? get() = "players"
     private var teams = false
     private var query = ""
 
@@ -210,6 +211,7 @@ fun Screen.peopleRanking(parent: LinearLayout, sessions: List<GameSession>, game
 
 /** One person's record in every game: card-game ratings and partners, and a full mafia analysis. */
 class PersonProfileScreen(host: MainActivity, private val name: String) : Screen(host) {
+    override val featureKey: String get() = "profiles"
     override fun build(): View {
         val all = allPeopleStats()
         val r = all[name]

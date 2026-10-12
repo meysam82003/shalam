@@ -523,6 +523,7 @@ function jdate(?string $sql, bool $time = true): string
 function safe_target_url(string $url): bool
 {
     if ($url === '') return true;
+    if (strpos($url, 'divan://') === 0) return isset(Ads::APP_TARGETS[$url]) || (bool)preg_match('#^divan://plan/[a-z0-9_]{1,32}$#', $url);
     $p = parse_url($url);
     if (!$p || !in_array(strtolower($p['scheme'] ?? ''), ['https', 'http'], true)) return false;
     if (isset($p['user']) || isset($p['pass'])) return false;

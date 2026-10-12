@@ -8,6 +8,8 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 
 class LeagueListScreen(host: MainActivity) : Screen(host) {
+    override val adZone: String? get() = "leagues"
+    override val featureKey: String get() = "leagues"
     override val navTab: Int get() = NavBar.LEAGUES
 
     override fun build(): View {
@@ -55,6 +57,8 @@ class LeagueListScreen(host: MainActivity) : Screen(host) {
 fun formatTitle(format: Int): String = if (format == LeagueFormat.ROUND_ROBIN) "دوره‌ای (جدول)" else "حذفی دو برده"
 
 class LeagueSetupScreen(host: MainActivity) : Screen(host) {
+    override val featureKey: String get() = "leagues"
+    override val featureUsed: Int get() = host.repo.leagues().size
     private var game = GameType.MENFI
     private var name = "لیگ ${PersianText.digits(host.repo.leagueIndex().size + 1, host.settings.general.persianDigits)}"
     private val teams = MutableList(4) { Side("تیم ${PersianText.digits(it + 1, host.settings.general.persianDigits)}", (it * 3) % Emblems.COUNT) }

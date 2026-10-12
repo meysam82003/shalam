@@ -8,6 +8,7 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 
 class SetupScreen(host: MainActivity, private val game: GameType) : Screen(host) {
+    override val featureKey: String get() = game.key
     private val sides: MutableList<Side> = initialSides()
     private var joker = settings.shalam.defaultJoker
     private var endPoint = settings.shalam.mode(joker).defaultEndPoint

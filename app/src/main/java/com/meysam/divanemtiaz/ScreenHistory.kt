@@ -7,6 +7,7 @@ import android.widget.LinearLayout
 import kotlin.math.abs
 
 class ResultScreen(host: MainActivity, private val session: GameSession) : Screen(host) {
+    override val adZone: String? get() = if (session.finished) "result" else null
     override val sessionId: Long get() = session.id
 
     override fun build(): View {
@@ -98,7 +99,9 @@ class ResultScreen(host: MainActivity, private val session: GameSession) : Scree
                     })
                 }
             })
-            if (session.rounds.any { it.kind != RoundKind.DOLO_ELIM }) {
+            if (session.rounds.any { it.kind != RoundKind.DOLO_ELIM } && !ProState.feature("charts").second) {
+                addView(kit.button("نمودار و آمار کامل بازی (Pro)", ButtonKind.GHOST, RoyalIcon.CHART, 42) { Gate.open(this@ResultScreen, "charts") {} }, kit.spaced(10))
+            } else if (session.rounds.any { it.kind != RoundKind.DOLO_ELIM }) {
                 addView(kit.section("نمودار بازی", RoyalIcon.CHART))
                 addView(kit.panel(PanelStyle.FLAT, 10).apply {
                     layoutParams = kit.spaced(8)
@@ -113,7 +116,7 @@ class ResultScreen(host: MainActivity, private val session: GameSession) : Scree
                 addView(kit.button("افزودن این بازی به لیگ", ButtonKind.GHOST, RoyalIcon.LEAGUE, 42) { addToLeague(session) { host.refresh() } }, kit.spaced(8))
             }
             if (session.game == GameType.SHALAM) {
-                addView(kit.button("آمار کامل بازی", ButtonKind.GHOST, RoyalIcon.CHART, 42) { shalamStatsDialog(session) }, kit.spaced(10))
+                addView(kit.button("آمار کامل بازی", ButtonKind.GHOST, RoyalIcon.CHART, 42) { Gate.open(this@ResultScreen, "charts") { shalamStatsDialog(session) } }, kit.spaced(10))
             }
             addView(kit.section("دست‌ها", RoyalIcon.HISTORY))
             session.rounds.forEachIndexed { index, round ->
@@ -208,6 +211,8 @@ fun Screen.describeRound(session: GameSession, round: Round): String {
 }
 
 class HistoryScreen(host: MainActivity) : Screen(host) {
+    override val adZone: String? get() = "history"
+    override val featureKey: String get() = "history"
     override val navTab: Int get() = NavBar.HISTORY
 
     private var status = 0

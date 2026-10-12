@@ -466,6 +466,7 @@ class MafiaShakeHandScreen(host: MainActivity, gameId: Long) : MafiaScreen(host,
 
 /** «گزارش بازی»: initial line-up by team and every phase's events. */
 class MafiaReportScreen(host: MainActivity, gameId: Long) : MafiaScreen(host, gameId) {
+    override val featureKey: String get() = "mafia_report"
     override fun build(): View {
         if (!load()) return missing()
         return scaffold("گزارش بازی", if (g.finished) g.winner else g.phaseTitle,

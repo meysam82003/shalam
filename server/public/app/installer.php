@@ -19,6 +19,9 @@ final class Installer
         }
         $c[] = ['کتابخانهٔ تصویر (gd)', extension_loaded('gd'), extension_loaded('gd') ? 'فعال' : 'اختیاری', false];
         foreach (['storage', 'storage/keys', 'storage/backups', 'storage/logs', 'media'] as $d) {
+            // Missing folders (some hosts drop empty folders from a ZIP) are created with a blank index page.
+            if (!is_dir("$root/$d")) @mkdir("$root/$d", 0755, true);
+            if (is_dir("$root/$d") && !is_file("$root/$d/index.html")) @file_put_contents("$root/$d/index.html", '<!doctype html><title></title>');
             $ok = is_dir("$root/$d") && is_writable("$root/$d");
             $c[] = ["پوشهٔ قابل نوشتن: $d", $ok, $ok ? 'قابل نوشتن' : 'مجوز نوشتن ندارد (۷۵۵)', true];
         }

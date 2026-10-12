@@ -7,6 +7,7 @@ import java.util.Calendar
 
 /** Backup of everything to a JSON file, and restoring it (merge or full replace). */
 class BackupScreen(host: MainActivity) : Screen(host) {
+    override val featureKey: String get() = "backup"
     override fun build(): View {
         val sessions = host.repo.index().size
         val leagues = host.repo.leagueIndex().size

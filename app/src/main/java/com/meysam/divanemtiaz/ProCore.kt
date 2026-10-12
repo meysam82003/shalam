@@ -451,7 +451,8 @@ object ProSync {
 
     /** Fetches public plans, module access and ads at most every few hours (cached for offline use). */
     fun refreshConfig(force: Boolean = false, done: (() -> Unit)? = null) {
-        if (!force && ProState.configJson != null && ProState.configAge() in 0..6 * 3600) { done?.invoke(); return }
+        // Changes made in the panel (ads, prices, Pro rules) reach the app within minutes.
+        if (!force && ProState.configJson != null && ProState.configAge() in 0..10 * 60) { done?.invoke(); return }
         Api.call("GET", "v1/config", JSONObject().put("store", StoreInfo.storeId), ProState.token) { data, _ ->
             if (data != null) { ProState.configJson = data.toString(); ProState.markConfig(); ProState.notifyChanged() }
             done?.invoke()
@@ -529,17 +530,33 @@ object ProSync {
         }
 
     /** At app start: config, account and any receipt the server has not recorded yet. */
+    private var started = false
+
     fun onStart() {
-        refreshConfig()
+        refreshConfig(force = !started)
+        started = true
         if (ProState.loggedIn && ProState.now() - ProState.lastSync() > 6 * 3600) refreshAccount()
         retryPending()
     }
 
     // ---------------------------------------------------------------- purchase
-    fun buy(activity: Activity, plan: PlanOffer, done: (String?, ApiError?) -> Unit) {
+    /** What a discount or gift code gives (checked on the server). */
+    fun checkPromo(code: String, done: (JSONObject?, ApiError?) -> Unit) =
+        Api.call("POST", "v1/promo/check", JSONObject().put("code", code).put("store", StoreInfo.storeId), ProState.token, done)
+
+    /** Uses a gift code now (Pro or a module, for some days or for good). */
+    fun redeemPromo(code: String, done: (JSONObject?, ApiError?) -> Unit) =
+        Api.call("POST", "v1/promo/redeem", JSONObject().put("code", code).put("store", StoreInfo.storeId), ProState.token) { data, err ->
+            if (data != null) { ProState.applyAccount(data); refreshConfig(force = true) }
+            done(data?.optJSONObject("promo"), err)
+        }
+
+    fun buy(activity: Activity, plan: PlanOffer, promo: String? = null, done: (String?, ApiError?) -> Unit) {
         val billing = Billing.get()
         billing.availability(activity)?.let { done(null, ApiError("billing", it)); return }
-        Api.call("POST", "v1/purchases/intent", JSONObject().put("plan", plan.code).put("store", StoreInfo.storeId), ProState.token) { intent, err ->
+        val body = JSONObject().put("plan", plan.code).put("store", StoreInfo.storeId)
+        if (!promo.isNullOrBlank()) body.put("promo", promo)
+        Api.call("POST", "v1/purchases/intent", body, ProState.token) { intent, err ->
             if (intent == null) { done(null, err); return@call }
             val sku = intent.optString("sku")
             billing.purchase(activity, sku, intent.optString("product_type"), intent.optString("payload"),

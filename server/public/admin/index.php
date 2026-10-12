@@ -40,6 +40,7 @@ $pages = [
     'support' => [SalesPages::class, 'support'],
     'ticket' => [SalesPages::class, 'ticket'],
     'gifts' => [SalesPages::class, 'gifts'],
+    'promos' => [SalesPages::class, 'promos'],
     'reports' => [SalesPages::class, 'reports'],
     'plans' => [ConfigPages::class, 'plans'],
     'campaigns' => [ConfigPages::class, 'campaigns'],

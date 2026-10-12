@@ -6,6 +6,7 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 
 class SettingsScreen(host: MainActivity, private var tab: Int = TAB_GENERAL) : Screen(host) {
+    override val adZone: String? get() = "settings"
     override val navTab: Int get() = NavBar.SETTINGS
 
     private var shalamTab = 0

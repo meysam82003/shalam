@@ -49,7 +49,7 @@ data class DirectAd(
             return DirectAd(
                 j.optInt("id"), j.optString("format"), j.optString("title").takeIf { it != "null" }.orEmpty(), j.optString("body").takeIf { it != "null" }.orEmpty(),
                 m?.optString("url"), m?.optString("kind"), m?.optString("sha256"),
-                j.optString("target_url").takeIf { it.startsWith("http") }, j.optString("cta").takeIf { it.isNotBlank() && it != "null" },
+                j.optString("target_url").takeIf { it.startsWith("http") || it.startsWith("divan://") }, j.optString("cta").takeIf { it.isNotBlank() && it != "null" },
                 color(st.optString("bg", null), 0xFF1C2A4A.toInt()), color(st.optString("fg", null), Color.WHITE), color(st.optString("accent", null), 0xFFC39A4A.toInt()),
                 j.optBoolean("closable", true), if (j.isNull("daily_cap")) null else j.optInt("daily_cap"), j.optInt("min_interval_sec"), j.optInt("priority"),
                 (0 until pl.length()).map { pl.optString(it) }, if (j.isNull("ends_at")) null else j.optLong("ends_at")
@@ -190,7 +190,7 @@ object AdEngine {
                 } }
                 c.disconnect()
                 val hex = md.digest().joinToString("") { "%02x".format(it) }
-                if (hex == sha) tmp.renameTo(File(dir, sha)) else tmp.delete()
+                if (hex == sha) { tmp.renameTo(File(dir, sha)); main.post { ProState.notifyChanged() } } else tmp.delete()
                 // Old files are dropped so the cache stays small.
                 dir.listFiles()?.sortedByDescending { it.lastModified() }?.drop(30)?.forEach { it.delete() }
             }
@@ -287,7 +287,26 @@ object AdEngine {
     private fun open(screen: Screen, ad: DirectAd, key: String) {
         event("click", key, ad.id)
         val url = ad.target ?: return
-        runCatching { screen.host.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+        val host = screen.host
+        // In-app destinations chosen in the panel: divan://pro, divan://plan/m3, divan://subscription, divan://screen/…
+        if (url.startsWith("divan://")) {
+            val path = url.removePrefix("divan://").trim('/')
+            when {
+                path == "pro" -> host.push(ProScreen(host))
+                path.startsWith("plan/") -> host.push(ProScreen(host, focusPlan = path.removePrefix("plan/")))
+                path == "subscription" -> host.push(SubscriptionScreen(host))
+                path == "rewarded" -> showRewarded(screen) { ok -> screen.kit.toast(if (ok) "تا مدتی تبلیغی نمایش داده نمی‌شود" else "ویدئو کامل نشد") }
+                path == "screen/mafia" -> host.push(MafiaHomeScreen(host))
+                path == "screen/panto" -> host.push(PantoHomeScreen(host))
+                path == "screen/spy" -> host.push(SpyHomeScreen(host))
+                path == "screen/leagues" -> host.push(LeagueListScreen(host))
+                path == "screen/themes" -> host.push(ThemeScreen(host))
+                path == "screen/settings" -> host.push(SettingsScreen(host))
+                else -> host.push(ProScreen(host))
+            }
+            return
+        }
+        runCatching { host.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
     }
 
     private fun render(screen: Screen, key: String, ad: DirectAd): View {
@@ -357,6 +376,76 @@ object AdEngine {
             override fun onViewDetachedFromWindow(v: View) {}
         })
         return frame
+    }
+
+    // ---------------------------------------------------------------- fixed top / bottom bar
+    private val dismissed = HashSet<String>()
+    private val stickyShown = HashMap<String, String>()
+
+    /**
+     * Fixed bar for [key] (sticky_top / sticky_bottom) on pages whose zone the panel allows. The bar is laid out
+     * outside the page, so it never covers content, and the same ad is kept in place while pages change.
+     */
+    fun sticky(screen: Screen?, key: String, bar: FrameLayout) {
+        val zone = screen?.adZone
+        val c = cfg()
+        val p = c?.optJSONArray("placements")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) }.firstOrNull { it.optString("key") == key } }
+        val zones = p?.optJSONArray("screens")?.let { a -> (0 until a.length()).map { a.optString(it) } }.orEmpty()
+        if (screen == null || c == null || zone == null || p == null || !p.optBoolean("active") || zone !in zones || key in dismissed) {
+            bar.removeAllViews(); bar.visibility = View.GONE; stickyShown.remove(key); return
+        }
+        val formats = (p.optJSONArray("formats") ?: JSONArray()).let { f -> (0 until f.length()).map { f.optString(it) } }
+        val ad = if (c.optString("priority") != "network_only") ads(c).filter { AdRules.eligible(it, key, formats, ProState.now(), null) }
+            .sortedByDescending { it.priority }.firstOrNull { it.mediaUrl == null || cached(it) != null || run { download(it); it.format !in MEDIA_FORMATS } } else null
+        val tag = ad?.let { "ad:${it.id}" } ?: "network"
+        if (stickyShown[key] == tag && bar.childCount > 0) { bar.visibility = View.VISIBLE; return }
+        bar.removeAllViews()
+        val kit = screen.kit
+        val strip = if (ad != null) stickyStrip(screen, key, ad, bar) else {
+            val zoneId = c.optJSONObject("network")?.takeIf { it.optBoolean("enabled") }?.optJSONObject("zones")?.optString("banner").orEmpty()
+            if (zoneId.isBlank() || network == null || c.optString("priority") == "direct_only") null
+            else FrameLayout(screen.host).also { box -> startNetwork(screen.host)?.banner(screen.host, zoneId, box) { ok -> event(if (ok) "impression" else "error", key, network = true); if (!ok) bar.visibility = View.GONE } }
+        }
+        if (strip == null) { bar.visibility = View.GONE; stickyShown.remove(key); return }
+        bar.setPadding(kit.dp(8), kit.dp(4), kit.dp(8), kit.dp(4))
+        bar.addView(strip, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        bar.visibility = View.VISIBLE
+        stickyShown[key] = tag
+        if (ad != null) { markShown(ad.id); event("impression", key, ad.id) }
+    }
+
+    private fun stickyStrip(screen: Screen, key: String, ad: DirectAd, bar: FrameLayout): View {
+        val kit = screen.kit
+        return kit.horizontal().apply {
+            background = GradientDrawable().apply { cornerRadius = kit.dpf(14f); setColor(ad.bg); setStroke(kit.dp(1), Royal.alpha(ad.accent, 0.5f)) }
+            setPadding(kit.dp(8), kit.dp(5), kit.dp(8), kit.dp(5))
+            minimumHeight = kit.dp(50)
+            contentDescription = "تبلیغ: ${ad.title}"
+            if (ad.target != null) { isClickable = true; setOnClickListener { kit.tap(it); open(screen, ad, key) } }
+            addView(kit.badge("تبلیغات", ad.fg))
+            addView(kit.hgap(8))
+            cached(ad)?.takeIf { ad.mediaKind != "video" }?.let { f -> bitmap(f, kit.dp(200))?.let { bm ->
+                addView(ImageView(context).apply { setImageBitmap(bm); scaleType = ImageView.ScaleType.FIT_CENTER; adjustViewBounds = true },
+                    LinearLayout.LayoutParams(if (ad.format == "image" || ad.format == "banner_wide") 0 else kit.dp(40), kit.dp(40), if (ad.format == "image" || ad.format == "banner_wide") 1f else 0f))
+                addView(kit.hgap(8))
+            } }
+            if (ad.format != "image" && ad.format != "banner_wide" || cached(ad) == null) addView(kit.vertical().apply {
+                addView(kit.text(ad.title, TextStyle.LABEL_BOLD, ad.fg, maxLines = 1))
+                if (ad.body.isNotBlank()) addView(kit.text(ad.body, TextStyle.CAPTION, ad.fg, maxLines = 1))
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            ad.cta?.let { cta ->
+                addView(kit.hgap(6))
+                addView(kit.text(cta, TextStyle.CAPTION, Color.BLACK, Gravity.CENTER, 1).apply {
+                    background = GradientDrawable().apply { cornerRadius = kit.dpf(9f); setColor(ad.accent) }
+                    setPadding(kit.dp(10), kit.dp(3), kit.dp(10), kit.dp(4))
+                })
+            }
+            if (ad.closable) addView(kit.text("✕", TextStyle.BODY_BOLD, ad.fg, Gravity.CENTER).apply {
+                setPadding(kit.dp(10), 0, kit.dp(2), 0)
+                contentDescription = "بستن تبلیغ"
+                setOnClickListener { dismissed += key; bar.removeAllViews(); bar.visibility = View.GONE; stickyShown.remove(key); event("close", key, ad.id) }
+            })
+        }
     }
 
     // ---------------------------------------------------------------- full-screen

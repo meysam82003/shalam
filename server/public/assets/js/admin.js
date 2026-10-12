@@ -7,6 +7,45 @@
     if (b && !window.confirm(b.getAttribute('data-confirm'))) ev.preventDefault();
   });
 
+  // ---------------------------------------------------------------- user picker
+  document.querySelectorAll('.picker').forEach(function (pk) {
+    var q = pk.querySelector('.pk-q'), f = pk.querySelector('.pk-f'), count = pk.querySelector('.pk-count');
+    var items = Array.prototype.slice.call(pk.querySelectorAll('.pk-item'));
+    function shown(it) {
+      var text = (q.value || '').trim().toLowerCase(), tag = f.value;
+      if (text && it.getAttribute('data-u').indexOf(text) < 0) return false;
+      if (tag === 'sel') return it.querySelector('input').checked;
+      return !tag || (' ' + it.getAttribute('data-t') + ' ').indexOf(' ' + tag + ' ') >= 0;
+    }
+    function update() {
+      var n = 0;
+      items.forEach(function (it) { it.style.display = shown(it) ? '' : 'none'; if (it.querySelector('input').checked) n++; });
+      count.textContent = String(n).replace(/\d/g, function (d) { return '۰۱۲۳۴۵۶۷۸۹'[d]; }) + ' حساب انتخاب شده';
+    }
+    q.addEventListener('input', update); f.addEventListener('change', update);
+    pk.addEventListener('change', update);
+    pk.querySelector('.pk-all').addEventListener('click', function () { items.forEach(function (it) { if (it.style.display !== 'none') it.querySelector('input').checked = true; }); update(); });
+    pk.querySelector('.pk-none').addEventListener('click', function () { items.forEach(function (it) { it.querySelector('input').checked = false; }); update(); });
+    update();
+  });
+
+  // Show only the fields of the chosen action.
+  var ua = document.getElementById('ua-action');
+  if (ua) {
+    var syncUa = function () {
+      document.querySelectorAll('[data-for]').forEach(function (el) { el.style.display = el.getAttribute('data-for') === ua.value ? '' : 'none'; });
+    };
+    ua.addEventListener('change', syncUa); syncUa();
+  }
+
+  var prk = document.getElementById('pr-kind');
+  if (prk) {
+    var syncPr = function () {
+      document.querySelectorAll('[data-kind]').forEach(function (el) { el.style.display = (' ' + el.getAttribute('data-kind') + ' ').indexOf(' ' + prk.value + ' ') >= 0 ? '' : 'none'; });
+    };
+    prk.addEventListener('change', syncPr); syncPr();
+  }
+
   var qr = document.getElementById('qr');
   if (qr && window.qrcode) {
     var q = window.qrcode(0, 'M');
@@ -72,14 +111,26 @@
     }
   }
 
+  function checked(v) { var el = document.querySelector('input[name="placements[]"][value="' + v + '"]'); return !!(el && el.checked && !el.disabled); }
+
+  function strip() {
+    var t = esc(val('f-title')), cta = esc(val('f-cta'));
+    var bg = color(val('f-bg'), '#1C2A4A'), fg = color(val('f-fg'), '#FFFFFF'), ac = color(val('f-accent'), '#C39A4A');
+    var m = media();
+    return '<div style="display:flex;gap:4px;align-items:center;border-radius:10px;padding:4px 6px;background:' + bg + ';color:' + fg + '"><span class="ad-label">تبلیغات</span>' +
+      (m && m.kind !== 'video' ? '<img src="' + esc(m.url) + '" style="height:22px;border-radius:4px">' : '') + '<b style="flex:1;white-space:nowrap;overflow:hidden">' + t + '</b>' +
+      (cta ? '<span style="background:' + ac + ';color:#111;border-radius:6px;padding:0 6px">' + cta + '</span>' : '') + '</div>';
+  }
+
   function phone(light, wide) {
     var f = val('f-format');
     var ad = adHtml();
+    var topBar = checked('sticky_top') ? strip() : '', bottomBar = checked('sticky_bottom') ? strip() : '';
     var full = f === 'interstitial' || f === 'rewarded';
     var corner = f === 'corner';
-    var content = '<div class="blk">دیوان امتیاز</div><div class="blk">ادامهٔ داوری — شلم</div>' +
+    var content = topBar + '<div class="blk">دیوان امتیاز</div><div class="blk">ادامهٔ داوری — شلم</div>' +
       (full || corner ? '' : ad) + '<div class="blk">بازی‌ها</div><div class="blk">تاریخچه</div>' +
-      (corner ? '<div style="position:absolute;left:10px;bottom:54px">' + ad + '</div>' : '') + (full ? ad : '') + '<div class="nav"></div>';
+      (corner ? '<div style="position:absolute;left:10px;bottom:54px">' + ad + '</div>' : '') + (full ? ad : '') + '<div style="margin-top:auto"></div>' + bottomBar + '<div class="nav" style="margin-top:4px"></div>';
     return '<div class="' + (wide ? 'preview-desktop' : '') + '"><div class="phone' + (light ? ' light' : '') + '"><div class="screen">' + content + '</div></div><div class="hint" style="text-align:center">' + (wide ? 'تبلت / افقی' : (light ? 'سبک روشن' : 'سبک تیره')) + '</div></div>';
   }
 

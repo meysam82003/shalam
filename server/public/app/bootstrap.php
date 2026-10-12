@@ -7,6 +7,7 @@ if (PHP_VERSION_ID < 70400) { http_response_code(500); exit('Divan Emtiaz needs 
 $__root = dirname(__DIR__);
 require_once __DIR__ . '/lib.php';
 require_once __DIR__ . '/migrations.php';
+require_once __DIR__ . '/catalog.php';
 require_once __DIR__ . '/domain.php';
 require_once __DIR__ . '/markets.php';
 require_once __DIR__ . '/backup.php';

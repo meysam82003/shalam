@@ -39,6 +39,15 @@ abstract class Screen(val host: MainActivity) {
     /** Tab of the bottom navigation this page belongs to ([NavBar]); -1 = no navigation bar. */
     open val navTab: Int get() = -1
 
+    /** Where on this page ads may appear (home, history, …); null for every game, timer and input page. */
+    open val adZone: String? get() = null
+
+    /** Module of this page for the free / Pro rules of the panel (null: always open). */
+    open val featureKey: String? get() = null
+
+    /** For count-limited modules: how many the player already has when this page creates a new one (-1: not a create page). */
+    open val featureUsed: Int get() = -1
+
     /** Session shown by this screen, used to restore the game after process death. */
     open val sessionId: Long? get() = null
 
@@ -140,6 +149,10 @@ class MainActivity : Activity() {
     lateinit var kit: RoyalKit
         private set
     private lateinit var container: FrameLayout
+    private lateinit var frame: LinearLayout
+    private val proListener: () -> Unit = { handler.post { onProChanged() } }
+    private lateinit var topAd: FrameLayout
+    private lateinit var bottomAd: FrameLayout
     private lateinit var rootView: FrameLayout
     private val stack = ArrayList<Screen>()
     private val handler = Handler(Looper.getMainLooper())
@@ -175,7 +188,16 @@ class MainActivity : Activity() {
         }
         rootView = root
         container = FrameLayout(this)
-        root.addView(container, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        // Pages sit between two fixed ad bars (hidden unless the panel turns them on); the bars take their own
+        // space, so they never cover a button, and they stay still while pages change.
+        frame = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        topAd = FrameLayout(this).apply { visibility = View.GONE }
+        bottomAd = FrameLayout(this).apply { visibility = View.GONE }
+        frame.addView(topAd, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        frame.addView(container, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        frame.addView(bottomAd, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        root.addView(frame, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        ProState.listeners += proListener
         setContentView(root)
         fitSystemBars(root)
         applyWindowSettings()
@@ -218,6 +240,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        ProState.listeners -= proListener
         if (audioUsed) audio.release()
         super.onDestroy()
     }
@@ -240,9 +263,9 @@ class MainActivity : Activity() {
             if (Build.VERSION.SDK_INT >= 30) {
                 val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
                 val ime = insets.getInsets(WindowInsets.Type.ime())
-                container.setPadding(bars.left, bars.top, bars.right, maxOf(bars.bottom, ime.bottom))
+                frame.setPadding(bars.left, bars.top, bars.right, maxOf(bars.bottom, ime.bottom))
             } else {
-                container.setPadding(insets.systemWindowInsetLeft, insets.systemWindowInsetTop, insets.systemWindowInsetRight, insets.systemWindowInsetBottom)
+                frame.setPadding(insets.systemWindowInsetLeft, insets.systemWindowInsetTop, insets.systemWindowInsetRight, insets.systemWindowInsetBottom)
             }
             insets
         }
@@ -290,6 +313,7 @@ class MainActivity : Activity() {
     }
 
     fun push(screen: Screen) {
+        if (!Gate.allows(this, screen)) return
         saveScroll()
         current?.onHide()
         stack += screen
@@ -298,6 +322,7 @@ class MainActivity : Activity() {
 
     /** Replaces the top screen (for example board → result) without growing the back stack. */
     fun replace(screen: Screen) {
+        if (!Gate.allows(this, screen)) return
         current?.onHide()
         if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex)
         stack += screen
@@ -305,6 +330,7 @@ class MainActivity : Activity() {
     }
 
     fun resetTo(vararg screens: Screen) {
+        screens.lastOrNull()?.let { if (!Gate.allows(this, it)) return }
         current?.onHide()
         stack.clear()
         stack.addAll(screens)
@@ -555,6 +581,20 @@ class MainActivity : Activity() {
             })
         }
         if (notify && resumed) screen.onShow()
+        updateStickyAds()
+    }
+
+    /** Fixed top / bottom ad bars for pages that allow them; an ad that is already showing is left in place. */
+    fun updateStickyAds() {
+        val screen = current
+        AdEngine.sticky(screen, "sticky_top", topAd)
+        AdEngine.sticky(screen, "sticky_bottom", bottomAd)
+    }
+
+    /** New plans, rules or ads from the server, Pro bought or ended: pages that show ads or Pro are redrawn. */
+    private fun onProChanged() {
+        val screen = current ?: return
+        if (screen.adZone != null) refresh() else updateStickyAds()
     }
 
     private fun findScroll(view: View): ScrollView? {

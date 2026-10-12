@@ -8,6 +8,8 @@ import android.widget.LinearLayout
 
 /** «راوی مافیا» start page (source: startup screen). */
 class MafiaHomeScreen(host: MainActivity) : Screen(host) {
+    override val adZone: String? get() = "hub"
+    override val featureKey: String get() = "mafia"
     override fun build(): View = run { MafiaRoleRegistry.activate(null); page() }
 
     private fun page(): View = scaffold("راوی مافیا", "گردانندگی بازی مافیا به سبکی نو",
@@ -114,6 +116,7 @@ class MafiaRolesScreen(host: MainActivity) : Screen(host) {
 
 /** «کارت حرکت آخر» catalogue. */
 class MafiaCardsScreen(host: MainActivity) : Screen(host) {
+    override val featureKey: String get() = "mafia_last_cards"
     override fun build(): View = scaffold("کارت حرکت آخر", "${kit.n(MafiaLastCard.values().size)} کارت") {
         addView(kit.text("بازیکنی که در روز از بازی خارج می‌شود، در صورت داشتن حق انتخاب، یکی از کارت‌های برعکس را برمی‌دارد.", TextStyle.LABEL, Royal.muted, Gravity.CENTER), kit.spaced(10))
         val cards = MafiaLastCard.values().map { c ->
@@ -165,6 +168,7 @@ class MafiaGamesScreen(host: MainActivity) : Screen(host) {
 
 /** «گروه بازی»: saved line-ups with roles, options and cards; starting one goes straight to distribution. */
 class MafiaGroupsScreen(host: MainActivity) : Screen(host) {
+    override val featureKey: String get() = "mafia_groups"
     override fun build(): View = scaffold("گروه بازی", "بازیکنان، نقش‌ها و کارت‌های ذخیره‌شده",
         bottom = kit.button("ساخت گروه جدید", ButtonKind.PRIMARY, RoyalIcon.PLUS, 52) { create() }) {
         val groups = host.mafia.groups()

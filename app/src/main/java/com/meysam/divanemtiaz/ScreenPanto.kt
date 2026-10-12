@@ -48,6 +48,8 @@ fun Screen.menuTile(icon: RoyalIcon, title: String, caption: String, onClick: ()
 
 /** «پانتومیم» home. */
 class PantoHomeScreen(host: MainActivity) : Screen(host) {
+    override val adZone: String? get() = "hub"
+    override val featureKey: String get() = "panto"
     override fun build(): View {
         preloadPantoBank()
         val live = host.panto.latestUnfinished()
@@ -94,12 +96,16 @@ class PantoSetupScreen(host: MainActivity) : Screen(host) {
             kit.vertical().apply {
                 background = PanelDrawable(kit.density, if (m == mode) PanelStyle.SELECTED else PanelStyle.NORMAL, 16f)
                 setPadding(kit.dp(10), kit.dp(9), kit.dp(10), kit.dp(11))
-                addView(kit.text(m.title, TextStyle.HEADING, if (m == mode) Royal.turquoiseLight else Royal.goldLight))
+                addView(kit.horizontal().apply {
+                    addView(kit.weight(kit.text(m.title, TextStyle.HEADING, if (m == mode) Royal.turquoiseLight else Royal.goldLight)))
+                    if (Gate.itemLocked("panto_modes", m.name)) addView(Gate.badge(this@PantoSetupScreen))
+                })
                 addView(kit.text(m.summary, TextStyle.CAPTION, Royal.muted, maxLines = 3))
                 isClickable = true
                 contentDescription = m.title
                 setOnClickListener {
                     kit.tap(it)
+                    if (Gate.itemLocked("panto_modes", m.name)) { Gate.lockedItem(this@PantoSetupScreen, "مسابقهٔ " + m.title); return@setOnClickListener }
                     val wasIndividual = mode.individual
                     mode = m
                     if (wasIndividual != m.individual) teams.forEachIndexed { i, t ->
@@ -214,6 +220,7 @@ class PantoSetupScreen(host: MainActivity) : Screen(host) {
     }
 
     private fun start() {
+        if (Gate.itemLocked("panto_modes", mode.name)) { Gate.lockedItem(this, "مسابقهٔ " + mode.title); return }
         if (teams.map { it.name.trim() }.toSet().size != teams.size) { kit.toast("نام‌ها نباید تکراری باشند"); return }
         val id = System.currentTimeMillis()
         val m = PantoEngine.create(id, mode, teams.map { PantoTeam(it.name.trim(), it.avatar, ArrayList(it.members), size = if (mode.individual) 1 else it.people) }, rounds, if (manual && mode != PantoMode.FIVE) seconds else null)
@@ -789,6 +796,7 @@ class PantoResultScreen(host: MainActivity, matchId: Long) : PantoScreen(host, m
 
 /** «کلمات من»: the players' own words in three levels (add, edit, delete, search). */
 class PantoWordsScreen(host: MainActivity) : Screen(host) {
+    override val featureKey: String get() = "panto_words"
     private var level = 1
     private var query = ""
 

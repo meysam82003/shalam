@@ -220,7 +220,7 @@ final class Purchases
     public static function forUser(int $userId): array { return Db::all('SELECT * FROM {purchases} WHERE user_id = ? ORDER BY id DESC', [$userId]); }
 
     /** A purchase intent binds the next store purchase to this account (sent as the developer payload). */
-    public static function intent(array $user, string $planCode, string $store): array
+    public static function intent(array $user, string $planCode, string $store, string $promoCode = ''): array
     {
         if (!in_array($store, Plans::STORES, true)) throw new ApiError('bad_store', 'فروشگاه نامعتبر است.');
         $plan = Plans::byCode($planCode);
@@ -238,11 +238,23 @@ final class Purchases
         if ($plan['purchase_limit'] !== null && (int)Db::value("SELECT COUNT(*) FROM {purchases} WHERE user_id = ? AND plan_id = ? AND status IN ('verified','signature_verified')", [$user['id'], $plan['id']]) >= (int)$plan['purchase_limit']) {
             throw new ApiError('limit', 'سقف خرید این پلن برای حساب شما پر شده است.', 409);
         }
+        $price = $offer['final_price'];
+        $dynamic = $offer['dynamic_price'];
+        $promoId = null;
+        if (trim($promoCode) !== '') {
+            $p = Promo::find($promoCode, $user);
+            if ($p['kind'] !== 'discount') throw new ApiError('promo_is_gift', 'این کد هدیه است؛ از «کد تخفیف یا هدیه» فعالش کنید.', 409);
+            if ($p['plan_code'] !== null && $p['plan_code'] !== $plan['code']) throw new ApiError('promo_other_plan', 'این کد برای پلن دیگری است.', 409);
+            if (!Promo::discountUsable($store) || $offer['product_type'] === 'subscription') throw new ApiError('promo_store', 'کد تخفیف فقط در نسخهٔ کافه‌بازار قابل استفاده است.', 409);
+            $price = Promo::discountedPrice($price, (int)$p['percent']);
+            $dynamic = true;
+            $promoId = (int)$p['id'];
+        }
         $payload = 'dv' . bin2hex(random_bytes(14));
-        Db::insert('purchase_intents', ['user_id' => $user['id'], 'plan_id' => $plan['id'], 'store' => $store, 'payload' => $payload, 'price_toman' => $offer['final_price'], 'created_at' => Clock::sql()]);
+        Db::insert('purchase_intents', ['user_id' => $user['id'], 'plan_id' => $plan['id'], 'store' => $store, 'payload' => $payload, 'price_toman' => $price, 'promo_id' => $promoId, 'created_at' => Clock::sql()]);
         return [
-            'payload' => $payload, 'sku' => $offer['sku'], 'product_type' => $offer['product_type'], 'price' => $offer['final_price'],
-            'dynamic_price_token' => $offer['dynamic_price'] ? BazaarVerifier::dynamicPriceToken($offer['sku'], $offer['final_price']) : null,
+            'payload' => $payload, 'sku' => $offer['sku'], 'product_type' => $offer['product_type'], 'price' => $price,
+            'dynamic_price_token' => $dynamic ? BazaarVerifier::dynamicPriceToken($offer['sku'], $price) : null,
         ];
     }
 
@@ -349,6 +361,7 @@ final class Purchases
                 }
             }
             if ($intent !== null && $intent['used_at'] === null) Db::update('purchase_intents', ['used_at' => Clock::sql()], 'id = ?', [$intent['id']]);
+            if ($intent !== null && !empty($intent['promo_id']) && in_array($status, self::OK_STATES, true)) Promo::used((int)$intent['promo_id'], (int)$user['id'], $id);
             if (in_array($status, self::OK_STATES, true)) {
                 if ($verdict->expiresAt !== null) self::grantStoreSubscription((int)$user['id'], $plan, $id, $verdict);
                 else Entitlements::grantForPurchase((int)$user['id'], $plan, $id);

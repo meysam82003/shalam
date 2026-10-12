@@ -328,7 +328,51 @@ final class Migrations
                     ADD COLUMN pro_device_at DATETIME NULL, ADD COLUMN device_moves INT NOT NULL DEFAULT 0, ADD COLUMN device_moves_since DATETIME NULL",
                 "ALTER TABLE {sessions} ADD COLUMN device_id VARCHAR(64) NULL",
             ],
+            // 5.2: fixed ad bars on chosen pages; single items of a module (scenario, card, mode, style) as Pro.
+            3 => [
+                "ALTER TABLE {placements} ADD COLUMN screens VARCHAR(300) NULL",
+                "ALTER TABLE {features} ADD COLUMN pro_items TEXT NULL, ADD COLUMN section VARCHAR(20) NULL",
+            ],
+            // 5.2: discount and gift codes.
+            4 => [
+                "CREATE TABLE IF NOT EXISTS {promo_codes} (
+                    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                    code VARCHAR(32) NOT NULL,
+                    kind VARCHAR(12) NOT NULL,
+                    days INT NULL,
+                    feature_k VARCHAR(64) NULL,
+                    plan_code VARCHAR(32) NULL,
+                    percent INT NULL,
+                    max_uses INT NULL,
+                    uses INT NOT NULL DEFAULT 0,
+                    users TEXT NULL,
+                    starts_at DATETIME NULL,
+                    ends_at DATETIME NULL,
+                    active TINYINT NOT NULL DEFAULT 1,
+                    note VARCHAR(300) NULL,
+                    admin_id INT UNSIGNED NULL,
+                    created_at DATETIME NOT NULL,
+                    UNIQUE KEY uq_code (code)
+                ) $e",
+                "CREATE TABLE IF NOT EXISTS {promo_redemptions} (
+                    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                    code_id INT UNSIGNED NOT NULL,
+                    user_id BIGINT UNSIGNED NOT NULL,
+                    purchase_id BIGINT UNSIGNED NULL,
+                    created_at DATETIME NOT NULL,
+                    UNIQUE KEY uq_once (code_id, user_id)
+                ) $e",
+                "ALTER TABLE {purchase_intents} ADD COLUMN promo_id INT UNSIGNED NULL",
+            ],
         ];
+    }
+
+    /** Cheap check on every request: an updated ZIP upgrades the database by itself, without opening the panel. */
+    public static function ensure(): void
+    {
+        $latest = max(array_keys(self::all()));
+        $have = (int)(Db::value('SELECT MAX(version) FROM {migrations}') ?? 0);
+        if ($have < $latest) self::run();
     }
 
     /** Applies every pending migration; returns the versions applied. */
@@ -351,6 +395,11 @@ final class Migrations
 /** Default rows; inserted only when missing, so admin changes are never overwritten. */
 final class Seed
 {
+    private static function hasColumn(string $table, string $col): bool
+    {
+        return Db::one("SHOW COLUMNS FROM {{$table}} LIKE " . Db::pdo()->quote($col)) !== null;
+    }
+
     public static function run(): void
     {
         $now = Clock::sql();
@@ -373,13 +422,21 @@ final class Seed
                 'store_price_bazaar' => null, 'store_price_myket' => null, 'updated_at' => $now,
             ]);
         }
-        foreach (Features::defaults() as $i => [$k, $title, $desc]) {
-            if (Db::value('SELECT k FROM {features} WHERE k = ?', [$k]) !== null) continue;
-            Db::insert('features', ['k' => $k, 'title' => $title, 'description' => $desc, 'mode' => 'free', 'limit_value' => null, 'sort' => $i, 'updated_at' => $now]);
+        $hasSection = self::hasColumn('features', 'section');
+        foreach (Features::defaults() as $i => [$k, $title, $desc, $section]) {
+            if (Db::value('SELECT k FROM {features} WHERE k = ?', [$k]) !== null) {
+                // Order and grouping follow the app; the owner's mode, limit and items are never touched.
+                Db::update('features', ['sort' => $i] + ($hasSection ? ['section' => $section] : []), 'k = ?', [$k]);
+                continue;
+            }
+            Db::insert('features', ['k' => $k, 'title' => $title, 'description' => $desc, 'mode' => 'free', 'limit_value' => null, 'sort' => $i, 'updated_at' => $now] + ($hasSection ? ['section' => $section] : []));
         }
+        $hasScreens = self::hasColumn('placements', 'screens');
         foreach (Ads::defaultPlacements() as $i => [$k, $title, $screen, $pos, $formats, $network]) {
             if (Db::value('SELECT k FROM {placements} WHERE k = ?', [$k]) !== null) continue;
-            Db::insert('placements', ['k' => $k, 'title' => $title, 'screen' => $screen, 'position' => $pos, 'formats' => $formats, 'network_formats' => $network, 'active' => 1, 'sort' => $i]);
+            $sticky = $pos === 'sticky';
+            Db::insert('placements', ['k' => $k, 'title' => $title, 'screen' => $screen, 'position' => $pos, 'formats' => $formats, 'network_formats' => $network, 'active' => $sticky ? 0 : 1, 'sort' => $i]
+                + ($hasScreens ? ['screens' => $sticky ? implode(',', array_keys(Ads::ZONES)) : null] : []));
         }
         $defaults = [
             'offline_days' => 21,

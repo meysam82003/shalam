@@ -35,6 +35,7 @@ final class Api
         if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') { http_response_code(204); return; }
         try {
             if (!App::installed()) throw new ApiError('not_installed', 'سرور هنوز نصب نشده است.', 503);
+            Migrations::ensure();
             $data = self::handle(self::route(), $_SERVER['REQUEST_METHOD'] ?? 'GET');
             Http::json(['ok' => true, 'data' => $data, 'server_time' => Clock::now()]);
         } catch (ApiError $e) {
@@ -169,7 +170,7 @@ final class Api
 
             case 'v1/purchases/intent': {
                 self::post($method);
-                return Purchases::intent(self::user(), (string)($in['plan'] ?? ''), self::store($in));
+                return Purchases::intent(self::user(), (string)($in['plan'] ?? ''), self::store($in), (string)($in['promo'] ?? ''));
             }
 
             case 'v1/purchases/verify': {
@@ -198,6 +199,19 @@ final class Api
                     }
                 }
                 return ['results' => $results] + self::account($u);
+            }
+
+            case 'v1/promo/check': {
+                self::post($method);
+                $u = self::user();
+                return Promo::describe(Promo::find((string)($in['code'] ?? ''), $u), self::store($in));
+            }
+
+            case 'v1/promo/redeem': {
+                self::post($method);
+                $u = self::user();
+                $p = Promo::redeemGift((string)($in['code'] ?? ''), $u);
+                return ['promo' => Promo::describe($p, self::store($in))] + self::account(Users::byId((int)$u['id']));
             }
 
             case 'v1/ads/events': {

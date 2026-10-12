@@ -5,6 +5,7 @@ import android.view.View
 
 /** Deck calculator for «هزارتایی» and «دو لو گشنیز»: every answer is a whole number of cards. */
 class DeckCalcScreen(host: MainActivity, initialGame: GameType = GameType.HEZARTAII, players: Int = 0) : Screen(host) {
+    override val featureKey: String get() = "deck_calc"
     private var game = if (initialGame == GameType.DOLO) GameType.DOLO else GameType.HEZARTAII
     private var hezarPlayers = if (players > 1 && game == GameType.HEZARTAII) players else settings.hezar.players.coerceAtLeast(2)
     private var doloPlayers = if (players > 1 && game == GameType.DOLO) players else settings.dolo.players

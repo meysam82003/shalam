@@ -59,6 +59,9 @@ private fun Screen.shareFrame(game: GameType?, title: String, subtitle: String, 
     }
 
 fun Screen.shareSession(session: GameSession) {
+    var allowed = false
+    Gate.open(this, "share") { allowed = true }
+    if (!allowed) return
     val totals = GameEngine.totals(session)
     val winners = GameEngine.winners(session)
     val hidden = session.game == GameType.MENFI && session.rules.menfi.hidden && !session.finished
@@ -151,6 +154,8 @@ private fun Screen.statTiles(p: PlayerStats): View = kit.grid(3, listOf(
 
 /** Rankings of teams and players with Elo ratings, plus the all-time records. */
 class RankingScreen(host: MainActivity) : Screen(host) {
+    override val adZone: String? get() = "ranking"
+    override val featureKey: String get() = "rankings"
     override val navTab: Int get() = NavBar.RANKING
 
     private var teams = true
@@ -262,6 +267,7 @@ class RankingScreen(host: MainActivity) : Screen(host) {
 
 /** Profile of one team or player: rating, record, charts, head-to-head and recent games. */
 class ProfileScreen(host: MainActivity, private val name: String, private val isTeam: Boolean) : Screen(host) {
+    override val featureKey: String get() = "profiles"
     override fun build(): View {
         val sessions = host.repo.sessions()
         val all = StatsEngine.compute(sessions)

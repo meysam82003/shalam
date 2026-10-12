@@ -7,8 +7,8 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 
-const val APP_VERSION_NAME = "5.1.0"
-const val APP_VERSION_LABEL = "نسخهٔ ۵.۱.۰"
+const val APP_VERSION_NAME = "5.2.0"
+const val APP_VERSION_LABEL = "نسخهٔ ۵.۲.۰"
 
 class SplashScreen(host: MainActivity) : Screen(host) {
     override fun build(): View = FrameLayout(host).apply {
@@ -54,6 +54,7 @@ class SplashScreen(host: MainActivity) : Screen(host) {
 }
 
 class HomeScreen(host: MainActivity) : Screen(host) {
+    override val adZone: String? get() = "home"
     override fun build(): View {
         val column = kit.vertical().apply {
             setPadding(kit.dp(16), kit.dp(6), kit.dp(16), kit.dp(18))

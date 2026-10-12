@@ -457,33 +457,133 @@ final class Devices
     }
 }
 
+// ================================================================ discount and gift codes
+final class Promo
+{
+    public const KINDS = ['gift_pro' => 'هدیهٔ Pro', 'gift_feature' => 'هدیهٔ یک قابلیت', 'discount' => 'تخفیف خرید'];
+
+    public static function normalize(string $code): string { return strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $code)); }
+
+    public static function generate(int $len = 8): string
+    {
+        $a = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        $c = '';
+        for ($i = 0; $i < $len; $i++) $c .= $a[random_int(0, strlen($a) - 1)];
+        return $c;
+    }
+
+    /** The code row if this user may use it now, else an error saying why. */
+    public static function find(string $code, array $user): array
+    {
+        if (!RateLimit::hit('promo:' . $user['id'], 20, 3600)) throw new ApiError('rate_limited', 'تلاش زیاد است؛ کمی بعد دوباره امتحان کنید.', 429);
+        $p = Db::one('SELECT * FROM {promo_codes} WHERE code = ?', [self::normalize($code)]);
+        if ($p === null || !$p['active']) {
+            Audit::security('promo_invalid', (int)$user['id'], $user['username'], mb_substr($code, 0, 40));
+            throw new ApiError('promo_invalid', 'این کد معتبر نیست.', 404);
+        }
+        $now = Clock::now();
+        if ($p['starts_at'] !== null && Clock::ts($p['starts_at']) > $now) throw new ApiError('promo_not_started', 'زمان استفاده از این کد هنوز نرسیده است.', 409);
+        if ($p['ends_at'] !== null && Clock::ts($p['ends_at']) <= $now) throw new ApiError('promo_expired', 'مهلت این کد تمام شده است.', 409);
+        if (Db::value('SELECT id FROM {promo_redemptions} WHERE code_id = ? AND user_id = ?', [$p['id'], $user['id']]) !== null) throw new ApiError('promo_used', 'شما قبلاً از این کد استفاده کرده‌اید.', 409);
+        if ($p['max_uses'] !== null && (int)$p['uses'] >= (int)$p['max_uses']) throw new ApiError('promo_used_up', 'ظرفیت این کد پر شده است.', 409);
+        $users = array_filter(explode(',', (string)$p['users']));
+        if ($users && !in_array((string)$user['id'], $users, true)) throw new ApiError('promo_not_yours', 'این کد برای حساب شما نیست.', 403);
+        return $p;
+    }
+
+    /** What the code gives, in words and numbers, for the app. */
+    public static function describe(array $p, string $store): array
+    {
+        $out = ['code' => $p['code'], 'kind' => $p['kind'], 'percent' => $p['percent'] === null ? null : (int)$p['percent'], 'plan' => $p['plan_code'], 'days' => $p['days'] === null ? null : (int)$p['days']];
+        if ($p['kind'] === 'gift_pro') $out['title'] = $p['days'] === null ? 'هدیه: Pro مادام‌العمر' : 'هدیه: ' . (int)$p['days'] . ' روز Pro';
+        elseif ($p['kind'] === 'gift_feature') $out['title'] = 'هدیه: ' . (Db::value('SELECT title FROM {features} WHERE k = ?', [$p['feature_k']]) ?? $p['feature_k']) . ($p['days'] ? ' برای ' . (int)$p['days'] . ' روز' : '');
+        else {
+            $out['title'] = (int)$p['percent'] . '٪ تخفیف' . ($p['plan_code'] ? ' روی ' . (Plans::byCode($p['plan_code'])['title'] ?? $p['plan_code']) : ' روی همهٔ پلن‌ها');
+            $out['usable_here'] = self::discountUsable($store);
+            if (!$out['usable_here']) $out['note'] = 'کد تخفیف فقط در نسخهٔ کافه‌بازار قابل استفاده است.';
+        }
+        return $out;
+    }
+
+    /** A lower price for one purchase is possible only through Bazaar's signed dynamic price. */
+    public static function discountUsable(string $store): bool
+    {
+        return $store === 'bazaar' && Settings::secret('bazaar_discount_key') !== '';
+    }
+
+    public static function discountedPrice(int $price, int $percent): int
+    {
+        $v = (int)(round($price * (100 - max(1, min(90, $percent))) / 100 / 100) * 100);
+        return max(1000, min($price, $v));
+    }
+
+    /** Gift codes are used right away. */
+    public static function redeemGift(string $code, array $user): array
+    {
+        $p = self::find($code, $user);
+        if ($p['kind'] === 'discount') throw new ApiError('promo_is_discount', 'این کد تخفیف است؛ هنگام خرید پلن وارد شود.', 409);
+        Db::tx(function () use ($p, $user) {
+            Db::insert('promo_redemptions', ['code_id' => $p['id'], 'user_id' => $user['id'], 'created_at' => Clock::sql()]);
+            Db::run('UPDATE {promo_codes} SET uses = uses + 1 WHERE id = ?', [$p['id']]);
+            Db::insert('user_grants', [
+                'user_id' => $user['id'], 'feature_k' => $p['kind'] === 'gift_pro' ? 'pro' : $p['feature_k'],
+                'expires_at' => $p['days'] === null ? null : Clock::sql(Clock::now() + (int)$p['days'] * 86400),
+                'reason' => 'کد ' . $p['code'], 'admin_id' => $p['admin_id'], 'created_at' => Clock::sql(),
+            ]);
+        });
+        Audit::log('user', (int)$user['id'], 'promo_redeemed', 'promo', $p['id'], $p['code']);
+        return $p;
+    }
+
+    /** Called when a discounted purchase is confirmed. */
+    public static function used(int $promoId, int $userId, int $purchaseId): void
+    {
+        try {
+            Db::insert('promo_redemptions', ['code_id' => $promoId, 'user_id' => $userId, 'purchase_id' => $purchaseId, 'created_at' => Clock::sql()]);
+            Db::run('UPDATE {promo_codes} SET uses = uses + 1 WHERE id = ?', [$promoId]);
+        } catch (PDOException $e) { /* already recorded */ }
+    }
+}
+
 // ================================================================ feature flags
 final class Features
 {
     public const MODES = ['free', 'pro', 'limited', 'disabled', 'gift'];
 
     /** Every module of the app; all free by default so nobody loses what they have today. */
+    public const SECTIONS = ['games' => 'بازی‌های امتیازی', 'mafia' => 'راوی مافیا', 'party' => 'پانتومیم و جاسوس', 'general' => 'ابزارها و ظاهر'];
+
+    /** Every module of the app; all free by default so nobody loses what they have today. [key, title, description, section] */
     public static function defaults(): array
     {
         return [
-            ['shalam', 'داوری شلم', 'ثبت دست، جمع امتیاز و پایان بازی'],
-            ['menfi', 'داوری منفی', 'ثبت عددها و حالت رخ‌داده'],
-            ['hezartaii', 'هزارتایی', 'رقابت انفرادی تا هدف'],
-            ['dolo', 'دو لو گشنیز', 'حکم، حداقل و حذف'],
-            ['mafia', 'راوی مافیا', 'گردانندگی شب و روز'],
-            ['mafia_custom', 'سناریو و نقش دلخواه مافیا', 'ساخت و ویرایش سناریو و نقش'],
-            ['panto', 'پانتومیم', 'داوری مسابقهٔ تیمی'],
-            ['panto_words', 'کلمات من در پانتومیم', 'افزودن واژه‌های شخصی'],
-            ['spy', 'جاسوس', 'پخش نقش و زمان‌سنج'],
-            ['leagues', 'لیگ‌ها', 'لیگ دوره‌ای و حذفی؛ محدودیت = تعداد لیگ'],
-            ['rankings', 'رنک‌بندی و کارنامه', 'رتبه، کارنامه و رکورد'],
-            ['history', 'تاریخچه', 'ادامه و مرور بازی‌ها'],
-            ['photos', 'عکس از گالری', 'عکس افراد، تیم‌ها و لیگ‌ها؛ محدودیت = تعداد عکس'],
-            ['themes', 'سبک‌های ظاهری', 'شش سبک ظاهری برنامه'],
-            ['backup', 'پشتیبان‌گیری محلی', 'ذخیره و بازگردانی فایل'],
-            ['cloud_backup', 'پشتیبان ابری', 'نگهداری پشتیبان بازی‌ها روی سرور'],
-            ['share', 'اشتراک تصویر', 'اشتراک تصویر بازی و نتیجه'],
-            ['deck_calc', 'ماشین‌حساب ورق', 'پخش و ورق اضافه'],
+            ['shalam', 'داوری شلم', 'ثبت دست، جمع امتیاز و پایان بازی', 'games'],
+            ['menfi', 'داوری منفی', 'ثبت عددها و حالت رخ‌داده', 'games'],
+            ['hezartaii', 'هزارتایی', 'رقابت انفرادی تا هدف', 'games'],
+            ['dolo', 'دو لو گشنیز', 'حکم، حداقل و حذف', 'games'],
+            ['mafia', 'راوی مافیا (کل بخش)', 'گردانندگی شب و روز', 'mafia'],
+            ['mafia_scenarios', 'سناریوهای مافیا', 'هر سناریو را جدا می‌توان Pro کرد', 'mafia'],
+            ['mafia_last_cards', 'کارت حرکت آخر', 'کل کارت‌ها یا هر کارت جدا', 'mafia'],
+            ['mafia_custom', 'ساخت و ویرایش سناریو و نقش', 'سناریوی دلخواه، نقش تازه و ویرایش قوانین', 'mafia'],
+            ['mafia_groups', 'گروه‌های بازی مافیا', 'ذخیرهٔ بازیکنان و نقش‌ها', 'mafia'],
+            ['mafia_report', 'گزارش بازی مافیا', 'گزارش کامل پس از بازی', 'mafia'],
+            ['mafia_audio', 'صدا و موسیقی دلخواه راوی', 'فایل صوتی از گوشی و ضبط صدای خود راوی', 'mafia'],
+            ['panto', 'پانتومیم (کل بخش)', 'داوری مسابقهٔ تیمی', 'party'],
+            ['panto_modes', 'نوع مسابقهٔ پانتومیم', 'هر نوع مسابقه را جدا می‌توان Pro کرد', 'party'],
+            ['panto_words', 'کلمات من در پانتومیم', 'افزودن واژه‌های شخصی', 'party'],
+            ['spy', 'جاسوس (کل بخش)', 'پخش نقش و زمان‌سنج', 'party'],
+            ['spy_words', 'کلمات من در جاسوس', 'افزودن کلمه‌های شخصی', 'party'],
+            ['leagues', 'لیگ‌ها', 'لیگ دوره‌ای و حذفی؛ محدودیت = تعداد لیگ', 'general'],
+            ['rankings', 'رنک‌بندی', 'رتبه و رکورد', 'general'],
+            ['profiles', 'کارنامهٔ افراد و تیم‌ها', 'آمار و کارنامهٔ هر نفر', 'general'],
+            ['history', 'تاریخچه', 'ادامه و مرور بازی‌ها', 'general'],
+            ['charts', 'نمودار و آمار کامل بازی', 'نمودار نتیجه و آمار شلم', 'general'],
+            ['photos', 'عکس از گالری', 'عکس افراد، تیم‌ها و لیگ‌ها؛ محدودیت = تعداد عکس', 'general'],
+            ['themes', 'سبک‌های ظاهری', 'هر سبک را جدا می‌توان Pro کرد', 'general'],
+            ['backup', 'پشتیبان‌گیری محلی', 'ذخیره و بازگردانی فایل', 'general'],
+            ['cloud_backup', 'پشتیبان ابری', 'نگهداری پشتیبان بازی‌ها روی سرور', 'general'],
+            ['share', 'اشتراک تصویر', 'اشتراک تصویر بازی و نتیجه', 'general'],
+            ['deck_calc', 'ماشین‌حساب ورق', 'پخش و ورق اضافه', 'general'],
         ];
     }
 
@@ -507,10 +607,12 @@ final class Features
                 case 'gift': $allowed = $granted; break;
                 default: $allowed = false;
             }
+            $items = ($pro || $granted) ? [] : array_values(array_filter(array_map('trim', explode(',', (string)($f['pro_items'] ?? '')))));
             $out[$f['k']] = [
                 'mode' => $mode,
                 'allowed' => $allowed,
                 'limit' => ($mode === 'limited' && !$pro && !$granted && $f['limit_value'] !== null) ? (int)$f['limit_value'] : null,
+                'pro_items' => $items,
             ];
         }
         return $out;
@@ -526,6 +628,20 @@ final class Ads
         'interstitial' => 'بین دو فعالیت', 'rewarded' => 'ویدئوی جایزه‌ای', 'sponsor' => 'اسپانسری',
     ];
     public const EVENTS = ['request', 'fill', 'impression', 'click', 'close', 'reward', 'error'];
+
+    /** Pages where a fixed bar may appear (never game boards, timers, mafia night/vote or score entry). */
+    public const ZONES = [
+        'home' => 'خانه', 'history' => 'تاریخچه', 'result' => 'نتیجهٔ بازی پایان‌یافته', 'ranking' => 'رنک‌بندی', 'settings' => 'تنظیمات',
+        'leagues' => 'فهرست لیگ‌ها', 'players' => 'افراد و تیم‌ها', 'hub' => 'صفحهٔ اصلی مافیا، پانتومیم و جاسوس', 'about' => 'درباره',
+    ];
+
+    /** In-app destinations an ad button can open. */
+    public const APP_TARGETS = [
+        'divan://pro' => 'صفحهٔ خرید Pro', 'divan://plan/m1' => 'خرید پلن یک‌ماهه', 'divan://plan/m3' => 'خرید پلن سه‌ماهه',
+        'divan://plan/m6' => 'خرید پلن شش‌ماهه', 'divan://plan/life' => 'خرید پلن مادام‌العمر', 'divan://subscription' => 'اشتراک من',
+        'divan://rewarded' => 'ویدئوی جایزه‌ای (ساعتی بدون تبلیغ)', 'divan://screen/mafia' => 'بخش مافیا', 'divan://screen/panto' => 'بخش پانتومیم',
+        'divan://screen/spy' => 'بخش جاسوس', 'divan://screen/leagues' => 'لیگ‌ها', 'divan://screen/themes' => 'سبک‌های ظاهری',
+    ];
 
     /**
      * Safe slots only: never on game boards, timers, mafia night/vote, role reveal or result entry.
@@ -544,6 +660,8 @@ final class Ads
             ['settings_bottom', 'تنظیمات — پایین صفحه', 'settings', 'bottom', 'banner_small,banner_wide,text', 'banner'],
             ['between_games', 'بین دو فعالیت (پس از بستن نتیجه)', 'transition', 'interstitial', 'interstitial,video', 'interstitial'],
             ['rewarded_offer', 'ویدئوی جایزه‌ای (اختیاری)', 'offer', 'rewarded', 'rewarded', 'rewarded'],
+            ['sticky_bottom', 'نوار ثابت پایین صفحه', 'any', 'sticky', 'banner_small,banner_wide,text,image,native', 'banner'],
+            ['sticky_top', 'نوار ثابت بالای صفحه', 'any', 'sticky', 'banner_small,banner_wide,text,image,native', 'banner'],
         ];
     }
 
@@ -585,6 +703,7 @@ final class Ads
             'rewarded_ad_free_minutes' => (int)Settings::get('rewarded_ad_free_minutes', 60),
             'placements' => array_map(fn($p) => [
                 'key' => $p['k'], 'screen' => $p['screen'], 'position' => $p['position'], 'active' => (bool)$p['active'],
+                'screens' => array_values(array_filter(explode(',', (string)($p['screens'] ?? '')))),
                 'formats' => array_values(array_filter(explode(',', $p['formats']))),
                 'network_formats' => array_values(array_filter(explode(',', (string)$p['network_formats']))),
             ], self::placements()),
@@ -592,6 +711,7 @@ final class Ads
             'network' => [
                 'provider' => 'tapsell',
                 'enabled' => (bool)($tapsell['enabled'] ?? false),
+                'test' => (bool)($tapsell['test'] ?? false),
                 'zones' => $tapsell['zones'] ?? new stdClass(),
             ],
         ];

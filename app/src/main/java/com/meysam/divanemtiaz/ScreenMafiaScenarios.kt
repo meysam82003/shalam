@@ -92,6 +92,7 @@ private fun Screen.lineupText(m: Map<MafiaRole, Int>): String =
 
 /** Draft setup from a scenario: its settings, the reference line-up for the chosen players and its cards. */
 fun Screen.startScenario(s: MafiaScenario) {
+    if (Gate.itemLocked("mafia_scenarios", s.id)) { Gate.lockedItem(this, "سناریوی " + s.name); return }
     val d = host.mafia.draft()
     MafiaScenarios.applyTo(d, s)
     if (s.id != MafiaScenarios.FREE) {
@@ -100,7 +101,7 @@ fun Screen.startScenario(s: MafiaScenario) {
         d.deck.clear()
         if (!s.setup.noCards) {
             val cards = if (d.roleCounts.isEmpty()) s.cards else MafiaScenarios.matchMind(s.cards, d.roleCounts.keys)
-            cards.forEach { d.deck += MafiaCardState(it) }
+            cards.filter { MafiaCardRules.usable(it) }.forEach { d.deck += MafiaCardState(it) }
         }
     }
     d.players.forEach { it.role = null; it.seen = false }
@@ -158,6 +159,7 @@ class MafiaScenarioListScreen(host: MainActivity, private val browse: Boolean = 
                 val tags = ArrayList<View>()
                 if (s.custom) tags += kit.badge("سناریوی شما", Royal.turquoise)
                 else if (saved.any { it.id == s.id }) tags += kit.badge("ویرایش‌شده", Royal.turquoise)
+                if (Gate.itemLocked("mafia_scenarios", s.id)) tags += Gate.badge(this@MafiaScenarioListScreen)
                 if (s.presets.isNotEmpty()) tags += kit.badge("ترکیب مرجع: " + s.presets.keys.sorted().joinToString("، ") { kit.n(it) } + " نفر", Royal.gold)
                 if (tags.isNotEmpty()) addView(kit.flow(tags, 4))
             }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
@@ -255,6 +257,7 @@ class MafiaScenarioScreen(host: MainActivity, private val id: String) : Screen(h
 
 /** Edits a built-in scenario (saved as the narrator's version) or creates / edits his own scenario. */
 class MafiaScenarioEditScreen(host: MainActivity, id: String?) : Screen(host) {
+    override val featureKey: String get() = "mafia_custom"
     private val isNew = id == null
     private var s: MafiaScenario = id?.let { host.mafia.scenario(it) }
         ?: MafiaScenario("u" + System.currentTimeMillis(), "سناریوی من", "سناریوی ساخت خودم", "", emptyList(), custom = true, auto = true)
@@ -384,6 +387,7 @@ class MafiaScenarioEditScreen(host: MainActivity, id: String?) : Screen(host) {
 
 /** «افزودن نقش» / «ویرایش قوانین نقش»: every rule of a role, for existing roles and the narrator's own roles. */
 class MafiaRoleEditScreen(host: MainActivity, role: MafiaRole?) : Screen(host) {
+    override val featureKey: String get() = "mafia_custom"
     private val slot: MafiaRole? = role ?: MafiaRoleRegistry.nextFreeSlot()
     private val isNew = role == null
     private var d: MafiaRoleDef = slot?.let { MafiaRoleRegistry.user[it] } ?: if (isNew) MafiaRoleDef(name = "نقش جدید", side = MafiaSide.CITY,

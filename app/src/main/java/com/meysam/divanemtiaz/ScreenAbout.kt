@@ -11,6 +11,7 @@ import android.widget.LinearLayout
 
 /** «دربارهٔ برنامه»: a word to the players, what the app does, and the address for criticism and suggestions. */
 class AboutScreen(host: MainActivity) : Screen(host) {
+    override val adZone: String? get() = "about"
     override fun build(): View = scaffold("دربارهٔ برنامه", "$APP_VERSION_LABEL  •  آفلاین") {
         addView(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
             addView(HeroCrestView(host), LinearLayout.LayoutParams(kit.dp(220), kit.dp(170)))

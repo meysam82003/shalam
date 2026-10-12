@@ -17,13 +17,13 @@ final class Backup
     public const TABLES = [
         'settings', 'users', 'sessions', 'plans', 'campaigns', 'purchase_intents', 'purchases', 'entitlements', 'features',
         'user_grants', 'placements', 'media', 'ads', 'ad_stats', 'revenue', 'support_requests', 'support_actions', 'admins',
-        'audit_log', 'security_events', 'user_backups',
+        'audit_log', 'security_events', 'user_backups', 'promo_codes', 'promo_redemptions',
     ];
     /** Natural keys used to recognise a row that already exists. */
     private const KEYS = [
         'settings' => ['k'], 'users' => ['username_norm'], 'sessions' => ['token_hash'], 'plans' => ['code'], 'purchases' => ['store', 'token_hash'],
         'entitlements' => ['id'], 'features' => ['k'], 'placements' => ['k'], 'admins' => ['username'], 'ad_stats' => ['day', 'ad_id', 'source', 'placement'],
-        'purchase_intents' => ['payload'], 'user_backups' => ['user_id'],
+        'purchase_intents' => ['payload'], 'user_backups' => ['user_id'], 'promo_codes' => ['code'], 'promo_redemptions' => ['code_id', 'user_id'],
     ];
 
     public static function dir(): string { return App::$root . '/storage/backups'; }

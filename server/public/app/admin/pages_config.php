@@ -218,31 +218,49 @@ final class ConfigPages
                 if (!in_array($mode, Features::MODES, true)) continue;
                 $limit = trim((string)($_POST['limit'][$f['k']] ?? ''));
                 $limit = $limit === '' ? null : max(0, (int)$limit);
-                if ($mode !== $f['mode'] || $limit !== ($f['limit_value'] === null ? null : (int)$f['limit_value'])) {
-                    Db::update('features', ['mode' => $mode, 'limit_value' => $limit, 'updated_at' => Clock::sql()], 'k = ?', [$f['k']]);
-                    $changes[$f['k']] = [$f['mode'] . '/' . $f['limit_value'], $mode . '/' . $limit];
+                $items = array_map('strval', (array)($_POST['items'][$f['k']] ?? []));
+                foreach (preg_split('/[\s,،]+/u', (string)($_POST['extra'][$f['k']] ?? '')) as $x) if (preg_match('/^[A-Za-z0-9_.-]{1,64}$/', $x)) $items[] = $x;
+                $items = implode(',', array_values(array_unique(array_filter($items, fn($x) => preg_match('/^[A-Za-z0-9_.-]{1,64}$/', $x)))));
+                $old = (string)($f['pro_items'] ?? '');
+                if ($mode !== $f['mode'] || $limit !== ($f['limit_value'] === null ? null : (int)$f['limit_value']) || $items !== $old) {
+                    Db::update('features', ['mode' => $mode, 'limit_value' => $limit, 'pro_items' => $items ?: null, 'updated_at' => Clock::sql()], 'k = ?', [$f['k']]);
+                    $changes[$f['k']] = [$f['mode'] . '/' . $f['limit_value'] . '/' . $old, $mode . '/' . $limit . '/' . $items];
                 }
             }
             if ($changes) Admin::audit('features_update', 'features', null, $reason, null, $changes);
-            Admin::flash($changes ? fa_digits(count($changes)) . ' قابلیت تغییر کرد؛ اپ‌ها در همگام‌سازی بعدی آن را می‌گیرند.' : 'تغییری نبود.');
+            Admin::flash($changes ? fa_digits(count($changes)) . ' مورد تغییر کرد؛ اپ‌ها حداکثر چند دقیقه بعد (با باز شدن برنامه) آن را می‌گیرند.' : 'تغییری نبود.');
             Admin::redirect('p=features');
         }
         $rows = Features::all();
-        Admin::layout('قابلیت‌های رایگان و Pro', function () use ($rows) {
+        $groups = [];
+        foreach ($rows as $f) $groups[$f['section'] ?? 'general'][] = $f;
+        Admin::layout('قابلیت‌های رایگان و Pro', function () use ($groups) {
             ?>
             <div class="alert info">
               <b>رایگان:</b> برای همه باز است. <b>فقط Pro:</b> کاربر رایگان صفحهٔ معرفی Pro را می‌بیند. <b>رایگان محدود:</b> کاربر رایگان تا «محدودیت» (مثلاً تعداد لیگ یا عکس) استفاده می‌کند.
               <b>غیرفعال:</b> برای همه بسته است. <b>فقط هدیه:</b> فقط کسانی که دسترسی ویژه گرفته‌اند.
-              <br>داده‌ای که کاربر قبلاً ساخته هیچ‌وقت پاک یا قفل نمی‌شود؛ محدودیت فقط روی ساختن مورد تازه اعمال می‌شود.
+              <br>برای سناریوهای مافیا، کارت‌های حرکت آخر، نوع مسابقهٔ پانتومیم و سبک‌های ظاهری می‌توانید <b>هر مورد را جدا</b> Pro کنید (بخش را «رایگان» بگذارید و موردها را تیک بزنید).
+              <br>بازی‌ای که کاربر شروع کرده و داده‌ای که ساخته هیچ‌وقت قفل یا پاک نمی‌شود؛ قانون فقط هنگام ورود به بخش یا شروع مورد تازه اعمال می‌شود.
             </div>
             <form method="post"><?= Admin::csrfField() ?>
-            <div class="table-wrap"><table><thead><tr><th>قابلیت</th><th>توضیح</th><th>حالت</th><th>محدودیت رایگان</th></tr></thead><tbody>
-            <?php foreach ($rows as $f): ?>
-              <tr><td><b><?= e($f['title']) ?></b><br><code><?= e($f['k']) ?></code></td><td class="muted"><?= e($f['description']) ?></td>
+            <?php foreach (Features::SECTIONS as $sec => $secTitle): if (empty($groups[$sec])) continue; ?>
+            <div class="card"><h3><?= e($secTitle) ?></h3>
+            <div class="table-wrap"><table><thead><tr><th>قابلیت</th><th>حالت</th><th>محدودیت رایگان</th></tr></thead><tbody>
+            <?php foreach ($groups[$sec] as $f): $catalog = Catalog::items($f['k']); $sel = array_filter(explode(',', (string)($f['pro_items'] ?? ''))); ?>
+              <tr><td><b><?= e($f['title']) ?></b><br><small class="muted"><?= e($f['description']) ?></small> <code><?= e($f['k']) ?></code>
+                <?php if ($catalog): $extra = array_diff($sel, array_keys($catalog)); ?>
+                  <details style="margin-top:6px"<?= $sel ? ' open' : '' ?>><summary>موردهای فقط Pro (<?= fa_digits(count($sel)) ?> از <?= fa_digits(count($catalog)) ?>)</summary>
+                    <div class="grid g3" style="gap:2px;margin-top:6px">
+                    <?php foreach ($catalog as $id => $title) echo '<label class="check"><input type="checkbox" name="items[' . e($f['k']) . '][]" value="' . e($id) . '"' . (in_array($id, $sel, true) ? ' checked' : '') . '> ' . e($title) . '</label>'; ?>
+                    </div>
+                    <input type="text" name="extra[<?= e($f['k']) ?>]" value="<?= e(implode(', ', $extra)) ?>" class="ltr" placeholder="شناسهٔ موردهای دیگر (برای نسخه‌های تازه‌تر اپ)" style="margin-top:6px">
+                  </details>
+                <?php endif; ?></td>
                 <td><select name="mode[<?= e($f['k']) ?>]"><?php foreach (Features::MODES as $m) echo '<option value="' . $m . '"' . ($f['mode'] === $m ? ' selected' : '') . '>' . strip_tags(Admin::statusBadge($m)) . '</option>'; ?></select></td>
-                <td><input type="number" name="limit[<?= e($f['k']) ?>]" value="<?= e($f['limit_value']) ?>" min="0" style="max-width:120px"></td></tr>
+                <td><input type="number" name="limit[<?= e($f['k']) ?>]" value="<?= e($f['limit_value']) ?>" min="0" style="max-width:110px"></td></tr>
             <?php endforeach; ?>
-            </tbody></table></div>
+            </tbody></table></div></div>
+            <?php endforeach; ?>
             <div class="row" style="margin-top:12px"><div style="flex:3"><input type="text" name="reason" placeholder="دلیل تغییر (اجباری)" required minlength="5"></div><div style="flex:0"><button class="btn gold" data-confirm="تغییر دسترسی‌ها برای همهٔ کاربران اعمال شود؟">ذخیره</button></div></div>
             </form>
             <?php
@@ -259,6 +277,19 @@ final class ConfigPages
         Admin::layout('تبلیغات', function () use ($rows, $stats, $on) {
             ?>
             <?php if (!$on): ?><div class="alert warn">نمایش تبلیغ در اپ خاموش است. از «شبکهٔ تبلیغاتی» روشنش کنید. کاربران Pro در هر حال هیچ تبلیغی نمی‌بینند.</div><?php endif; ?>
+            <div class="card"><h3>آنچه اپ یک کاربر رایگان همین حالا دریافت می‌کند</h3>
+              <?php foreach (Plans::STORES as $st): $c = Ads::configFor($st, false); ?>
+                <p><b><?= Admin::storeName($st) ?>:</b>
+                <?php if (empty($c['enabled'])): ?><span class="badge bad">هیچ تبلیغی (نمایش خاموش)</span>
+                <?php else: $live = array_map(fn($x) => $x['title'] ?: ('#' . $x['id']), $c['ads']); $sticky = array_filter($c['placements'], fn($p) => $p['position'] === 'sticky' && $p['active']); ?>
+                  <span class="badge ok"><?= fa_digits(count($c['ads'])) ?> تبلیغ مستقیم</span> <?= e(implode('، ', $live)) ?>
+                  <?= $sticky ? ' — نوار ثابت: ' . e(implode('، ', array_map(fn($p) => $p['key'], $sticky))) : '' ?>
+                  <?= !empty($c['network']['enabled']) ? ' — <span class="badge info">تپسل روشن</span>' : '' ?>
+                <?php endif; ?></p>
+              <?php endforeach; ?>
+              <p class="hint">اپ این فهرست را هنگام باز شدن و حداکثر هر ۱۰ دقیقه یک بار می‌گیرد. تصویر و ویدئو اول دانلود می‌شود و بعد نمایش داده می‌شود.</p>
+              <?php foreach ($rows as $a) { $pr = self::adProblems($a); if ($pr) echo '<div class="alert warn"><b>' . e($a['name']) . ':</b> ' . e(implode(' ', $pr)) . '</div>'; } ?>
+            </div>
             <div class="alert info">تبلیغ هیچ‌وقت روی صفحهٔ داوری، تایمر، شب و رأی‌گیری مافیا، نمایش نقش یا هنگام ثبت امتیاز نشان داده نمی‌شود و همیشه برچسب «تبلیغات» دارد.</div>
             <div class="table-wrap"><table><thead><tr><th>تبلیغ</th><th>قالب</th><th>جایگاه‌ها</th><th>زمان‌بندی</th><th>نمایش / کلیک</th><th>اولویت</th><th>وضعیت</th></tr></thead><tbody>
             <?php foreach ($rows as $a): $s = $stats[(int)$a['id']] ?? ['im' => 0, 'cl' => 0];
@@ -272,6 +303,22 @@ final class ConfigPages
             </tbody></table></div>
             <?php
         }, 'ads', [Admin::writable() ? '<a class="btn gold" href="index.php?p=ad">تبلیغ جدید</a>' : '']);
+    }
+
+    /** Reasons an ad would not reach the app, in plain words. */
+    public static function adProblems(array $a): array
+    {
+        $w = [];
+        if (!Settings::get('ads_enabled', false)) $w[] = 'نمایش تبلیغ خاموش است؛ در «شبکهٔ تبلیغاتی» تیک «نمایش تبلیغ برای کاربران رایگان روشن باشد» را بزنید، وگرنه هیچ تبلیغی به اپ نمی‌رسد.';
+        if (empty($a['active'])) $w[] = 'این تبلیغ غیرفعال است (تیک «فعال»).';
+        if (!empty($a['starts_at']) && Clock::ts($a['starts_at']) > Clock::now()) $w[] = 'زمان شروع این تبلیغ هنوز نرسیده است.';
+        if (!empty($a['ends_at']) && Clock::ts($a['ends_at']) <= Clock::now()) $w[] = 'زمان این تبلیغ تمام شده است.';
+        if (!empty($a['total_cap']) && (int)($a['impressions_total'] ?? 0) >= (int)$a['total_cap']) $w[] = 'سقف نمایش کل این تبلیغ پر شده است.';
+        $active = array_column(Db::all('SELECT k, active FROM {placements}'), 'active', 'k');
+        $off = array_filter(explode(',', (string)$a['placements']), fn($k) => empty($active[$k]));
+        if ($off) $w[] = 'این جایگاه‌ها خاموش‌اند: ' . implode('، ', $off) . ' (صفحهٔ «جایگاه‌های تبلیغ»).';
+        if (Settings::get('ads_priority', 'direct_first') === 'network_only') $w[] = 'ترتیب منبع روی «فقط شبکه» است؛ تبلیغ مستقیم نمایش داده نمی‌شود.';
+        return $w;
     }
 
     public static function ad(): void
@@ -293,8 +340,8 @@ final class ConfigPages
             if (!empty($_FILES['upload']['name'])) $mediaId = Media::store($_FILES['upload']);
             if ($mediaId !== null && Db::value('SELECT id FROM {media} WHERE id = ?', [$mediaId]) === null) $mediaId = null;
             if (in_array($format, ['image', 'video', 'corner', 'rewarded'], true) && $mediaId === null) throw new ApiError('media', 'این قالب به تصویر یا ویدئو نیاز دارد.');
-            $url = self::post('target_url');
-            if (!safe_target_url($url)) throw new ApiError('url', 'نشانی مقصد باید http یا https و عمومی باشد.');
+            $url = self::post('target_app') !== '' ? self::post('target_app') : self::post('target_url');
+            if (!safe_target_url($url)) throw new ApiError('url', 'نشانی مقصد باید http یا https و عمومی باشد، یا یکی از صفحه‌های داخل اپ.');
             $valid = array_column(Ads::placements(), 'formats', 'k');
             $places = array_values(array_filter((array)($_POST['placements'] ?? []), fn($p) => isset($valid[$p]) && in_array($format, explode(',', $valid[$p]), true)));
             if (!$places) throw new ApiError('placements', 'دست‌کم یک جایگاه سازگار با این قالب انتخاب کنید.');
@@ -314,12 +361,13 @@ final class ConfigPages
             ];
             if ($ad !== null) { Db::update('ads', $row, 'id = ?', [$id]); Admin::audit('ad_update', 'ad', $id, $reason, $ad, $row); }
             else { $id = Db::insert('ads', $row + ['created_at' => Clock::sql()]); Admin::audit('ad_create', 'ad', $id, $reason, null, $row); }
-            Admin::flash('تبلیغ ذخیره شد.');
+            Admin::flash('تبلیغ ذخیره شد. اپ‌ها حداکثر چند دقیقه بعد (با باز شدن برنامه) آن را می‌گیرند.');
+            foreach (self::adProblems($row) as $warn) Admin::flash($warn, 'warn');
             Admin::redirect('p=ad&id=' . $id);
         }
         $media = Db::all('SELECT * FROM {media} ORDER BY id DESC LIMIT 200');
         $placements = Ads::placements();
-        $a = $ad ?? ['name' => '', 'title' => '', 'body' => '', 'format' => 'card', 'media_id' => null, 'target_url' => '', 'cta_text' => 'مشاهده', 'style_json' => null, 'closable' => 1, 'starts_at' => null, 'ends_at' => null, 'total_cap' => null, 'daily_cap' => 3, 'min_interval_sec' => 0, 'priority' => 0, 'placements' => 'home_inline', 'stores' => 'bazaar,myket', 'active' => 0];
+        $a = $ad ?? ['name' => '', 'title' => '', 'body' => '', 'format' => 'card', 'media_id' => null, 'target_url' => '', 'cta_text' => 'مشاهده', 'style_json' => null, 'closable' => 1, 'starts_at' => null, 'ends_at' => null, 'total_cap' => null, 'daily_cap' => 3, 'min_interval_sec' => 0, 'priority' => 0, 'placements' => 'home_inline', 'stores' => 'bazaar,myket', 'active' => 1];
         $style = json_decode((string)$a['style_json'], true) ?: [];
         $base = App::baseUrl();
         Admin::layout($ad ? 'ویرایش تبلیغ' : 'تبلیغ جدید', function () use ($a, $ad, $media, $placements, $style, $base) {
@@ -336,8 +384,10 @@ final class ConfigPages
                 <label>متن</label><input type="text" name="body" id="f-body" value="<?= e($a['body']) ?>" maxlength="300">
                 <div class="row">
                   <div><label>متن دکمه</label><input type="text" name="cta_text" id="f-cta" value="<?= e($a['cta_text']) ?>" maxlength="30"></div>
-                  <div><label>نشانی مقصد</label><input type="url" name="target_url" value="<?= e($a['target_url']) ?>" class="ltr" placeholder="https://"></div>
+                  <div><label>مقصد داخل اپ (دکمه کجا برود)</label><select name="target_app" id="f-target-app"><option value="">— لینک وب (کادر بعدی) —</option>
+                    <?php foreach (Ads::APP_TARGETS as $k => $l) echo '<option value="' . e($k) . '"' . ($a['target_url'] === $k ? ' selected' : '') . '>' . e($l) . '</option>'; ?></select></div>
                 </div>
+                <label>یا نشانی وب</label><input type="url" name="target_url" value="<?= e(strpos((string)$a['target_url'], 'divan://') === 0 ? '' : $a['target_url']) ?>" class="ltr" placeholder="https://">
                 <label>تصویر یا ویدئو</label>
                 <select name="media_id" id="f-media"><option value="">— بدون رسانه —</option>
                   <?php foreach ($media as $m) echo '<option value="' . (int)$m['id'] . '" data-url="' . e($base . '/media/' . $m['path']) . '" data-kind="' . e($m['kind']) . '"' . ((int)$a['media_id'] === (int)$m['id'] ? ' selected' : '') . '>#' . fa_digits($m['id']) . ' ' . e($m['original_name']) . ' (' . e($m['kind']) . ($m['width'] ? ' ' . fa_digits($m['width'] . '×' . $m['height']) : '') . ')</option>'; ?>
@@ -397,7 +447,8 @@ final class ConfigPages
                 $allowed = explode(',', $defaults[$p['k']][0] ?? $p['formats']);
                 $formats = array_values(array_intersect((array)($_POST['formats'][$p['k']] ?? []), $allowed));
                 $row = ['active' => $active, 'formats' => implode(',', $formats ?: $allowed)];
-                if ($row['active'] !== (int)$p['active'] || $row['formats'] !== $p['formats']) {
+                if ($p['position'] === 'sticky') $row['screens'] = implode(',', array_values(array_intersect((array)($_POST['screens'][$p['k']] ?? []), array_keys(Ads::ZONES))));
+                if ($row['active'] !== (int)$p['active'] || $row['formats'] !== $p['formats'] || ($row['screens'] ?? $p['screens']) !== $p['screens']) {
                     Db::update('placements', $row, 'k = ?', [$p['k']]);
                     Admin::audit('placement_update', 'placement', $p['k'], $reason, ['active' => $p['active'], 'formats' => $p['formats']], $row);
                 }
@@ -414,11 +465,12 @@ final class ConfigPages
             $slot = fn($k, $label, $cls = '') => '<div class="slot ' . $cls . (isset($on[$k]) ? ' on' : '') . '"><span class="ad-label">تبلیغات</span>' . e($label) . '</div>';
             ?>
             <div class="card"><h3>نقشهٔ جایگاه‌ها</h3>
-              <p class="hint">کادرهای طلایی پررنگ جایگاه‌های روشن هستند. صفحه‌های داوری، تایمر و مافیا هیچ جایگاهی ندارند و قابل افزودن هم نیستند.</p>
+              <p class="hint">کادرهای طلایی پررنگ جایگاه‌های روشن هستند. صفحه‌های داوری، تایمر و مافیا هیچ جایگاهی ندارند و قابل افزودن هم نیستند. نوار ثابت بالا یا پایین در صفحه‌هایی که تیک بزنید همیشه سر جایش می‌ماند و فضای خودش را دارد، پس روی دکمه‌ها نمی‌افتد.</p>
               <div class="phones">
                 <div class="phone"><div class="screen"><div class="blk">دیوان امتیاز — خانه</div><div class="blk">ادامهٔ داوری</div><?= $slot('home_inline', 'میان بخش‌ها') ?><div class="blk">بازی‌ها</div><?= $slot('home_bottom', 'پایین صفحه') ?><?= $slot('home_corner', 'گوشه', 'corner') ?><div class="nav"></div></div></div>
                 <div class="phone light"><div class="screen"><div class="blk">تاریخچه</div><div class="blk">امروز — ۳ بازی</div><?= $slot('history_inline', 'میان فهرست') ?><div class="blk">دیروز</div><div class="blk">رنک‌بندی</div><?= $slot('ranking_inline', 'پایین رنک‌بندی') ?><div class="nav"></div></div></div>
                 <div class="phone"><div class="screen"><div class="blk">نتیجهٔ بازی (پایان‌یافته)</div><div class="blk">برنده: تیم الف</div><?= $slot('result_bottom', 'پایین نتیجه') ?><div class="blk">مافیا / پانتومیم / جاسوس</div><?= $slot('hub_inline', 'صفحهٔ بازی‌ها') ?><?= $slot('settings_bottom', 'پایین تنظیمات') ?><div class="nav"></div></div></div>
+                <div class="phone"><div class="screen"><?= $slot('sticky_top', 'نوار ثابت بالا') ?><div class="blk">هر صفحهٔ مجاز</div><div class="blk">محتوای صفحه بالا و پایین می‌رود؛ نوار ثابت می‌ماند و چیزی را نمی‌پوشاند</div><div class="blk">…</div><div style="margin-top:auto"></div><?= $slot('sticky_bottom', 'نوار ثابت پایین') ?><div class="nav" style="margin-top:6px"></div></div></div>
                 <div class="phone light"><div class="screen" style="justify-content:center"><?= $slot('between_games', 'تمام‌صفحه بین دو فعالیت — حداکثر هر ۱۰ دقیقه، قابل بستن') ?><?= $slot('rewarded_offer', 'ویدئوی جایزه‌ای — فقط با انتخاب کاربر، یک ساعت بدون تبلیغ') ?></div></div>
               </div>
             </div>
@@ -426,7 +478,10 @@ final class ConfigPages
             <div class="table-wrap"><table><thead><tr><th>جایگاه</th><th>صفحه / محل</th><th>قالب‌های مجاز تبلیغ مستقیم</th><th>قالب شبکه</th><th>روشن</th></tr></thead><tbody>
             <?php foreach ($rows as $p): $cur = explode(',', $p['formats']); ?>
               <tr><td><b><?= e($p['title']) ?></b><br><code><?= e($p['k']) ?></code></td><td><?= e($p['screen']) ?> / <?= e($p['position']) ?></td>
-                <td><?php foreach ($defaults[$p['k']] ?? $cur as $f) echo '<label class="check" style="display:inline-flex;margin-left:8px"><input type="checkbox" name="formats[' . e($p['k']) . '][]" value="' . e($f) . '"' . (in_array($f, $cur, true) ? ' checked' : '') . '> ' . e(Ads::FORMATS[$f] ?? $f) . '</label>'; ?></td>
+                <td><?php foreach ($defaults[$p['k']] ?? $cur as $f) echo '<label class="check" style="display:inline-flex;margin-left:8px"><input type="checkbox" name="formats[' . e($p['k']) . '][]" value="' . e($f) . '"' . (in_array($f, $cur, true) ? ' checked' : '') . '> ' . e(Ads::FORMATS[$f] ?? $f) . '</label>'; ?>
+                  <?php if ($p['position'] === 'sticky'): $zs = explode(',', (string)$p['screens']); ?>
+                    <div style="margin-top:6px"><b class="muted">در این صفحه‌ها:</b><br><?php foreach (Ads::ZONES as $z => $zl) echo '<label class="check" style="display:inline-flex;margin-left:8px"><input type="checkbox" name="screens[' . e($p['k']) . '][]" value="' . e($z) . '"' . (in_array($z, $zs, true) ? ' checked' : '') . '> ' . e($zl) . '</label>'; ?></div>
+                  <?php endif; ?></td>
                 <td><?= e($p['network_formats'] ?: '—') ?></td>
                 <td><input type="checkbox" name="active[<?= e($p['k']) ?>]" <?= $p['active'] ? 'checked' : '' ?>></td></tr>
             <?php endforeach; ?>

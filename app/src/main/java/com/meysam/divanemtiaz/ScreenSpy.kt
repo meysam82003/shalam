@@ -34,6 +34,8 @@ private val Screen.spySounds: GameSounds get() = spySoundsHolder ?: GameSounds {
 
 /** «جاسوس» home: players, spies and time, the words, and the start. */
 class SpyHomeScreen(host: MainActivity) : Screen(host) {
+    override val adZone: String? get() = "hub"
+    override val featureKey: String get() = "spy"
     /** People chosen as players (optional; otherwise «بازیکن ۱»، «بازیکن ۲»…). */
     private val people = ArrayList<String>()
 
@@ -340,6 +342,7 @@ class SpyResultScreen(host: MainActivity, private val gameId: Long) : Screen(hos
 
 /** Word lists by category: select / deselect, search, and the players' own words. */
 class SpyWordsScreen(host: MainActivity) : Screen(host) {
+    override val featureKey: String get() = "spy_words"
     private var cat = SpyCategory.PLACE
     private var query = ""
     private var grid: LinearLayout? = null
