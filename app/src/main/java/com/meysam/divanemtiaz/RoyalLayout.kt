@@ -161,7 +161,7 @@ class PodiumItem(val name: String, val avatar: Int, val value: String, val capti
 
 /** The first three of a ranking on stepped pedestals, the winner raised and crowned in the middle. */
 fun Screen.podium(items: List<PodiumItem>): View {
-    val medals = intArrayOf(0xFFE8C15E.toInt(), 0xFFC9D1DC.toInt(), 0xFFD49A66.toInt())
+    val medals = if (ThemeEngine.spec.light) intArrayOf(0xFFD4A42E.toInt(), 0xFF95A3B5.toInt(), 0xFFC07F48.toInt()) else intArrayOf(0xFFE8C15E.toInt(), 0xFFC9D1DC.toInt(), 0xFFD49A66.toInt())
     return kit.horizontal(Gravity.BOTTOM).apply {
         layoutParams = kit.spaced(12)
         setPadding(kit.dp(2), kit.dp(6), kit.dp(2), 0)
@@ -170,11 +170,11 @@ fun Screen.podium(items: List<PodiumItem>): View {
             val first = place == 0
             addView(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
                 if (first) addView(kit.icon(RoyalIcon.CROWN, medals[0], 28))
+                val size = if (first) 70 else 56
                 addView(FrameLayout(host).apply {
-                    background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0); setStroke(kit.dp(3), medals[place]) }
-                    setPadding(kit.dp(4), kit.dp(4), kit.dp(4), kit.dp(4))
-                    addView(kit.avatar(item.avatar, if (first) 70 else 56), FrameLayout.LayoutParams(kit.dp(if (first) 70 else 56), kit.dp(if (first) 70 else 56)))
-                })
+                    background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Royal.alpha(medals[place], 0.10f)); setStroke(kit.dp(3), medals[place]) }
+                    addView(kit.avatar(item.avatar, size), FrameLayout.LayoutParams(kit.dp(size), kit.dp(size), Gravity.CENTER))
+                }, LinearLayout.LayoutParams(kit.dp(size + 10), kit.dp(size + 10)))
                 addView(kit.gap(4))
                 addView(kit.text(item.name, TextStyle.BODY_BOLD, Royal.ivory, Gravity.CENTER, 1))
                 addView(kit.text(item.value, TextStyle.HEADING, Royal.goldLight, Gravity.CENTER, 1))
@@ -183,7 +183,7 @@ fun Screen.podium(items: List<PodiumItem>): View {
                     background = PanelDrawable(kit.density, if (first) PanelStyle.RAISED else PanelStyle.NORMAL, 14f)
                     addView(kit.text(kit.n(place + 1), TextStyle.NUMBER_L, medals[place], Gravity.CENTER, 1))
                     addView(kit.text(item.caption, TextStyle.CAPTION, Royal.muted, Gravity.CENTER, 1))
-                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(if (first) 92 else if (place == 1) 74 else 62)))
+                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(if (first) 110 else if (place == 1) 98 else 92)))
                 if (item.onClick != null) {
                     isClickable = true
                     contentDescription = item.name
