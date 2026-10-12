@@ -4,6 +4,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
+import android.widget.TextView
 import kotlin.math.roundToInt
 
 /** Running totals of a game as a line chart; at most six sides (the leaders) are drawn. */
@@ -158,21 +159,33 @@ class RankingScreen(host: MainActivity) : Screen(host) {
 
     override fun build(): View {
         val sessions = host.repo.sessions()
-        val list = StatsEngine.leaderboard(sessions, teams, game)
+        val list = StatsEngine.leaderboard(sessions, teams, game?.takeIf { it.isTeamGame == teams })
         return scaffold(title = "رنک‌بندی", subtitle = "رتبهٔ Elo از همهٔ بازی‌های پایان‌یافته") {
             addView(kit.grid(3, listOf(
                 kit.chip("افراد", people, ButtonKind.CHIP_GOLD) { people = true; game = null; mafia = false; party = null; host.refresh() },
-                kit.chip("تیم‌ها", !people && teams, ButtonKind.CHIP_GOLD) { people = false; teams = true; game = null; host.refresh() },
-                kit.chip("بازیکنان", !people && !teams, ButtonKind.CHIP_GOLD) { people = false; teams = false; game = null; host.refresh() }
+                kit.chip("تیم‌ها", !people && teams, ButtonKind.CHIP_GOLD) { people = false; teams = true; game = null; mafia = false; party = null; host.refresh() },
+                kit.chip("بازیکنان", !people && !teams, ButtonKind.CHIP_GOLD) { people = false; teams = false; game = null; mafia = false; party = null; host.refresh() }
             ), 6), kit.spaced(6))
             if (people) {
                 peopleRanking(this, sessions, game, mafia, party) { g, m, p -> game = g; mafia = m; party = p; host.refresh() }
                 return@scaffold
             }
-            val games = GameType.values().filter { it.isTeamGame == teams }
-            addView(kit.flow(listOf(kit.chip("همهٔ بازی‌ها", game == null) { game = null; host.refresh() }) + games.map { g ->
-                kit.chip(g.title, game == g) { game = g; host.refresh() }
-            }.map { it.apply { setPadding(kit.dp(10), kit.dp(4), kit.dp(10), kit.dp(6)) } }, 6), kit.spaced(8))
+            // Every game has a place here: card games by Elo, the party games and mafia by each person's record.
+            val chips = ArrayList<TextView>()
+            chips += kit.chip("همهٔ بازی‌ها", game == null && !mafia && party == null) { game = null; mafia = false; party = null; host.refresh() }
+            GameType.values().forEach { g ->
+                if (teams && !g.isTeamGame) return@forEach
+                chips += kit.chip(g.title, game == g && !mafia && party == null) { game = g; mafia = false; party = null; host.refresh() }
+            }
+            if (!teams) chips += kit.chip("مافیا", mafia) { game = null; mafia = true; party = null; host.refresh() }
+            chips += kit.chip("پانتومیم", party == PersonStats.PANTO) { game = null; mafia = false; party = PersonStats.PANTO; host.refresh() }
+            if (!teams) chips += kit.chip("جاسوس", party == PersonStats.SPY) { game = null; mafia = false; party = PersonStats.SPY; host.refresh() }
+            addView(kit.flow(chips.map { it.apply { setPadding(kit.dp(10), kit.dp(4), kit.dp(10), kit.dp(6)) } }, 6), kit.spaced(8))
+            if (teams && party == PersonStats.PANTO) { pantoTeamRanking(this); return@scaffold }
+            if (!teams && (mafia || party != null || game?.isTeamGame == true)) {
+                peopleRanking(this, sessions, game, mafia, party, withChips = false) { g, m, p -> game = g; mafia = m; party = p; host.refresh() }
+                return@scaffold
+            }
             if (list.isEmpty()) {
                 addView(emptyState(RoyalIcon.TROPHY, "هنوز بازی پایان‌یافته‌ای نیست", "با پایان هر بازی، رتبهٔ ${if (teams) "تیم‌ها" else "بازیکنان"} اینجا ساخته می‌شود."))
             }
@@ -363,5 +376,46 @@ class ProfileScreen(host: MainActivity, private val name: String, private val is
         addView(kit.text(text, TextStyle.CAPTION, Royal.ivory))
         isClickable = true
         setOnClickListener { kit.tap(it); host.repo.session(sessionId)?.let { s -> host.openSession(s) } }
+    }
+}
+
+/** Pantomime teams by wins, then by total points. */
+private fun Screen.pantoTeamRanking(parent: LinearLayout) {
+    class Row(val name: String, var avatar: Int, var games: Int = 0, var wins: Int = 0, var points: Int = 0)
+    val rows = LinkedHashMap<String, Row>()
+    host.panto.matches().filter { it.finished }.forEach { m ->
+        val win = m.winner
+        m.teams.forEachIndexed { i, t ->
+            val r = rows.getOrPut(t.name) { Row(t.name, t.avatar) }
+            r.games++; r.points += t.points
+            if (win == i) r.wins++
+        }
+    }
+    val list = rows.values.sortedWith(compareByDescending<Row> { it.wins }.thenByDescending { it.points })
+    if (list.isEmpty()) {
+        parent.addView(emptyState(RoyalIcon.TROPHY, "هنوز مسابقه‌ای پایان نیافته", "با پایان هر مسابقهٔ پانتومیم، رتبهٔ تیم‌ها اینجا ساخته می‌شود."))
+        return
+    }
+    list.forEachIndexed { place, r ->
+        parent.addView(kit.horizontal().apply {
+            background = PanelDrawable(kit.density, if (place == 0) PanelStyle.RAISED else PanelStyle.NORMAL, 16f)
+            setPadding(kit.dp(10), kit.dp(6), kit.dp(10), kit.dp(9))
+            layoutParams = kit.spaced(5)
+            val medal = when (place) { 0 -> ButtonKind.CHIP_GOLD; 1 -> ButtonKind.CHIP_SELECTED; else -> ButtonKind.CHIP }
+            addView(kit.text(kit.n(place + 1), TextStyle.LABEL_BOLD, ButtonDrawable.textColor(medal), Gravity.CENTER).apply {
+                background = ButtonDrawable(kit.density, medal, 14f)
+                setPadding(0, 0, 0, kit.dp(2))
+            }, LinearLayout.LayoutParams(kit.dp(30), kit.dp(30)))
+            addView(kit.hgap(8))
+            addView(kit.avatar(r.avatar, 36))
+            addView(kit.hgap(8))
+            addView(kit.vertical().apply {
+                addView(kit.text(r.name, TextStyle.BODY_BOLD, Royal.ivory, maxLines = 1))
+                addView(kit.text("${kit.n(r.wins)} برد از ${kit.n(r.games)} مسابقه • ${kit.n(r.points)} امتیاز", TextStyle.CAPTION, Royal.muted, maxLines = 1))
+                addView(kit.progress(if (r.games == 0) 0f else r.wins.toFloat() / r.games, Royal.turquoise, 4))
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(kit.hgap(8))
+            addView(kit.text(kit.n(r.wins), TextStyle.HEADING, Royal.goldLight))
+        })
     }
 }

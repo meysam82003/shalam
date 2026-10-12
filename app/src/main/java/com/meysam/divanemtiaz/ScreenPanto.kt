@@ -61,7 +61,7 @@ class PantoHomeScreen(host: MainActivity) : Screen(host) {
         preloadPantoBank()
         val live = host.panto.latestUnfinished()
         return scaffold("پانتومیم", "داوری مسابقهٔ پانتومیم تیمی") {
-            addView(gameHero(PantoLook.glyph, PantoLook.TINT, "پانتومیم", "۱۸٬۰۱۷ واژه و پرسش در ۲۰ دسته • پنج نوع مسابقه و دور طلایی"))
+            addView(gameHero(PantoLook.glyph, PantoLook.TINT, "پانتومیم", "۲۰ دستهٔ واژه • پنج نوع مسابقه و دور طلایی"))
             if (live != null) {
                 addView(kit.panel(PanelStyle.SELECTED, 12).apply {
                     layoutParams = kit.spaced(10)
@@ -190,6 +190,18 @@ class PantoSetupScreen(host: MainActivity) : Screen(host) {
             addView(kit.iconButton(RoyalIcon.EDIT, "نام ${t.name}", ButtonKind.CHIP, 40) {
                 kit.textPrompt(if (mode.individual) "نام شرکت‌کننده" else "نام تیم", t.name) { n -> if (n.isNotBlank()) { t.name = n.trim(); host.refresh() } }
             })
+            if (!mode.individual) {
+                addView(kit.hgap(6))
+                addView(kit.iconButton(RoyalIcon.FLAG, "انتخاب از تیم‌های ثبت‌شده", ButtonKind.CHIP, 40) {
+                    rosterPicker(true) { e ->
+                        val taken = teams.filterIndexed { j, _ -> j != i }.flatMap { it.members }.toSet()
+                        t.name = e.name; t.avatar = e.avatar
+                        t.members.clear(); t.members += e.members.filter { it !in taken }
+                        if (t.members.isNotEmpty()) t.size = maxOf(2, t.members.size)
+                        host.refresh()
+                    }
+                })
+            }
             addView(kit.hgap(6))
             addView(kit.iconButton(RoyalIcon.PLAYERS, "اعضای ${t.name}", ButtonKind.CHIP_GOLD, 40) {
                 val taken = teams.filterIndexed { j, _ -> j != i }.flatMap { it.members }.toSet()
@@ -395,9 +407,9 @@ class PantoCategoryScreen(host: MainActivity, matchId: Long) : PantoScreen(host,
         addView(kit.text("موضوع طلایی", TextStyle.TITLE, Royal.goldLight, Gravity.CENTER))
         addView(kit.text("${kit.n(30)} امتیاز • ${kit.n(3)} دقیقه • پاسخ نادرست = خروج از مسابقه", TextStyle.LABEL, Royal.ivory, Gravity.CENTER))
         if (!o.enabled) addView(kit.text("این تیم موضوع طلایی را انتخاب کرده است", TextStyle.CAPTION, Royal.muted, Gravity.CENTER))
-        isClickable = o.enabled
         contentDescription = "موضوع طلایی"
         setOnClickListener {
+            if (!o.enabled) { kit.toast("این تیم موضوع طلایی را قبلاً انتخاب کرده است"); return@setOnClickListener }
             kit.tap(it)
             kit.confirm("موضوع طلایی", "اگر به موضوع طلایی پاسخ درست ندهید، از ادامهٔ مسابقه خارج می‌شوید. ادامه می‌دهید؟", "انتخاب") { pick(o.choice) }
         }
@@ -420,9 +432,11 @@ class PantoCategoryScreen(host: MainActivity, matchId: Long) : PantoScreen(host,
                 alpha = if (o.enabled) 1f else 0.4f
                 addView(kit.text(kit.n(o.choice.points), TextStyle.DISPLAY, if (o.enabled) Royal.goldLight else Royal.muted, Gravity.CENTER))
                 addView(kit.text("${PantoCategories.levelNames[o.choice.level]} • ${kit.n(PantoEngine.seconds(m, o.choice))} ث", TextStyle.CAPTION, Royal.ivory, Gravity.CENTER, 1))
-                isClickable = o.enabled
                 contentDescription = "${PantoCategories.name(cat)} ${o.choice.points}"
-                setOnClickListener { kit.tap(it); pick(o.choice) }
+                setOnClickListener {
+                    if (!o.enabled) { kit.toast("این موضوع را این تیم قبلاً بازی کرده است"); return@setOnClickListener }
+                    kit.tap(it); pick(o.choice)
+                }
             }
         }, 6))
     }
@@ -442,6 +456,8 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
     private var phase = 0
     /** The timer should run (kept across page rebuilds; the timer itself is recreated on each build). */
     private var wantRunning = false
+    /** The performer hid the word while the clock runs (the phone can be put down). */
+    private var wordHidden = false
     private var timer: Countdown? = null
     private var timeText: TextView? = null
     private var lastSecond = -1
@@ -502,7 +518,11 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
         setPadding(kit.dp(14), kit.dp(18), kit.dp(14), kit.dp(20))
         minimumHeight = kit.dp(150)
         layoutParams = kit.spaced(10)
-        if (phase == 0) {
+        if (phase >= 1 && wordHidden) {
+            addView(kit.icon(RoyalIcon.EYE_OFF, Royal.gold, 36))
+            addView(kit.text("کلمه پنهان شد", TextStyle.TITLE, Royal.ivory, Gravity.CENTER))
+            addView(kit.text("زمان ادامه دارد؛ در پایان نوبت کلمه نشان داده می‌شود.", TextStyle.LABEL, Royal.muted, Gravity.CENTER))
+        } else if (phase == 0) {
             addView(kit.icon(RoyalIcon.EYE_OFF, Royal.gold, 36))
             addView(kit.text("کلمه پنهان است", TextStyle.TITLE, Royal.ivory, Gravity.CENTER))
             addView(kit.text("اجراکننده: ${m.teams[t.team].performer}", TextStyle.HEADING, Royal.turquoiseLight, Gravity.CENTER))
@@ -542,15 +562,19 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
                     addView(kit.weight(kit.button("نادرست", ButtonKind.DANGER, RoyalIcon.CLOSE, 58) { right(false) }))
                 })
                 addView(kit.gap(6))
+                addView(kit.button("خطا (لب زدن / اشاره)", ButtonKind.SECONDARY, RoyalIcon.WARNING, 48) { fault() })
+                addView(kit.gap(6))
                 addView(kit.horizontal().apply {
-                    addView(kit.weight(kit.button("خطا (لب زدن / اشاره)", ButtonKind.SECONDARY, RoyalIcon.WARNING, 46) { fault() }))
-                    addView(kit.hgap(8))
-                    addView(kit.iconButton(RoyalIcon.TIMER, "توقف زمان", ButtonKind.SECONDARY, 46) { pauseTimer() })
-                    if (m.mode == PantoMode.NORMAL && !t.wordChanged) {
-                        addView(kit.hgap(6))
-                        addView(kit.iconButton(RoyalIcon.SWAP, "عوض کردن کلمه", ButtonKind.SECONDARY, 46) { changeWord() })
-                    }
+                    addView(kit.weight(kit.button(if (wordHidden) "نمایش کلمه" else "پنهان کردن کلمه", ButtonKind.GHOST, if (wordHidden) RoyalIcon.EYE else RoyalIcon.EYE_OFF, 46) {
+                        wordHidden = !wordHidden; host.refresh()
+                    }))
+                    addView(kit.hgap(6))
+                    addView(kit.weight(kit.button("توقف زمان", ButtonKind.GHOST, RoyalIcon.TIMER, 46) { pauseTimer() }))
                 })
+                if (m.mode == PantoMode.NORMAL && !t.wordChanged) {
+                    addView(kit.gap(6))
+                    addView(kit.button("عوض کردن کلمه (۱ امتیاز کم می‌شود)", ButtonKind.SECONDARY, RoyalIcon.SWAP, 48) { changeWord() })
+                }
             }
             PantoMode.JANGI -> {
                 addView(kit.button("گفته شد • نوبت تیم بعد", ButtonKind.SUCCESS, RoyalIcon.NEXT, 60) {
@@ -561,7 +585,13 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
                     store(); host.refresh()
                 })
                 addView(kit.gap(6))
-                addView(kit.button("توقف زمان", ButtonKind.SECONDARY, RoyalIcon.TIMER, 44) { pauseTimer() })
+                addView(kit.horizontal().apply {
+                    addView(kit.weight(kit.button(if (wordHidden) "نمایش کلمه" else "پنهان کردن کلمه", ButtonKind.GHOST, if (wordHidden) RoyalIcon.EYE else RoyalIcon.EYE_OFF, 44) {
+                        wordHidden = !wordHidden; host.refresh()
+                    }))
+                    addView(kit.hgap(6))
+                    addView(kit.weight(kit.button("توقف زمان", ButtonKind.SECONDARY, RoyalIcon.TIMER, 44) { pauseTimer() }))
+                })
             }
             PantoMode.FIVE -> {
                 addView(kit.horizontal().apply {
@@ -597,10 +627,11 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
     private fun onTimeUp() {
         pantoSounds.bell()
         m.turn?.remainingMs = 0
+        val t = m.turn
         when (m.mode) {
-            PantoMode.NORMAL -> finishWith(PantoEngine.incorrect(m, timeUp = true))
-            PantoMode.SPEEDY, PantoMode.SEDA -> finishWith(PantoEngine.endList(m))
-            PantoMode.JANGI -> finishWith(PantoEngine.jangiTimeUp(m))
+            PantoMode.NORMAL -> finishWith(PantoEngine.incorrect(m, timeUp = true), t)
+            PantoMode.SPEEDY, PantoMode.SEDA -> finishWith(PantoEngine.endList(m), t)
+            PantoMode.JANGI -> finishWith(PantoEngine.jangiTimeUp(m), t)
             PantoMode.FIVE -> { wantRunning = false; store(); host.refresh() } // the referee judges the answer
         }
     }
@@ -610,7 +641,7 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
         t.remainingMs = timer?.remaining ?: t.remainingMs
         if (ok) pantoSounds.correct() else pantoSounds.wrong()
         when (m.mode) {
-            PantoMode.NORMAL -> finishWith(if (ok) PantoEngine.correct(m) else PantoEngine.incorrect(m))
+            PantoMode.NORMAL -> finishWith(if (ok) PantoEngine.correct(m) else PantoEngine.incorrect(m), t)
             else -> {
                 val end = PantoEngine.answer(m, ok)
                 if (end != null) finishWith(end, t) else { store(); host.refresh() }
@@ -631,6 +662,7 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
         if (PantoEngine.changeWord(m, pantoBank(), host.panto.userWords(), used, Random.Default)) {
             host.panto.saveUsed(used)
             m.turn?.remainingMs = timer?.remaining ?: (m.turn?.remainingMs ?: 0)
+            wordHidden = false
             store(); host.refresh()
         }
     }
@@ -639,6 +671,7 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
         wantRunning = false
         timer?.pause()
         if (full) pantoSounds.correct() else pantoSounds.wrong()
+        val played = m.turn
         val roundBefore = m.round
         val goldenBefore = m.golden
         val end = PantoEngine.fiveAnswer(m, full)
@@ -650,12 +683,13 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
                 host.panto.saveUsed(used)
                 store()
                 phase = 1
+                wordHidden = false
                 kit.toast((if (full) "+۵ " else "") + "نوبت ${m.teams[m.current].name}")
                 host.refresh()
                 return
             }
         }
-        finishWith(end, null)
+        finishWith(end, played)
     }
 
     /** Shows the turn's result and returns to the rounds page (or the result when the match is over). */
@@ -670,6 +704,12 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
                 setTextSize(TypedValue.COMPLEX_UNIT_PX, kit.dpf(52f))
             })
             addView(kit.text(end.text, TextStyle.BODY, Royal.ivory, Gravity.CENTER))
+            val shownWord = played?.words?.getOrNull(played.index.coerceAtMost(played.words.lastIndex))?.takeIf { m.mode == PantoMode.NORMAL || m.mode == PantoMode.FIVE || m.mode == PantoMode.JANGI }
+            if (shownWord != null) {
+                addView(kit.gap(8))
+                addView(kit.text(if (m.mode == PantoMode.FIVE) "سؤال" else "کلمه", TextStyle.LABEL_BOLD, Royal.gold, Gravity.CENTER))
+                addView(kit.text(shownWord.shown, TextStyle.HEADING, Royal.goldLight, Gravity.CENTER))
+            }
             if (played != null && played.words.size > 1 && (m.mode == PantoMode.SPEEDY || m.mode == PantoMode.SEDA)) {
                 addView(kit.gap(8))
                 played.words.forEachIndexed { i, w ->
@@ -822,36 +862,66 @@ class PantoBankScreen(host: MainActivity) : Screen(host) {
     private var cat = 1
     private var level = 0
     private var query = ""
+    private var shown = 0
+    private var words: List<PantoWord> = emptyList()
     private var list: LinearLayout? = null
     private var count: TextView? = null
+    private var more: View? = null
+    private var levelBox: FrameLayout? = null
+    private val chips = LinkedHashMap<Int, TextView>()
 
     override fun build(): View {
         val bank = pantoBank()
         val cats = PantoCategories.names.keys.toList() + listOf(PantoCategories.FIVE_SECOND, PantoCategories.SOUND, PantoCategories.GOLDEN)
-        return scaffold("بانک واژه‌ها", "${kit.n(bank.words.size)} واژه و پرسش") {
+        chips.clear()
+        return scaffold("بانک واژه‌ها", "۲۰ دستهٔ واژه و پرسش") {
             addView(kit.flow(cats.map { c ->
-                kit.chip("${PantoCategories.name(c)} (${kit.n(bank.count(c))})", c == cat, ButtonKind.CHIP_GOLD) { cat = c; level = 0; host.refresh() }
-                    .apply { setPadding(kit.dp(10), kit.dp(4), kit.dp(10), kit.dp(6)) }
+                kit.chip("${PantoCategories.name(c)} (${kit.n(bank.count(c))})", c == cat, ButtonKind.CHIP_GOLD) {
+                    if (c == cat) return@chip
+                    chips[cat]?.let { kit.setChip(it, false, ButtonKind.CHIP_GOLD) }
+                    cat = c; level = 0
+                    chips[cat]?.let { kit.setChip(it, true, ButtonKind.CHIP_GOLD) }
+                    levels(bank); fill(bank)
+                }.apply { setPadding(kit.dp(10), kit.dp(4), kit.dp(10), kit.dp(6)); chips[c] = this }
             }, 5), kit.spaced(8))
-            val levels = bank.of(cat).map { it.point }.distinct().sorted()
-            if (levels.size > 1) addView(SlidingTabs(host, kit, listOf("همه") + levels.map { PantoCategories.levelNames[it] ?: "سطح ${kit.n(it)}" }, levels.indexOf(level) + 1) { i ->
-                level = if (i == 0) 0 else levels[i - 1]; fill(bank)
-            }, kit.spaced(8))
+            levelBox = FrameLayout(host)
+            addView(levelBox, kit.spaced(8))
+            levels(bank)
             addView(kit.searchBox("جست‌وجو در این دسته", query) { q -> query = q; fill(bank) }, kit.spaced(8))
             count = kit.text("", TextStyle.CAPTION, Royal.muted, Gravity.CENTER)
             addView(count, kit.spaced(6))
             list = kit.vertical()
             addView(list)
+            more = kit.button("نمایش بیشتر", ButtonKind.SECONDARY, RoyalIcon.PLUS, 44) { page() }
+            addView(more, kit.spaced(8))
             fill(bank)
         }
     }
 
-    private fun fill(bank: PantoBank) {
-        val box = list ?: return
-        val words = bank.of(cat).filter { (level == 0 || it.point == level) && SearchText.matches(query, it.text) }
-        count?.text = "${kit.n(words.size)} مورد" + if (words.size > 300) " • ۳۰۰ مورد اول نمایش داده می‌شود" else ""
+    private fun levels(bank: PantoBank) {
+        val box = levelBox ?: return
         box.removeAllViews()
-        words.take(300).forEach { w ->
+        val levels = bank.of(cat).map { it.point }.distinct().sorted()
+        box.visibility = if (levels.size > 1) View.VISIBLE else View.GONE
+        if (levels.size > 1) box.addView(SlidingTabs(host, kit, listOf("همه") + levels.map { PantoCategories.levelNames[it] ?: "سطح ${kit.n(it)}" }, levels.indexOf(level) + 1) { i ->
+            level = if (i == 0) 0 else levels[i - 1]; fill(bank)
+        })
+    }
+
+    private fun fill(bank: PantoBank) {
+        words = bank.of(cat).filter { (level == 0 || it.point == level) && SearchText.matches(query, it.text) }
+        count?.text = "${kit.n(words.size)} مورد"
+        list?.removeAllViews()
+        shown = 0
+        page()
+    }
+
+    /** Adds the next rows; long categories are shown a page at a time. */
+    private fun page() {
+        val box = list ?: return
+        val end = minOf(words.size, shown + PAGE)
+        for (i in shown until end) {
+            val w = words[i]
             box.addView(kit.horizontal().apply {
                 background = PanelDrawable(kit.density, PanelStyle.FLAT, 12f)
                 setPadding(kit.dp(10), kit.dp(5), kit.dp(10), kit.dp(7))
@@ -860,7 +930,11 @@ class PantoBankScreen(host: MainActivity) : Screen(host) {
                 addView(kit.badge(PantoCategories.levelNames[w.point] ?: kit.n(w.point), Royal.gold))
             })
         }
+        shown = end
+        more?.visibility = if (shown < words.size) View.VISIBLE else View.GONE
     }
+
+    private companion object { const val PAGE = 60 }
 }
 
 class PantoRulesScreen(host: MainActivity) : Screen(host) {

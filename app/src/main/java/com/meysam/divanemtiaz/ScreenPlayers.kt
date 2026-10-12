@@ -19,6 +19,7 @@ class PlayersScreen(host: MainActivity) : Screen(host) {
         val shown = roster.filter { it.isTeam == teams }
         val stats = allPeopleStats()
         val sessions = host.repo.sessions()
+        val pantoMatches = host.panto.matches()
         return scaffold(
             title = "افراد و تیم‌ها",
             subtitle = "${kit.n(roster.count { !it.isTeam })} نفر • ${kit.n(roster.count { it.isTeam })} تیم",
@@ -26,11 +27,12 @@ class PlayersScreen(host: MainActivity) : Screen(host) {
         ) {
             addView(kit.grid(2, listOf(
                 kit.chip("افراد", !teams, ButtonKind.CHIP_GOLD) { teams = false; host.refresh() },
-                kit.chip("تیم‌ها (شلم و منفی)", teams, ButtonKind.CHIP_GOLD) { teams = true; host.refresh() }
+                kit.chip("تیم‌ها", teams, ButtonKind.CHIP_GOLD) { teams = true; host.refresh() }
             ), 6), kit.spaced(10))
-            if (!teams) addView(kit.text("هر نفر را یک بار ثبت کنید؛ در تیم‌های شلم و منفی، لیگ‌ها، هزارتایی، دو لو گشنیز و مافیا از همین فهرست استفاده می‌شود و کارنامهٔ هر نفر جدا ساخته می‌شود.", TextStyle.CAPTION, Royal.muted), kit.spaced(8))
+            addView(kit.text(if (!teams) "هر نفر را یک بار ثبت کنید؛ در شلم، منفی، لیگ‌ها، هزارتایی، دو لو گشنیز، مافیا، پانتومیم و جاسوس از همین فهرست استفاده می‌شود و کارنامهٔ هر نفر در همهٔ بازی‌ها جدا ساخته می‌شود."
+                else "تیم‌های ثبت‌شده در شلم، منفی و پانتومیم آماده‌اند؛ در پانتومیم هر تیم می‌تواند هر تعداد عضو داشته باشد.", TextStyle.CAPTION, Royal.muted), kit.spaced(8))
             if (shown.isEmpty()) {
-                addView(emptyState(RoyalIcon.PLAYERS, if (teams) "هنوز تیمی ثبت نشده" else "هنوز کسی ثبت نشده", if (teams) "هر تیم را از دو نفر از افراد بسازید." else "با «افزودن فرد» نام‌ها را یکی‌یکی وارد کنید."))
+                addView(emptyState(RoyalIcon.PLAYERS, if (teams) "هنوز تیمی ثبت نشده" else "هنوز کسی ثبت نشده", if (teams) "هر تیم را از افراد بسازید؛ دو نفر برای شلم و منفی، هر تعداد برای پانتومیم." else "با «افزودن فرد» نام‌ها را یکی‌یکی وارد کنید."))
             }
             val rows = ArrayList<Pair<View, String>>()
             val searchSlot = android.widget.FrameLayout(host)
@@ -39,11 +41,18 @@ class PlayersScreen(host: MainActivity) : Screen(host) {
                 val caption = if (teams) {
                     val related = sessions.filter { s -> s.game.isTeamGame && s.sides.any { it.name == entry.name } }
                     val wins = related.count { s -> s.finished && GameEngine.winners(s).any { s.sides[it].name == entry.name } }
-                    (if (entry.members.isEmpty()) "بدون عضو" else entry.members.joinToString(" و ")) + "  •  ${kit.n(related.size)} بازی  •  ${kit.n(wins)} برد"
+                    val panto = pantoMatches.filter { pm -> pm.finished && pm.teams.any { it.name == entry.name } }
+                    val pantoWins = panto.count { pm -> pm.winner?.let { pm.teams[it].name } == entry.name }
+                    (if (entry.members.isEmpty()) "بدون عضو" else entry.members.joinToString(" و ")) + "  •  ${kit.n(related.size)} بازی  •  ${kit.n(wins)} برد" +
+                        if (panto.isNotEmpty()) "  •  پانتومیم ${kit.n(panto.size)} (${kit.n(pantoWins)} برد)" else ""
                 } else {
                     val r = stats[entry.name]
                     if (r == null || r.totalGames == 0) "هنوز بازی پایان‌یافته‌ای ندارد"
-                    else "${kit.n(r.totalGames)} بازی  •  ${kit.n(r.totalWins)} برد" + if (r.mafia.games > 0) "  •  مافیا ${kit.n(r.mafia.games)}" else ""
+                    else "${kit.n(r.totalGames)} بازی  •  ${kit.n(r.totalWins)} برد" + listOfNotNull(
+                        if (r.mafia.games > 0) "مافیا ${kit.n(r.mafia.games)}" else null,
+                        if (r.panto.games > 0) "پانتومیم ${kit.n(r.panto.games)}" else null,
+                        if (r.spy.games > 0) "جاسوس ${kit.n(r.spy.games)}" else null
+                    ).joinToString("") { "  •  $it" }
                 }
                 addView(kit.horizontal().apply {
                     rows += this to entry.name
@@ -99,8 +108,9 @@ class PlayersScreen(host: MainActivity) : Screen(host) {
             if (teams) {
                 addView(kit.gap(8))
                 addView(membersLabel)
+                addView(kit.text("شلم و منفی: دو نفر • پانتومیم: هر تعداد", TextStyle.CAPTION, Royal.muted, Gravity.CENTER))
                 addView(kit.button("انتخاب اعضا از افراد", ButtonKind.SECONDARY, RoyalIcon.PLAYERS, 42) {
-                    memberPicker(members) { picked ->
+                    memberPicker(members, 999) { picked ->
                         members = picked
                         showMembers()
                         if (name.text.isBlank() && picked.isNotEmpty()) name.setText(picked.joinToString(" و "))
@@ -137,8 +147,9 @@ class PlayersScreen(host: MainActivity) : Screen(host) {
 /** Every person's record in every game of the app (card games, mafia, pantomime and spy). */
 fun Screen.allPeopleStats(): Map<String, PersonRecord> = PersonStats.compute(host.repo.sessions(), host.mafia.games(), host.panto.matches(), host.spy.games())
 
-fun Screen.peopleRanking(parent: LinearLayout, sessions: List<GameSession>, game: GameType?, mafia: Boolean, party: String? = null, onFilter: (GameType?, Boolean, String?) -> Unit) {
+fun Screen.peopleRanking(parent: LinearLayout, sessions: List<GameSession>, game: GameType?, mafia: Boolean, party: String? = null, withChips: Boolean = true, onFilter: (GameType?, Boolean, String?) -> Unit) {
     val all = PersonStats.compute(sessions, host.mafia.games(), host.panto.matches(), host.spy.games())
+    if (withChips) {
     val chips = ArrayList<android.widget.TextView>()
     chips += kit.chip("همهٔ بازی‌ها", game == null && !mafia && party == null) { onFilter(null, false, null) }
     GameType.values().forEach { g -> chips += kit.chip(g.title, game == g && !mafia && party == null) { onFilter(g, false, null) } }
@@ -147,6 +158,7 @@ fun Screen.peopleRanking(parent: LinearLayout, sessions: List<GameSession>, game
     chips += kit.chip("جاسوس", party == PersonStats.SPY) { onFilter(null, false, PersonStats.SPY) }
     chips.forEach { it.setPadding(kit.dp(10), kit.dp(4), kit.dp(10), kit.dp(6)) }
     parent.addView(kit.flow(chips, 6), kit.spaced(8))
+    }
     val list = PersonStats.leaderboard(all, game, mafia && party == null, party)
     if (list.isEmpty()) {
         parent.addView(emptyState(RoyalIcon.TROPHY, "هنوز آماری نیست", if (party == PersonStats.PANTO) "اعضای تیم‌ها را از افراد انتخاب کنید تا با پایان هر مسابقه، آمار هر نفر ساخته شود."

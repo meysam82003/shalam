@@ -198,6 +198,12 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
             setOnClickListener { tap(it); onClick() }
         }
 
+    /** Restyles a chip made by [chip] in place (no rebuild of the page). */
+    fun setChip(chip: TextView, selected: Boolean, selectedKind: ButtonKind = ButtonKind.CHIP_SELECTED) {
+        chip.background = ButtonDrawable(density, if (selected) selectedKind else ButtonKind.CHIP, 12f)
+        chip.setTextColor(ButtonDrawable.textColor(if (selected) selectedKind else ButtonKind.CHIP))
+    }
+
     fun badge(label: String, color: Int = Royal.gold, filled: Boolean = false): TextView =
         text(label, TextStyle.CAPTION, if (filled) Royal.night else color, Gravity.CENTER, 1).apply {
             typeface = RoyalFonts.get(context, true)

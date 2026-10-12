@@ -168,6 +168,8 @@ class SpyTimerScreen(host: MainActivity, private val gameId: Long) : Screen(host
     private var timeText: TextView? = null
     private var g: SpyGame? = null
     private var lastSecond = -1
+    /** The countdown should run (kept across page rebuilds; the countdown is recreated on each build). */
+    private var wantRunning = false
 
     override fun build(): View {
         val game = host.spy.game(gameId) ?: return scaffold("جاسوس") {}
@@ -176,19 +178,23 @@ class SpyTimerScreen(host: MainActivity, private val gameId: Long) : Screen(host
         timer?.pause()
         timer = Countdown(game.remainingMs, { ms -> tick(ms) }, { timeUp() })
         val over = game.remainingMs <= 0
+        if (over) wantRunning = false
+        if (wantRunning) host.post(0) { if (wantRunning) timer?.start() }
         return scaffold("زمان‌سنج", "${kit.n(game.players.size)} بازیکن، ${kit.n(game.spies.size)} جاسوس",
             bottom = kit.vertical().apply {
                 if (spySounds.alarmPlaying) {
                     addView(kit.button("قطع زنگ", ButtonKind.DANGER, RoyalIcon.CLOSE, 54) { spySounds.stopAlarm(); host.refresh() }, kit.spaced(6))
                 }
-                if (!over) addView(kit.button(if (timer?.running == true) "توقف" else "شروع / ادامهٔ زمان", ButtonKind.PRIMARY, RoyalIcon.TIMER, 52) { toggle() }, kit.spaced(6))
-                addView(kit.button("پایان بازی", ButtonKind.SECONDARY, RoyalIcon.FLAG, 48) {
+                if (!over) addView(kit.button(if (wantRunning) "توقف زمان" else if (game.remainingMs < game.minutes * 60_000L) "ادامهٔ زمان" else "شروع زمان",
+                    if (wantRunning) ButtonKind.SECONDARY else ButtonKind.PRIMARY, RoyalIcon.TIMER, 52) { toggle() }, kit.spaced(6))
+                addView(kit.button(if (over) "رأی‌گیری و نتیجه" else "پایان بازی", if (over) ButtonKind.PRIMARY else ButtonKind.SECONDARY, RoyalIcon.FLAG, 48) {
                     if (over) outcome() else {
-                        val was = timer?.running == true
-                        timer?.pause()
+                        val was = wantRunning
+                        wantRunning = false
+                        timer?.pause(); save()
                         kit.dialog("پایان بازی", "مطمئن هستید که می‌خواهید بازی را پایان دهید؟", null, listOf(
-                            DialogAction("تأیید", ButtonKind.DANGER) { save(); outcome() },
-                            DialogAction("خیر، ادامهٔ بازی") { if (was) timer?.start() }
+                            DialogAction("تأیید", ButtonKind.DANGER) { outcome() },
+                            DialogAction("خیر، ادامهٔ بازی") { if (was) { wantRunning = true; timer?.start() } }
                         )).show()
                     }
                 })
@@ -214,10 +220,9 @@ class SpyTimerScreen(host: MainActivity, private val gameId: Long) : Screen(host
     }
 
     private fun toggle() {
-        val t = timer ?: return
-        if (t.running) { t.pause(); save() } else t.start()
+        wantRunning = !wantRunning
+        if (!wantRunning) { timer?.pause(); save() }
         host.refresh()
-        if (!t.running) return
     }
 
     private fun tick(ms: Long) {
@@ -232,6 +237,7 @@ class SpyTimerScreen(host: MainActivity, private val gameId: Long) : Screen(host
     }
 
     private fun timeUp() {
+        wantRunning = false
         g?.remainingMs = 0
         save()
         spySounds.startAlarm()
@@ -249,16 +255,21 @@ class SpyTimerScreen(host: MainActivity, private val gameId: Long) : Screen(host
     private fun outcome() {
         spySounds.stopAlarm()
         val game = g ?: return
-        kit.dialog("نتیجهٔ بازی", "چه اتفاقی افتاد؟", kit.vertical().apply {
-            addView(kit.button("رأی‌گیری: انتخاب متهم", ButtonKind.PRIMARY, RoyalIcon.USER, 50) { vote(game) }, kit.spaced(10))
+        lateinit var dialog: android.app.Dialog
+        val body = kit.vertical().apply {
+            addView(kit.button("رأی‌گیری: انتخاب متهم", ButtonKind.PRIMARY, RoyalIcon.USER, 50) { dialog.dismiss(); vote(game) }, kit.spaced(10))
+            addView(kit.text("یا نتیجه را مستقیم ثبت کنید:", TextStyle.LABEL, Royal.muted, Gravity.CENTER), kit.spaced(6))
             SpyOutcome.values().forEach { o ->
                 addView(kit.button(o.title, if (o.spiesWin) ButtonKind.DANGER else ButtonKind.SUCCESS, null, 50) {
+                    dialog.dismiss()
                     game.remainingMs = timer?.remaining ?: game.remainingMs
                     SpyEngine.end(game, o); host.spy.save(game)
                     host.replace(SpyResultScreen(host, gameId))
                 }, kit.spaced(6))
             }
-        }, listOf(DialogAction("بستن"))).show()
+        }
+        dialog = kit.dialog("نتیجهٔ بازی", "چه اتفاقی افتاد؟", body, listOf(DialogAction("بستن")))
+        dialog.show()
     }
 
     /** The others choose one player; the app shows whether he was a spy and records the result. */
@@ -287,7 +298,7 @@ class SpyTimerScreen(host: MainActivity, private val gameId: Long) : Screen(host
         d.show()
     }
 
-    override fun onHide() { timer?.pause(); save(); spySounds.stopAlarm() }
+    override fun onHide() { wantRunning = false; timer?.pause(); save(); spySounds.stopAlarm() }
 }
 
 /** Who the spies were, the word, and the winning side. */

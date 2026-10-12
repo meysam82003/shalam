@@ -7,7 +7,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 
-const val APP_VERSION_LABEL = "نسخهٔ ۴.۹.۰"
+const val APP_VERSION_LABEL = "نسخهٔ ۴.۹.۱"
 
 class SplashScreen(host: MainActivity) : Screen(host) {
     override fun build(): View = FrameLayout(host).apply {
@@ -63,7 +63,7 @@ class HomeScreen(host: MainActivity) : Screen(host) {
         column.addView(kit.section("بازی تازه", RoyalIcon.PLAY))
         GameType.values().forEach { game -> column.addView(gameCard(game), kit.spaced(8)) }
         column.addView(mafiaCard(), kit.spaced(8))
-        column.addView(partyCard(PantoLook.glyph, PantoLook.TINT, "پانتومیم", "داوری مسابقه با ۱۸٬۰۱۷ واژه، پنج نوع مسابقه و دور طلایی",
+        column.addView(partyCard(PantoLook.glyph, PantoLook.TINT, "پانتومیم", "داوری مسابقهٔ تیمی با پنج نوع مسابقه و دور طلایی",
             host.panto.latestUnfinished()?.let { "مسابقهٔ ${it.mode.title} در جریان" } ?: "عادی • سرعتی • صدابازی • جنگی • پنج‌ثانیه‌ای") { host.push(PantoHomeScreen(host)) }, kit.spaced(8))
         column.addView(partyCard(SpyLook.glyph, SpyLook.TINT, "جاسوس", "پخش نقش‌ها، کلمهٔ مخفی، زمان‌سنج و نتیجه",
             host.spy.latestUnfinished()?.let { "بازی در جریان" } ?: "${kit.n(host.spy.settings().players)} بازیکن • ${kit.n(host.spy.settings().spies)} جاسوس • ${kit.n(host.spy.settings().minutes)} دقیقه") { host.push(SpyHomeScreen(host)) }, kit.spaced(8))

@@ -29,6 +29,9 @@ abstract class Screen(val host: MainActivity) {
     open fun onShow() {}
     open fun onHide() {}
 
+    /** Scroll position of the page, kept while another page is on top and across rebuilds. */
+    var savedScroll = 0
+
     /** Session shown by this screen, used to restore the game after process death. */
     open val sessionId: Long? get() = null
 
@@ -214,6 +217,7 @@ class MainActivity : Activity() {
     }
 
     fun push(screen: Screen) {
+        saveScroll()
         current?.onHide()
         stack += screen
         render()
@@ -246,10 +250,28 @@ class MainActivity : Activity() {
 
     /** Rebuilds the visible screen, e.g. after its state changed. */
     fun refresh() {
-        val scroll = findScroll(container)
-        val y = scroll?.scrollY ?: 0
+        saveScroll()
         render(animate = false, notify = false)
-        findScroll(container)?.let { sv -> sv.post { sv.scrollTo(0, y) } }
+    }
+
+    /** Remembers how far the page on screen is scrolled (the last child is the page being shown). */
+    private fun saveScroll() {
+        val screen = current ?: return
+        val page = container.getChildAt(container.childCount - 1) ?: return
+        findScroll(page)?.let { screen.savedScroll = it.scrollY }
+    }
+
+    /** Puts a rebuilt or returning page back where the user left it, once it is laid out. */
+    private fun restoreScroll(view: View, y: Int) {
+        if (y <= 0) return
+        val sv = findScroll(view) ?: return
+        sv.viewTreeObserver.addOnPreDrawListener(object : android.view.ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                if (sv.viewTreeObserver.isAlive) sv.viewTreeObserver.removeOnPreDrawListener(this)
+                sv.scrollTo(0, y)
+                return true
+            }
+        })
     }
 
     fun onBackPressedCompat() {
@@ -419,6 +441,7 @@ class MainActivity : Activity() {
     private fun render(animate: Boolean = true, forward: Boolean = true, notify: Boolean = true) {
         val screen = current ?: return
         val view = screen.build()
+        restoreScroll(view, screen.savedScroll)
         if (!animate || !settings.general.animations) {
             transition++
             for (i in 0 until container.childCount) container.getChildAt(i).animate().cancel()
