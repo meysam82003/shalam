@@ -535,6 +535,7 @@ object GameCodec {
         put("general", JSONObject().apply {
             put("haptic", s.general.haptic)
             put("keepScreenAwake", s.general.keepScreenAwake)
+            put("animations", s.general.animations)
             put("persianDigits", s.general.persianDigits)
             put("largeText", s.general.largeText)
             put("defaultTeam1", s.general.defaultTeam1)
@@ -684,6 +685,7 @@ object GameCodec {
             general = GeneralSettings(
                 haptic = g.optBoolean("haptic", d.general.haptic),
                 keepScreenAwake = g.optBoolean("keepScreenAwake", d.general.keepScreenAwake),
+                animations = g.optBoolean("animations", d.general.animations),
                 persianDigits = g.optBoolean("persianDigits", d.general.persianDigits),
                 largeText = g.optBoolean("largeText", d.general.largeText),
                 defaultTeam1 = g.optString("defaultTeam1", d.general.defaultTeam1),

@@ -303,6 +303,8 @@ data class LeagueSettings(
 data class GeneralSettings(
     val haptic: Boolean = true,
     val keepScreenAwake: Boolean = true,
+    /** Page, dialog and button motion. */
+    val animations: Boolean = true,
     val persianDigits: Boolean = true,
     val largeText: Boolean = false,
     val defaultTeam1: String = "ما",

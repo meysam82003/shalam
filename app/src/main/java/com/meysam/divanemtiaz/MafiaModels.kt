@@ -422,9 +422,17 @@ object MafiaCodec {
 
 /** Mafia games and narrator settings, stored beside the score games in the same key-value store. */
 class MafiaRepository(private val kv: KeyValueStore) {
-    fun settings(): MafiaSettings = kv.get(KEY_SETTINGS)?.let { runCatching { MafiaCodec.decodeSettings(JSONObject(it)) }.getOrNull() } ?: MafiaSettings()
+    // Parsed settings and scenarios are kept in memory: every card and screen reads them, often hundreds of times.
+    @Volatile private var settingsCache: MafiaSettings? = null
+    @Volatile private var scenariosCache: List<MafiaScenario>? = null
 
-    fun saveSettings(s: MafiaSettings) = kv.write(mapOf(KEY_SETTINGS to MafiaCodec.encodeSettings(s).toString()))
+    fun settings(): MafiaSettings = settingsCache
+        ?: (kv.get(KEY_SETTINGS)?.let { runCatching { MafiaCodec.decodeSettings(JSONObject(it)) }.getOrNull() } ?: MafiaSettings()).also { settingsCache = it }
+
+    fun saveSettings(s: MafiaSettings) {
+        kv.write(mapOf(KEY_SETTINGS to MafiaCodec.encodeSettings(s).toString()))
+        settingsCache = s
+    }
 
     fun index(): List<Long> = kv.get(KEY_INDEX)?.let { raw -> runCatching { JSONArray(raw).let { a -> List(a.length()) { a.optLong(it) } } }.getOrNull() } ?: emptyList()
 
@@ -453,11 +461,14 @@ class MafiaRepository(private val kv: KeyValueStore) {
     fun latestUnfinished(): MafiaGame? = games().firstOrNull { it.started && !it.finished }
 
     /** The narrator's own scenarios and his saved edits of built-in ones. */
-    fun scenarios(): List<MafiaScenario> = kv.get(KEY_SCENARIOS)?.let { raw ->
+    fun scenarios(): List<MafiaScenario> = scenariosCache ?: (kv.get(KEY_SCENARIOS)?.let { raw ->
         runCatching { JSONArray(raw).let { a -> List(a.length()) { a.optJSONObject(it) }.mapNotNull { o -> o?.let { j -> runCatching { MafiaScenario.fromJson(j) }.getOrNull() } } } }.getOrNull()
-    } ?: emptyList()
+    } ?: emptyList()).also { scenariosCache = it }
 
-    fun saveScenarios(list: List<MafiaScenario>) = kv.write(mapOf(KEY_SCENARIOS to JSONArray(list.map { it.toJson() }).toString()))
+    fun saveScenarios(list: List<MafiaScenario>) {
+        kv.write(mapOf(KEY_SCENARIOS to JSONArray(list.map { it.toJson() }).toString()))
+        scenariosCache = list
+    }
 
     fun saveScenario(s: MafiaScenario) = saveScenarios(scenarios().filterNot { it.id == s.id } + s)
 

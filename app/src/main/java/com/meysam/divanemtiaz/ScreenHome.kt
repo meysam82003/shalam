@@ -18,7 +18,7 @@ class SplashScreen(host: MainActivity) : Screen(host) {
             addView(kit.text("داور و دفتر امتیاز شاهانه", TextStyle.BODY, Royal.muted, Gravity.CENTER))
             addView(kit.gap(10))
             addView(kit.divider(), LinearLayout.LayoutParams(kit.dp(220), kit.dp(18)))
-            addView(kit.text("شلم  •  منفی  •  هزارتایی  •  دو لو گشنیز", TextStyle.LABEL_BOLD, Royal.gold, Gravity.CENTER))
+            addView(kit.text(gameNames(), TextStyle.LABEL_BOLD, Royal.gold, Gravity.CENTER).apply { setLineSpacing(kit.dpf(4f), 1f) })
         }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
         addView(kit.text("$APP_VERSION_LABEL  •  آفلاین", TextStyle.CAPTION, Royal.dim, Gravity.CENTER),
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply { bottomMargin = kit.dp(28) })
@@ -29,6 +29,12 @@ class SplashScreen(host: MainActivity) : Screen(host) {
     }
 
     private var done = false
+
+    /** Every game of the app (new score games are added automatically), then the mafia narrator. */
+    private fun gameNames(): String {
+        val names = GameType.values().map { it.title } + "راوی مافیا"
+        return names.chunked(3).joinToString("\n") { it.joinToString("  •  ") }
+    }
 
     private fun goHome() {
         if (done) return
@@ -70,7 +76,8 @@ class HomeScreen(host: MainActivity) : Screen(host) {
             tile(RoyalIcon.SHARE, "اشتراک", "تصویر آخرین بازی") {
                 val last = host.repo.sessions().firstOrNull()
                 if (last == null) kit.toast("هنوز بازی‌ای ثبت نشده است") else shareSession(last)
-            }
+            },
+            tile(RoyalIcon.HEART, "درباره و تماس", "انتقاد و پیشنهاد") { host.push(AboutScreen(host)) }
         ), 8))
         column.addView(kit.gap(16))
         column.addView(kit.text("$APP_VERSION_LABEL  •  آفلاین  •  بدون تبلیغ", TextStyle.CAPTION, Royal.dim, Gravity.CENTER))

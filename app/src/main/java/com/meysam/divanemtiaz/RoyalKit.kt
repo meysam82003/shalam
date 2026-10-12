@@ -10,6 +10,8 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.View
+import android.view.animation.DecelerateInterpolator
+import android.view.animation.OvershootInterpolator
 import android.view.ViewGroup
 import android.view.Window
 import android.view.WindowManager
@@ -64,6 +66,15 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
 
     fun tap(view: View) {
         if (settings.general.haptic) view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+        if (settings.general.animations) pulse(view)
+    }
+
+    /** A quick press-and-release spring on the touched control. */
+    fun pulse(view: View) {
+        view.animate().cancel()
+        view.animate().scaleX(0.94f).scaleY(0.94f).setDuration(70).setInterpolator(DecelerateInterpolator())
+            .withEndAction { view.animate().scaleX(1f).scaleY(1f).setDuration(160).setInterpolator(OvershootInterpolator(2.2f)).start() }
+            .start()
     }
 
     fun text(
@@ -269,13 +280,20 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
         max: Int,
         step: Int,
         format: (Int) -> String = { n(it) },
+        /** From this value on the number turns red (e.g. votes reaching the needed count). */
+        alertAt: Int? = null,
         onChange: (Int) -> Unit
     ): View {
         var current = value
         val label = text(format(current), TextStyle.HEADING, Royal.goldLight, Gravity.CENTER, 1)
+        fun paint() { label.setTextColor(if (alertAt != null && current >= alertAt) 0xFFFF4F58.toInt() else Royal.goldLight) }
+        paint()
         fun set(v: Int) {
+            val before = current
             current = v.coerceIn(min, max)
             label.text = format(current)
+            paint()
+            if (alertAt != null && before < alertAt && current >= alertAt && settings.general.animations) pulse(label)
             onChange(current)
         }
         val control = horizontal().apply {
@@ -372,6 +390,7 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
             window.setLayout(width, ViewGroup.LayoutParams.WRAP_CONTENT)
             // Keep tall dialogs inside the screen; the body scrolls instead.
             body?.let { content.post { limitDialogHeight(content) } }
+            if (settings.general.animations) context.resources.getIdentifier("DivanDialogAnimation", "style", context.packageName).takeIf { it != 0 }?.let { anim -> window.attributes = window.attributes.apply { windowAnimations = anim } }
             window.setDimAmount(0.72f)
             window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
         }

@@ -57,7 +57,7 @@ class RoleCardView(context: Context) : CachedArtView(context) {
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
-    override fun artKey(): Any = listOf(glyph, tint, title, subtitle, portrait?.generationId ?: 0, faceDown, dead)
+    override fun artKey(): Any = listOf(glyph, tint, title, subtitle, portrait?.let { System.identityHashCode(it).toString() + "." + it.generationId } ?: "-", faceDown, dead)
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val w = MeasureSpec.getSize(widthMeasureSpec)

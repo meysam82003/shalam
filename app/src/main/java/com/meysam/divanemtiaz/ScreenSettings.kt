@@ -69,6 +69,7 @@ class SettingsScreen(host: MainActivity, private var tab: Int = TAB_GENERAL) : S
         val g = settings.general
         parent.addView(kit.section("تجربهٔ برنامه", RoyalIcon.SETTINGS))
         parent.addView(kit.switchRow("بازخورد لمسی", "لرزش کوتاه هنگام لمس دکمه‌ها", g.haptic) { v -> host.updateSettings { it.copy(general = it.general.copy(haptic = v)) } })
+        parent.addView(kit.switchRow("انیمیشن‌های روان", "جابه‌جایی نرم صفحه‌ها، پنجره‌ها و دکمه‌ها", g.animations) { v -> host.updateSettings { it.copy(general = it.general.copy(animations = v)) } })
         parent.addView(kit.switchRow("روشن ماندن صفحه نمایش", "صفحه در طول بازی خاموش نمی‌شود", g.keepScreenAwake) { v -> host.updateSettings { it.copy(general = it.general.copy(keepScreenAwake = v)) } })
         parent.addView(kit.switchRow("اعداد فارسی", "نمایش همهٔ امتیازها با رقم فارسی", g.persianDigits) { v ->
             host.updateSettings { it.copy(general = it.general.copy(persianDigits = v)) }

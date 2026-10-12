@@ -156,6 +156,7 @@ class MafiaVoteScreen(host: MainActivity, gameId: Long, private val second: Bool
         val edgeText = if (!second) "رای لازم برای به دفاع رفتن بازیکن : ${kit.n(MafiaFlow.firstEdge(g, s))}"
             else if (rows.size == 1) "رای لازم برای خروج بازیکن : ${kit.n(MafiaFlow.secondEdge(g, s))}"
             else "بیشترین رأی از بازی خارج می‌شود؛ تساوی = قرعهٔ مرگ"
+        val edge = if (!second) MafiaFlow.firstEdge(g, s) else if (rows.size == 1) MafiaFlow.secondEdge(g, s) else null
         return scaffold(title, "${kit.n(n)} نفر در بازی",
             bottom = kit.button("پایان", ButtonKind.PRIMARY, RoyalIcon.CHECK, 52) {
                 if (second) {
@@ -175,7 +176,7 @@ class MafiaVoteScreen(host: MainActivity, gameId: Long, private val second: Bool
                 if (blocked != null) {
                     addView(kit.settingRow(p.name, blocked, kit.badge("مصون", Royal.turquoise)))
                 } else {
-                    addView(kit.stepperRow(p.name, tags.joinToString(" • ").ifBlank { null }, votes[p.id] ?: 0, 0, (n - 1).coerceAtLeast(1), 1) { v ->
+                    addView(kit.stepperRow(p.name, tags.joinToString(" • ").ifBlank { null }, votes[p.id] ?: 0, 0, (n - 1).coerceAtLeast(1), 1, alertAt = edge) { v ->
                         votes[p.id] = v; store()
                     })
                 }

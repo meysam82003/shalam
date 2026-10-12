@@ -13,4 +13,8 @@
         <item name="android:windowBackground">@color/divan_night</item>
         <item name="android:textColorHighlight">#552ED3C6</item>
     </style>
+    <style name="DivanDialogAnimation">
+        <item name="android:windowEnterAnimation">@anim/divan_dialog_in</item>
+        <item name="android:windowExitAnimation">@anim/divan_dialog_out</item>
+    </style>
 </resources>

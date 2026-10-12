@@ -655,18 +655,20 @@ object MafiaArt {
 }
 
 /** A role medallion: side-coloured enamel with the role's gold relief glyph. */
-class RoleSealView(context: Context, glyph: MafiaGlyph, base: Int) : View(context) {
+class RoleSealView(context: Context, glyph: MafiaGlyph, base: Int) : CachedArtView(context) {
     var glyph: MafiaGlyph = glyph
-        set(value) { field = value; invalidate() }
+        set(value) { field = value; invalidateArt() }
     var base: Int = base
-        set(value) { field = value; invalidate() }
+        set(value) { field = value; invalidateArt() }
     var hidden = false
-        set(value) { field = value; invalidate() }
+        set(value) { field = value; invalidateArt() }
     var dead = false
-        set(value) { field = value; invalidate() }
+        set(value) { field = value; invalidateArt() }
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
-    override fun onDraw(canvas: Canvas) {
+    override fun artKey(): Any = listOf(glyph, base, hidden, dead)
+
+    override fun drawArt(canvas: Canvas) {
         val r = min(width, height) / 2f * 0.9f
         if (r <= 0f) return
         val cx = width / 2f

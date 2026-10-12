@@ -502,7 +502,7 @@ object Emblems {
  */
 abstract class CachedArtView(context: Context) : View(context) {
     private var cache: android.graphics.Bitmap? = null
-    private var cacheKey: Any? = null
+    private var cacheKey: String? = null
 
     protected abstract fun artKey(): Any
 
@@ -510,21 +510,23 @@ abstract class CachedArtView(context: Context) : View(context) {
 
     fun invalidateArt() {
         cacheKey = null
+        cache = null
         invalidate()
     }
 
     override fun onDraw(canvas: Canvas) {
         if (width <= 0 || height <= 0) return
-        val key = listOf(width, height, artKey())
-        var bitmap = cache
-        if (bitmap == null || key != cacheKey) {
-            if (bitmap == null || bitmap.width != width || bitmap.height != height) {
-                bitmap?.recycle()
+        val key = "${javaClass.name}|$width|$height|${artKey()}"
+        var bitmap = cache?.takeIf { key == cacheKey && !it.isRecycled }
+        if (bitmap == null) {
+            // Art is shared through one memory-bounded cache: a page of a hundred role cards draws each design once
+            // and no longer keeps a full bitmap per view alive (which made the mafia pages stall on garbage collection).
+            bitmap = ArtCache.get(key)
+            if (bitmap == null) {
                 bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
-            } else {
-                bitmap.eraseColor(Color.TRANSPARENT)
+                drawArt(Canvas(bitmap!!))
+                ArtCache.put(key, bitmap)
             }
-            drawArt(Canvas(bitmap!!))
             cache = bitmap
             cacheKey = key
         }
@@ -533,10 +535,21 @@ abstract class CachedArtView(context: Context) : View(context) {
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
-        cache?.recycle()
         cache = null
         cacheKey = null
     }
+}
+
+/** Process-wide cache of drawn art, sized to an eighth of the heap. Bitmaps are never recycled while shared. */
+object ArtCache {
+    private val lru = object : android.util.LruCache<String, android.graphics.Bitmap>(
+        (Runtime.getRuntime().maxMemory() / 1024L / 8L).toInt().coerceAtLeast(4096)
+    ) {
+        override fun sizeOf(key: String, value: android.graphics.Bitmap): Int = (value.byteCount / 1024).coerceAtLeast(1)
+    }
+
+    fun get(key: String): android.graphics.Bitmap? = lru.get(key)?.takeIf { !it.isRecycled }
+    fun put(key: String, bitmap: android.graphics.Bitmap) { lru.put(key, bitmap) }
 }
 
 class EmblemAvatarView(context: Context, avatar: Int = 0) : CachedArtView(context) {

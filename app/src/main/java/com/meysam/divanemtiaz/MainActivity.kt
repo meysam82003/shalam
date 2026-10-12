@@ -408,12 +408,27 @@ class MainActivity : Activity() {
     private fun render(animate: Boolean = true, forward: Boolean = true, notify: Boolean = true) {
         val screen = current ?: return
         val view = screen.build()
-        container.removeAllViews()
-        container.addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        if (animate) {
+        if (!animate || !settings.general.animations) {
+            container.animate().cancel()
+            container.removeAllViews()
+            container.addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        } else {
+            // Cross-slide on hardware layers: the old page glides out while the new one glides in (RTL: forward comes
+            // from the left), both composited by the GPU so the transition holds the display's frame rate.
+            val shift = kit.dpf(28f)
+            for (i in 0 until container.childCount) container.getChildAt(i).animate().cancel()
+            val olds = (0 until container.childCount).map { container.getChildAt(it) }
+            olds.forEach { old ->
+                old.isEnabled = false
+                old.animate().alpha(0f).translationX(if (forward) shift else -shift).setDuration(TRANSITION_OUT)
+                    .setInterpolator(android.view.animation.AccelerateInterpolator(1.4f)).withLayer()
+                    .withEndAction { container.removeView(old) }.start()
+            }
+            container.addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             view.alpha = 0f
-            view.translationX = kit.dpf(if (forward) -18f else 18f)
-            view.animate().alpha(1f).translationX(0f).setDuration(170).start()
+            view.translationX = if (forward) -shift else shift
+            view.animate().alpha(1f).translationX(0f).setDuration(TRANSITION_IN).setStartDelay(30)
+                .setInterpolator(android.view.animation.DecelerateInterpolator(2f)).withLayer().start()
         }
         if (notify && resumed) screen.onShow()
     }
@@ -428,6 +443,8 @@ class MainActivity : Activity() {
 
     companion object {
         private const val STATE_SESSION = "session_id"
+        private const val TRANSITION_IN = 240L
+        private const val TRANSITION_OUT = 160L
         private const val REQUEST_DOCUMENT = 4101
         private const val REQUEST_MIC = 4102
     }
