@@ -4,6 +4,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.random.Random
@@ -24,7 +25,7 @@ class MafiaScenarioTest {
     private fun s(id: String) = MafiaScenarios.builtin.first { it.id == id }
 
     @Test fun allScenariosFromTheFileArePresent() {
-        assertEquals(45, MafiaScenarios.builtin.size)
+        assertEquals(48, MafiaScenarios.builtin.size)
         assertEquals(MafiaScenarios.builtin.size, MafiaScenarios.builtin.map { it.id }.toSet().size)
         assertEquals(MafiaScenarios.FREE, MafiaScenarios.all(emptyList()).last().id)
         MafiaScenarios.builtin.forEach { sc -> sc.presets.forEach { (n, m) -> assertEquals("${sc.id} $n", n, m.values.sum()) } }
@@ -135,7 +136,7 @@ class MafiaScenarioTest {
 
     @Test fun referenceDecksOnlyWhereTheScenarioNamesThem() {
         val withDeck = MafiaScenarios.builtin.filter { it.cards.isNotEmpty() }.map { it.id }.toSet()
-        assertEquals(setOf("godfather", "godfather_jack", "godfather_sherlock", "filimo", "el_clasico"), withDeck)
+        assertEquals(setOf("godfather", "godfather_jack", "godfather_sherlock", "mafia_nights", "filimo", "el_clasico"), withDeck)
         assertTrue(s("zodiac").setup.noCards)
         assertTrue(MafiaLastCard.INTELLIGENCE in s("filimo").cards)
         assertTrue(MafiaRole.JOKER_M in s("filimo").pool)
@@ -149,7 +150,10 @@ class MafiaScenarioTest {
         assertFalse(MafiaRole.GOOD_MAN in s("negotiation").pool)
         assertFalse(MafiaRole.SPY in s("capo").pool)
         assertTrue(MafiaRole.PABLO in s("el_clasico").pool)
-        assertTrue(s("molagh").names.isEmpty())
+        assertTrue(MafiaRole.SHOW_FATHER in s("molagh").pool)
+        assertTrue(MafiaRole.SPECTER in s("specter_partners").pool)
+        assertEquals(13, s("court").lineup(13)!!.values.sum())
+        assertNull(MafiaScenarios.builtin.firstOrNull { it.id == "wild_west" })
         MafiaScenarios.builtin.forEach { assertNotNull(it.id, MafiaScenarios.status[it.id]) }
     }
 

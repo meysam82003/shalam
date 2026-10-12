@@ -13,8 +13,8 @@ android {
         applicationId 'com.meysam.divanemtiaz'
         minSdk 21
         targetSdk 35
-        versionCode 12
-        versionName '4.5.3'
+        versionCode 13
+        versionName '4.6.0'
 
         testInstrumentationRunner 'android.test.InstrumentationTestRunner'
     }
