@@ -69,7 +69,7 @@ class ProScreen(host: MainActivity, private val reason: String? = null, private 
     private var promo: Triple<String, Int, String?>? = null
     private val listener = watchPro()
 
-    override fun onShow() { ProState.listeners += listener; ProSync.refreshConfig() }
+    override fun onShow() { ProState.listeners += listener; ProSync.refreshConfig { ProSync.refreshStorePrices(host) } }
     override fun onHide() { ProState.listeners -= listener }
 
     override fun build(): View = scaffold("دیوان Pro", "بدون تبلیغ، با همهٔ قابلیت‌ها") {
@@ -113,7 +113,7 @@ class ProScreen(host: MainActivity, private val reason: String? = null, private 
         }
 
         addView(kit.button(promo?.let { "کد ${it.first}: ${kit.n(it.second)}٪ تخفیف فعال است" } ?: "کد تخفیف یا هدیه دارید؟", ButtonKind.GHOST, RoyalIcon.STAR, 44) { promoDialog() }, kit.spaced(10))
-        addView(kit.text("پرداخت فقط از راه ${StoreInfo.storeName} و با همان قیمتی انجام می‌شود که اینجا می‌بینید. اشتراک‌های زمان‌دار خودکار تمدید نمی‌شوند. هر اشتراک در هر زمان فقط روی یک گوشی فعال است؛ اگر گوشی عوض شد، با همان حساب وارد شوید و اشتراک را به گوشی تازه منتقل کنید.",
+        addView(kit.text("پرداخت فقط از راه ${StoreInfo.storeName} و با همان قیمتی انجام می‌شود که اینجا می‌بینید. ${if (ProState.plans.any { it.productType == "subscription" }) "اشتراک‌های «تمدید خودکار» را هر زمان از ${StoreInfo.storeName} لغو کنید؛ بقیهٔ پلن‌ها خودکار تمدید نمی‌شوند." else "اشتراک‌های زمان‌دار خودکار تمدید نمی‌شوند."} هر اشتراک در هر زمان فقط روی یک گوشی فعال است؛ اگر گوشی عوض شد، با همان حساب وارد شوید و اشتراک را به گوشی تازه منتقل کنید.",
             TextStyle.CAPTION, Royal.dim), kit.spaced(10))
         addView(kit.horizontal().apply {
             addView(kit.weight(kit.button("بازیابی خرید", ButtonKind.SECONDARY, RoyalIcon.UNDO, 44) { restore() }))
@@ -144,8 +144,13 @@ class ProScreen(host: MainActivity, private val reason: String? = null, private 
         })
         if (p.description.isNotBlank()) addView(kit.text(p.description, TextStyle.LABEL, Royal.muted))
         addView(kit.gap(6))
-        val promoPrice = promo?.takeIf { it.third == null || it.third == p.code }?.let { maxOf(1000, minOf(p.finalPrice, Math.round(p.finalPrice * (100 - it.second) / 100.0 / 100.0).toInt() * 100)) }
-        if (promoPrice != null && promoPrice < p.finalPrice) addView(kit.horizontal().apply {
+        val fromStore = p.storeOverride()
+        val promoPrice = if (fromStore != null) null else promo?.takeIf { it.third == null || it.third == p.code }?.let { maxOf(1000, minOf(p.finalPrice, Math.round(p.finalPrice * (100 - it.second) / 100.0 / 100.0).toInt() * 100)) }
+        if (fromStore != null) addView(kit.vertical().apply {
+            // The store's own price wins: the buyer sees exactly what Bazaar or Myket will charge.
+            addView(kit.text(fromStore, TextStyle.NUMBER_L, Royal.goldLight, maxLines = 1))
+            addView(kit.text("قیمت ${StoreInfo.storeName}", TextStyle.CAPTION, Royal.dim))
+        }) else if (promoPrice != null && promoPrice < p.finalPrice) addView(kit.horizontal().apply {
             addView(kit.text(toman(promoPrice), TextStyle.NUMBER_L, Royal.turquoiseLight, maxLines = 1))
             addView(kit.hgap(10))
             addView(kit.text(toman(p.finalPrice), TextStyle.LABEL, Royal.dim, maxLines = 1).apply { paintFlags = paintFlags or Paint.STRIKE_THRU_TEXT_FLAG })
@@ -161,16 +166,17 @@ class ProScreen(host: MainActivity, private val reason: String? = null, private 
             }
         })
         val months = p.days?.let { it / 30 } ?: 0
-        if (monthly != null && months > 1 && p.finalPrice < monthly * months) {
+        if (fromStore == null && monthly != null && months > 1 && p.finalPrice < monthly * months) {
             addView(kit.text("ماهی ${toman(p.finalPrice / months)} — ${kit.n(100 - p.finalPrice * 100 / (monthly * months))}٪ ارزان‌تر از خرید ماهانه", TextStyle.CAPTION, Royal.turquoise))
         }
         if (p.campaignEndsAt != null) addView(kit.text("تخفیف تا ${date(p.campaignEndsAt)}", TextStyle.CAPTION, Royal.crimsonLight))
         if (!p.renewalNote.isNullOrBlank()) addView(kit.text(p.renewalNote, TextStyle.CAPTION, Royal.dim))
         addView(kit.gap(8))
         val label = when {
-            !p.purchasable && p.state == "price_sync_pending" -> "به‌زودی (به‌روزرسانی قیمت در ${StoreInfo.storeName})"
+            !p.purchasable && p.state == "price_sync_pending" -> "به‌زودی در ${StoreInfo.storeName}"
             !p.purchasable -> "فعلاً قابل خرید نیست"
             ProState.license.lifetime && ProState.isPro -> "مادام‌العمر دارید"
+            p.productType == "subscription" -> "اشتراک با ${StoreInfo.storeName}"
             else -> "خرید با ${StoreInfo.storeName}"
         }
         val enabled = p.purchasable && !(ProState.license.lifetime && ProState.isPro)
@@ -265,15 +271,10 @@ object Features {
  */
 object Gate {
     /** Pro-only items of a module for this user (empty for Pro). */
-    fun proItems(key: String): Set<String> {
-        if (ProState.isPro) return emptySet()
-        val signed = if (ProState.loggedIn && ProState.license.valid) ProState.license.features.optJSONObject(key) else null
-        val f = signed ?: ProState.config.optJSONObject("features")?.optJSONObject(key) ?: return emptySet()
-        val a = f.optJSONArray("pro_items") ?: return emptySet()
-        return (0 until a.length()).map { a.optString(it) }.toSet()
-    }
+    fun proItems(key: String): Set<String> = ProState.access(key).items
 
-    fun itemLocked(key: String, id: String): Boolean = id in proItems(key)
+    /** True when this item (scenario, card, mode, style) needs Pro: ticked on its own, or the whole module is Pro. */
+    fun itemLocked(key: String, id: String): Boolean = ProState.access(key).let { it.allItems || id in it.items }
 
     /** Opens the Pro page explaining why, for a locked item. */
     fun lockedItem(screen: Screen, title: String) = screen.host.push(ProScreen(screen.host, "«$title» از امکانات Pro است."))
@@ -570,5 +571,5 @@ fun supportDialog(screen: Screen, kind: String) {
 
 /** Last-move cards the player may use under the panel's rules. */
 object MafiaCardRules {
-    fun usable(c: MafiaLastCard): Boolean = ProState.feature("mafia_last_cards").second && !Gate.itemLocked("mafia_last_cards", c.name)
+    fun usable(c: MafiaLastCard): Boolean = !Gate.itemLocked("mafia_last_cards", c.name)
 }

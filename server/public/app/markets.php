@@ -227,7 +227,7 @@ final class Purchases
         if ($plan === null || !$plan['active']) throw new ApiError('bad_plan', 'این پلن در دسترس نیست.', 404);
         $offer = Plans::offer($plan, $store);
         if (!$offer['purchasable']) {
-            $msg = $offer['state'] === 'price_sync_pending' ? 'قیمت این پلن در حال به‌روزرسانی در فروشگاه است؛ کمی بعد دوباره تلاش کنید.' : 'این پلن فعلاً قابل خرید نیست.';
+            $msg = ['no_sku' => 'شناسهٔ محصول این پلن در پنل ثبت نشده است.', 'off_in_store' => 'این پلن در این فروشگاه عرضه نمی‌شود.', 'store_disabled' => 'خرید از این فروشگاه موقتاً بسته است.'][$offer['state']] ?? 'این پلن فعلاً قابل خرید نیست.';
             throw new ApiError('not_purchasable', $msg, 409, ['state' => $offer['state']]);
         }
         $sum = Entitlements::summary((int)$user['id']);

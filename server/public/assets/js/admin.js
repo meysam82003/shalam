@@ -7,6 +7,13 @@
     if (b && !window.confirm(b.getAttribute('data-confirm'))) ev.preventDefault();
   });
 
+  document.addEventListener('click', function (ev) {
+    var b = ev.target.closest('[data-check-all],[data-check-none]');
+    if (!b) return;
+    var all = b.hasAttribute('data-check-all'), name = b.getAttribute(all ? 'data-check-all' : 'data-check-none');
+    document.querySelectorAll('input[type=checkbox]').forEach(function (c) { if (c.name === name) c.checked = all; });
+  });
+
   // ---------------------------------------------------------------- user picker
   document.querySelectorAll('.picker').forEach(function (pk) {
     var q = pk.querySelector('.pk-q'), f = pk.querySelector('.pk-f'), count = pk.querySelector('.pk-count');

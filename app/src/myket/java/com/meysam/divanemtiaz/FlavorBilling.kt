@@ -6,8 +6,8 @@ import ir.myket.billingclient.IabHelper
 import ir.myket.billingclient.util.Purchase
 
 /**
- * Myket in-app billing (official billing client). Myket has no subscriptions: timed plans are consumable
- * products that the server turns into periods; they are consumed only after the server recorded them.
+ * Myket in-app billing (official billing client). Timed plans are consumable products that the server turns
+ * into periods; they are consumed only after the server recorded them. Prices are read from Myket itself.
  */
 class FlavorBilling : StoreBilling {
     override fun availability(context: Context): String? {
@@ -51,6 +51,18 @@ class FlavorBilling : StoreBilling {
                 else done(null, "فهرست خریدهای مایکت دریافت نشد: ${r.message}")
                 runCatching { h.dispose() }
             }
+        }
+
+    override fun prices(context: Context, inApp: List<String>, subs: List<String>, done: (Map<String, String>?) -> Unit) =
+        helper(context.applicationContext, { done(null) }) { h ->
+            runCatching {
+                h.queryInventoryAsync(true, inApp) { r, inv ->
+                    val out = HashMap<String, String>()
+                    if (r.isSuccess && inv != null) inApp.forEach { sku -> inv.getSkuDetails(sku)?.price?.takeIf { it.isNotBlank() }?.let { out[sku] = it } }
+                    done(out)
+                    runCatching { h.dispose() }
+                }
+            }.onFailure { done(null); runCatching { h.dispose() } }
         }
 
     private fun Purchase.toReceipt() = StoreReceipt(sku, token, orderId, originalJson, signature, developerPayload, purchaseTime)

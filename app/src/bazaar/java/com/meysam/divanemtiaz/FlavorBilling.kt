@@ -38,11 +38,32 @@ class FlavorBilling : StoreBilling {
 
     override fun owned(context: Context, done: (List<StoreReceipt>?, String?) -> Unit) = connect(context, { done(null, it) }) { payment, conn ->
         payment.getPurchasedProducts {
-            querySucceed { list ->
-                conn.disconnect()
-                done(list.filter { it.purchaseState == PurchaseState.PURCHASED }.map { it.toReceipt() }, null)
+            querySucceed { products ->
+                val bought = products.filter { it.purchaseState == PurchaseState.PURCHASED }.map { it.toReceipt() }
+                // Bazaar subscriptions are listed separately.
+                payment.getSubscribedProducts {
+                    querySucceed { subs -> conn.disconnect(); done(bought + subs.filter { it.purchaseState == PurchaseState.PURCHASED }.map { it.toReceipt() }, null) }
+                    queryFailed { conn.disconnect(); done(bought, null) }
+                }
             }
             queryFailed { conn.disconnect(); done(null, message(it)) }
+        }
+    }
+
+    override fun prices(context: Context, inApp: List<String>, subs: List<String>, done: (Map<String, String>?) -> Unit) = connect(context, { done(null) }) { payment, conn ->
+        val out = HashMap<String, String>()
+        fun finish() { conn.disconnect(); done(out) }
+        fun subscriptions() {
+            if (subs.isEmpty()) { finish(); return }
+            payment.getSubscriptionSkuDetails(subs) {
+                getSkuDetailsSucceed { list -> list.forEach { out[it.sku] = it.price }; finish() }
+                getSkuDetailsFailed { finish() }
+            }
+        }
+        if (inApp.isEmpty()) subscriptions()
+        else payment.getInAppSkuDetails(inApp) {
+            getSkuDetailsSucceed { list -> list.forEach { out[it.sku] = it.price }; subscriptions() }
+            getSkuDetailsFailed { subscriptions() }
         }
     }
 

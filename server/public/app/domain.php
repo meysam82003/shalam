@@ -213,27 +213,33 @@ final class Plans
         );
     }
 
+    /** The price the store charges for this plan (set in the panel to match the Bazaar or Myket developer panel). */
+    public static function storePrice(array $plan, string $store): int
+    {
+        $p = (int)($plan["store_price_$store"] ?? 0);
+        return $p > 0 ? $p : (int)$plan['base_price_toman'];
+    }
+
+    public static function onStore(array $plan, string $store): bool { return (int)($plan["on_$store"] ?? 1) === 1; }
+
     /**
-     * Price shown and charged in a store. A discount is shown only when a running campaign lowers the
-     * real price; the plan can be bought only when the store's configured price equals that final price.
+     * What the app shows and the store charges. Each store has its own price; an optional list price is shown
+     * struck through. A timed campaign lowers one Bazaar purchase with a signed dynamic-price token.
      */
     public static function offer(array $plan, string $store): array
     {
-        $base = (int)$plan['base_price_toman'];
-        $camp = self::campaign($plan, $store);
-        $final = $camp !== null ? (int)$camp['price_toman'] : $base;
-        $storePrice = $plan["store_price_$store"] ?? null;
+        $price = self::storePrice($plan, $store);
+        $list = (int)($plan["list_price_$store"] ?? 0);
         $sku = (string)($plan["sku_$store"] ?? '');
+        $type = (string)($plan["type_$store"] ?? 'consumable');
         $storeOn = (bool)(Settings::get($store, [])['enabled'] ?? true);
-        $synced = $storePrice !== null && (int)$storePrice === $final;
-        // Bazaar can lower one purchase below the panel price with a signed dynamic-discount token.
+        $camp = self::campaign($plan, $store);
+        $final = $price;
         $dynamic = false;
-        if (!$synced && $store === 'bazaar' && $camp !== null && $storePrice !== null && (int)$storePrice === $base && $final < $base
-            && $plan['type_bazaar'] !== 'subscription' && Settings::secret('bazaar_discount_key') !== '') {
-            $synced = true;
-            $dynamic = true;
-        }
-        $state = !$plan['active'] ? 'inactive' : (!$storeOn ? 'store_disabled' : ($sku === '' ? 'no_sku' : ($synced ? 'ok' : 'price_sync_pending')));
+        if ($camp !== null && self::campaignApplies($camp, $plan, $store)) { $final = (int)$camp['price_toman']; $dynamic = true; }
+        else $camp = null;
+        $base = $dynamic ? $price : max($price, $list);
+        $state = !$plan['active'] ? 'inactive' : (!self::onStore($plan, $store) ? 'off_in_store' : (!$storeOn ? 'store_disabled' : ($sku === '' ? 'no_sku' : 'ok')));
         $discount = ($final < $base && $base > 0) ? (int)round(($base - $final) * 100 / $base) : 0;
         return [
             'code' => $plan['code'],
@@ -243,13 +249,14 @@ final class Plans
             'lifetime' => $plan['duration_days'] === null,
             'base_price' => $base,
             'final_price' => $final,
+            'store_price' => $price,
             'discount_percent' => $discount,
             'badge_text' => $camp !== null && $camp['label'] ? $camp['label'] : $plan['badge_text'],
             'badge_color' => $camp !== null && $camp['label_color'] ? $camp['label_color'] : $plan['badge_color'],
             'campaign_ends_at' => $camp !== null ? Clock::ts($camp['ends_at']) : null,
-            'renewal_note' => $plan['renewal_note'],
+            'renewal_note' => $type === 'subscription' ? 'تمدید خودکار ماهانه از طریق ' . ($store === 'myket' ? 'مایکت' : 'کافه‌بازار') . '؛ لغو در هر زمان از همان فروشگاه.' : $plan['renewal_note'],
             'sku' => $sku,
-            'product_type' => $plan["type_$store"],
+            'product_type' => $type,
             'purchasable' => $state === 'ok',
             'state' => $state,
             'dynamic_price' => $dynamic,
@@ -257,10 +264,17 @@ final class Plans
         ];
     }
 
+    /** A campaign changes what is charged only where the store can honour it: Bazaar's signed dynamic price. */
+    public static function campaignApplies(array $camp, array $plan, string $store): bool
+    {
+        return $store === 'bazaar' && (int)$camp['price_toman'] < self::storePrice($plan, 'bazaar')
+            && ($plan['type_bazaar'] ?? '') !== 'subscription' && Settings::secret('bazaar_discount_key') !== '';
+    }
+
     public static function offers(string $store): array
     {
         $out = [];
-        foreach (self::all() as $p) if ($p['active']) $out[] = self::offer($p, $store);
+        foreach (self::all() as $p) if ($p['active'] && self::onStore($p, $store)) $out[] = self::offer($p, $store);
         return $out;
     }
 }
@@ -550,6 +564,9 @@ final class Features
 {
     public const MODES = ['free', 'pro', 'limited', 'disabled', 'gift'];
 
+    /** Modules whose single items (scenario, card, mode, style) can be Pro on their own. */
+    public const ITEM_MODULES = ['mafia_scenarios', 'mafia_last_cards', 'panto_modes', 'themes'];
+
     /** Every module of the app; all free by default so nobody loses what they have today. */
     public const SECTIONS = ['games' => 'بازی‌های امتیازی', 'mafia' => 'راوی مافیا', 'party' => 'پانتومیم و جاسوس', 'general' => 'ابزارها و ظاهر'];
 
@@ -607,12 +624,21 @@ final class Features
                 case 'gift': $allowed = $granted; break;
                 default: $allowed = false;
             }
-            $items = ($pro || $granted) ? [] : array_values(array_filter(array_map('trim', explode(',', (string)($f['pro_items'] ?? '')))));
+            $listed = array_values(array_filter(array_map('trim', explode(',', (string)($f['pro_items'] ?? '')))));
+            $allItems = false;
+            if (in_array($f['k'], self::ITEM_MODULES, true)) {
+                // Ticked items: only those are Pro and the section stays open. Nothing ticked: the mode covers every item.
+                if ($listed && $mode !== 'disabled') $allowed = true;
+                elseif (!$allowed) $allItems = true;
+            }
             $out[$f['k']] = [
                 'mode' => $mode,
                 'allowed' => $allowed,
+                'granted' => $granted,
                 'limit' => ($mode === 'limited' && !$pro && !$granted && $f['limit_value'] !== null) ? (int)$f['limit_value'] : null,
-                'pro_items' => $items,
+                'pro_items' => ($pro || $granted) ? [] : $listed,
+                'items' => $listed,
+                'all_items' => $allItems,
             ];
         }
         return $out;

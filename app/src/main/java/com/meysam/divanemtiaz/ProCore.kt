@@ -299,8 +299,16 @@ data class StoreReceipt(
 data class PlanOffer(
     val code: String, val title: String, val description: String, val days: Int?, val lifetime: Boolean,
     val basePrice: Int, val finalPrice: Int, val discountPercent: Int, val badge: String?, val badgeColor: String?,
-    val campaignEndsAt: Long?, val renewalNote: String?, val purchasable: Boolean, val state: String
+    val campaignEndsAt: Long?, val renewalNote: String?, val purchasable: Boolean, val state: String,
+    val sku: String = "", val productType: String = "consumable", val dynamicPrice: Boolean = false, val storePrice: Int = 0
 ) {
+    /** Price text exactly as the store reports it, when it differs from the panel (the store is what the buyer pays). */
+    fun storeOverride(): String? {
+        val text = ProState.storePrices[sku]?.takeIf { it.isNotBlank() } ?: return null
+        val toman = storeToman(text) ?: return null
+        val expected = if (dynamicPrice) setOf(finalPrice, storePrice) else setOf(finalPrice)
+        return if (toman in expected) null else text
+    }
     companion object {
         fun from(j: JSONObject) = PlanOffer(
             j.optString("code"), j.optString("title"), j.optString("description"),
@@ -308,8 +316,16 @@ data class PlanOffer(
             j.optInt("base_price"), j.optInt("final_price"), j.optInt("discount_percent"),
             j.optString("badge_text").takeIf { it.isNotBlank() && it != "null" }, j.optString("badge_color").takeIf { it.startsWith("#") },
             if (j.isNull("campaign_ends_at")) null else j.optLong("campaign_ends_at"), j.optString("renewal_note").takeIf { it.isNotBlank() && it != "null" },
-            j.optBoolean("purchasable"), j.optString("state")
+            j.optBoolean("purchasable"), j.optString("state"),
+            j.optString("sku"), j.optString("product_type", "consumable"), j.optBoolean("dynamic_price"), j.optInt("store_price", j.optInt("final_price"))
         )
+
+        /** "۱۹٬۰۰۰ تومان" or "190,000 ریال" → toman. */
+        fun storeToman(text: String): Int? {
+            val digits = text.map { c -> if (c in '۰'..'۹') '0' + (c - '۰') else if (c in '٠'..'٩') '0' + (c - '٠') else c }.filter { it.isDigit() }.joinToString("")
+            val v = digits.take(10).toLongOrNull() ?: return null
+            return (if (text.contains("ریال") || text.contains("IRR", true)) v / 10 else v).toInt()
+        }
     }
 }
 
@@ -351,6 +367,11 @@ object ProState {
     var certificate: String? get() = getS("cert"); set(v) = putS("cert", v)
     var publicKey: String? get() = getS("pubkey"); set(v) = putS("pubkey", v)
     var configJson: String? get() = getS("config"); set(v) = putS("config", v)
+
+    /** SKU → price text as Bazaar or Myket shows it. */
+    var storePrices: Map<String, String>
+        get() = getS("store_prices")?.let { runCatching { JSONObject(it) }.getOrNull() }?.let { j -> j.keys().asSequence().associateWith { j.optString(it) } }.orEmpty()
+        set(v) = putS("store_prices", JSONObject(v as Map<*, *>).toString())
     var accountJson: String? get() = getS("account"); set(v) = putS("account", v)
     var adFreeUntil: Long get() = getL("ad_free_until"); set(v) = putL("ad_free_until", v)
 
@@ -376,14 +397,37 @@ object ProState {
         get() = config.optJSONArray("plans")?.let { a -> (0 until a.length()).mapNotNull { a.optJSONObject(it)?.let(PlanOffer::from) } }.orEmpty()
 
     /** Module access: the signed certificate wins; otherwise the cached public config; otherwise free. */
-    fun feature(key: String): Triple<String, Boolean, Int?> {
+    /** Modules whose single items (scenario, card, mode, style) can be Pro on their own. */
+    val ITEM_MODULES = setOf("mafia_scenarios", "mafia_last_cards", "panto_modes", "themes")
+
+    /** What this user may do with one module: rules come fresh from the server, Pro status from the signed licence. */
+    class Access(val mode: String, val allowed: Boolean, val limit: Int?, val items: Set<String>, val allItems: Boolean)
+
+    fun access(key: String): Access {
         val signed = if (loggedIn && license.valid) license.features.optJSONObject(key) else null
-        val f = signed ?: config.optJSONObject("features")?.optJSONObject(key) ?: return Triple("free", true, null)
+        // The panel's latest rules (fetched with the account, cached for offline use) win over the older signed copy.
+        val f = config.optJSONObject("features")?.optJSONObject(key) ?: signed ?: return Access("free", true, null, emptySet(), false)
         val mode = f.optString("mode", "free")
-        val allowed = if (signed == null && mode == "pro") isPro else f.optBoolean("allowed", true)
-        val limit = if (isPro || f.isNull("limit") || !f.has("limit")) null else f.optInt("limit")
-        return Triple(mode, allowed, limit)
+        val granted = signed?.optBoolean("granted", false) == true
+        val pro = isPro
+        var allowed = when (mode) {
+            "free", "limited" -> true
+            "pro" -> pro || granted
+            "gift" -> granted
+            else -> false
+        }
+        val list = (f.optJSONArray("items") ?: f.optJSONArray("pro_items"))?.let { a -> (0 until a.length()).map { a.optString(it) }.filter { it.isNotBlank() }.toSet() }.orEmpty()
+        var allItems = false
+        if (key in ITEM_MODULES) {
+            if (list.isNotEmpty() && mode != "disabled") allowed = true
+            else if (!allowed) allItems = true
+        }
+        val items = if (pro || granted) emptySet() else list
+        val limit = if (mode == "limited" && !pro && !granted && f.has("limit") && !f.isNull("limit")) f.optInt("limit") else null
+        return Access(mode, allowed, limit, items, allItems)
     }
+
+    fun feature(key: String): Triple<String, Boolean, Int?> = access(key).let { Triple(it.mode, it.allowed, it.limit) }
 
     var pending: List<StoreReceipt>
         get() = getS("pending")?.let { s -> runCatching { JSONArray(s) }.getOrNull() }?.let { a -> (0 until a.length()).map { StoreReceipt.from(a.getJSONObject(it)) } }.orEmpty()
@@ -425,6 +469,9 @@ interface StoreBilling {
     fun purchase(activity: Activity, sku: String, productType: String, payload: String, dynamicPriceToken: String?, done: (BillingResult) -> Unit)
     fun consume(context: Context, receipt: StoreReceipt, done: (Boolean) -> Unit)
     fun owned(context: Context, done: (List<StoreReceipt>?, String?) -> Unit)
+
+    /** Prices of these products as the store shows them (null when the store cannot be asked). */
+    fun prices(context: Context, inApp: List<String>, subs: List<String>, done: (Map<String, String>?) -> Unit) = done(null)
 }
 
 /** Build without a store library (tests): purchases are not offered. */
@@ -452,10 +499,25 @@ object ProSync {
     /** Fetches public plans, module access and ads at most every few hours (cached for offline use). */
     fun refreshConfig(force: Boolean = false, done: (() -> Unit)? = null) {
         // Changes made in the panel (ads, prices, Pro rules) reach the app within minutes.
-        if (!force && ProState.configJson != null && ProState.configAge() in 0..10 * 60) { done?.invoke(); return }
+        if (!force && ProState.configJson != null && ProState.configAge() in 0..60) { done?.invoke(); return }
         Api.call("GET", "v1/config", JSONObject().put("store", StoreInfo.storeId), ProState.token) { data, _ ->
             if (data != null) { ProState.configJson = data.toString(); ProState.markConfig(); ProState.notifyChanged() }
             done?.invoke()
+        }
+    }
+
+    /** Reads the plan prices from Bazaar or Myket themselves, so the app shows exactly what the store charges. */
+    fun refreshStorePrices(context: Context) {
+        val plans = ProState.plans.filter { it.sku.isNotBlank() }
+        if (plans.isEmpty()) return
+        val billing = Billing.get()
+        if (billing.availability(context) != null) return
+        val subs = plans.filter { it.productType == "subscription" }.map { it.sku }.distinct()
+        val inApp = plans.filter { it.productType != "subscription" }.map { it.sku }.distinct()
+        runCatching {
+            billing.prices(context.applicationContext, inApp, subs) { map ->
+                if (map != null && map.isNotEmpty() && map != ProState.storePrices) { ProState.storePrices = ProState.storePrices + map; ProState.notifyChanged() }
+            }
         }
     }
 
@@ -535,7 +597,7 @@ object ProSync {
     fun onStart() {
         refreshConfig(force = !started)
         started = true
-        if (ProState.loggedIn && ProState.now() - ProState.lastSync() > 6 * 3600) refreshAccount()
+        if (ProState.loggedIn && ProState.now() - ProState.lastSync() > 10 * 60) refreshAccount()
         retryPending()
     }
 

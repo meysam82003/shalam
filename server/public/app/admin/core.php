@@ -104,9 +104,9 @@ final class Admin
 
     public static function requireReason(): string
     {
+        // Optional: the change is always logged with who made it and when; a note only adds context.
         $r = trim((string)($_POST['reason'] ?? ''));
-        if (mb_strlen($r) < 5) throw new ApiError('reason', 'دلیل این تغییر را (دست‌کم ۵ نویسه) بنویسید؛ در گزارش تغییرات ثبت می‌شود.');
-        return $r;
+        return $r !== '' ? mb_substr($r, 0, 300) : 'تغییر از پنل';
     }
 
     // ------------------------------------------------------------ login with password and TOTP
@@ -235,7 +235,7 @@ final class Admin
             'verified' => ['ok', 'تأییدشده'], 'signature_verified' => ['info', 'تأیید امضا (در انتظار API)'], 'pending' => ['warn', 'در انتظار تأیید'],
             'rejected' => ['bad', 'ردشده'], 'refunded' => ['bad', 'بازپرداخت'], 'revoked' => ['bad', 'باطل'], 'active' => ['ok', 'فعال'],
             'open' => ['warn', 'باز'], 'in_review' => ['info', 'در بررسی'], 'resolved' => ['ok', 'حل‌شده'], 'disabled' => ['bad', 'غیرفعال'],
-            'ok' => ['ok', 'آماده'], 'price_sync_pending' => ['warn', 'در انتظار همگام‌سازی قیمت'], 'no_sku' => ['bad', 'SKU ندارد'], 'inactive' => ['', 'غیرفعال'], 'store_disabled' => ['', 'فروشگاه خاموش'],
+            'ok' => ['ok', 'آماده'], 'price_sync_pending' => ['warn', 'در انتظار همگام‌سازی قیمت'], 'no_sku' => ['bad', 'شناسهٔ محصول ندارد'], 'off_in_store' => ['', 'در این فروشگاه عرضه نمی‌شود'], 'inactive' => ['', 'غیرفعال'], 'store_disabled' => ['', 'فروشگاه خاموش'],
             'free' => ['ok', 'رایگان'], 'pro' => ['gold', 'فقط Pro'], 'limited' => ['info', 'رایگان محدود'], 'gift' => ['info', 'فقط هدیه'],
         ];
         [$k, $l] = $map[$s] ?? ['', $s];

@@ -364,6 +364,13 @@ final class Migrations
                 ) $e",
                 "ALTER TABLE {purchase_intents} ADD COLUMN promo_id INT UNSIGNED NULL",
             ],
+            // 5.3: each store has its own price, list (struck-through) price and on/off switch; no price sync step.
+            5 => [
+                "ALTER TABLE {plans} ADD COLUMN on_bazaar TINYINT NOT NULL DEFAULT 1, ADD COLUMN on_myket TINYINT NOT NULL DEFAULT 1,
+                    ADD COLUMN list_price_bazaar INT NULL, ADD COLUMN list_price_myket INT NULL",
+                "UPDATE {plans} SET store_price_bazaar = base_price_toman WHERE store_price_bazaar IS NULL OR store_price_bazaar <= 0",
+                "UPDATE {plans} SET store_price_myket = base_price_toman WHERE store_price_myket IS NULL OR store_price_myket <= 0",
+            ],
         ];
     }
 
@@ -419,7 +426,7 @@ final class Seed
                 'sku_bazaar' => $sku, 'sku_myket' => $sku,
                 'type_bazaar' => $days === null ? 'permanent' : 'consumable',
                 'type_myket' => $days === null ? 'permanent' : 'consumable',
-                'store_price_bazaar' => null, 'store_price_myket' => null, 'updated_at' => $now,
+                'store_price_bazaar' => $price, 'store_price_myket' => $price, 'updated_at' => $now,
             ]);
         }
         $hasSection = self::hasColumn('features', 'section');

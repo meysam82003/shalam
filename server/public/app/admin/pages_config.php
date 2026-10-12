@@ -34,91 +34,169 @@ final class ConfigPages
     // ================================================================ plans
     public static function plans(): void
     {
+        $types = [
+            'bazaar' => ['consumable' => 'مصرفی — هر خرید یک دوره', 'permanent' => 'غیرمصرفی — یک بار برای همیشه', 'subscription' => 'اشتراک بازار — تمدید خودکار'],
+            'myket' => ['consumable' => 'مصرفی — هر خرید یک دوره', 'permanent' => 'غیرمصرفی — یک بار برای همیشه'],
+        ];
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             self::managerOnly();
             $reason = Admin::requireReason();
-            $plan = Plans::byId((int)($_POST['id'] ?? 0));
-            if ($plan === null) throw new ApiError('plan', 'پلن پیدا نشد.');
-            if (($_POST['action'] ?? '') === 'myket_push') {
-                $o = Plans::offer($plan, 'myket');
-                if ($plan['type_myket'] !== 'consumable') throw new ApiError('type', 'مایکت تغییر قیمت از راه API را فقط برای محصول مصرفی مستند کرده؛ قیمت این محصول را در پنل مایکت تغییر دهید و اینجا ثبت کنید.');
-                (new MyketVerifier())->setPrice((string)$plan['sku_myket'], (int)$o['final_price']);
-                Db::update('plans', ['store_price_myket' => (int)$o['final_price'], 'updated_at' => Clock::sql()], 'id = ?', [$plan['id']]);
-                Admin::audit('plan_myket_price_pushed', 'plan', $plan['id'], $reason, ['store_price_myket' => $plan['store_price_myket']], ['store_price_myket' => (int)$o['final_price']]);
-                Admin::flash('قیمت در مایکت به‌روز شد.');
+            $action = (string)($_POST['action'] ?? 'save');
+            if ($action === 'create') {
+                $code = strtolower(self::post('code'));
+                if (!preg_match('/^[a-z0-9_]{1,32}$/', $code)) throw new ApiError('code', 'کد پلن فقط حروف کوچک لاتین، رقم و _ باشد (مثلاً m12).');
+                if (Plans::byCode($code) !== null) throw new ApiError('code', 'پلنی با این کد هست.');
+                $life = isset($_POST['lifetime']);
+                $days = $life ? null : max(1, (int)self::post('days', '30'));
+                $price = max(1000, (int)self::post('price', '0'));
+                $sku = preg_match('/^[a-z0-9_.]{1,64}$/', self::post('sku')) ? self::post('sku') : 'divan_pro_' . $code;
+                $t = $life ? 'permanent' : 'consumable';
+                $id = Db::insert('plans', [
+                    'code' => $code, 'title' => mb_substr(self::post('title'), 0, 80) ?: 'اشتراک', 'description' => mb_substr(self::post('description'), 0, 400),
+                    'duration_days' => $days, 'base_price_toman' => $price, 'sort' => (int)Db::value('SELECT COALESCE(MAX(sort), 0) + 1 FROM {plans}'), 'active' => 1,
+                    'renewal_note' => $life ? 'بدون تمدید؛ دسترسی دائمی.' : 'بدون تمدید خودکار؛ خرید تازه به انتهای اشتراک فعلی اضافه می‌شود.',
+                    'sku_bazaar' => $sku, 'sku_myket' => $sku, 'type_bazaar' => $t, 'type_myket' => $t,
+                    'store_price_bazaar' => $price, 'store_price_myket' => $price, 'on_bazaar' => 1, 'on_myket' => 1, 'updated_at' => Clock::sql(),
+                ]);
+                Admin::audit('plan_create', 'plan', $id, $reason, null, ['code' => $code]);
+                Admin::flash('پلن ساخته شد. همین شناسهٔ محصول و قیمت را در پنل بازار و مایکت هم بسازید.');
                 Admin::redirect('p=plans');
             }
-            $price = (int)self::post('base_price_toman');
-            if ($price < 1000) throw new ApiError('price', 'قیمت باید دست‌کم ۱٬۰۰۰ تومان باشد.');
+            if ($action === 'myket_read') {
+                $found = 0;
+                foreach ((new MyketVerifier())->products() as $item) {
+                    if (!is_array($item)) continue;
+                    $sku = (string)($item['sku'] ?? $item['productId'] ?? $item['id'] ?? '');
+                    $rial = (int)($item['price'] ?? $item['priceAmount'] ?? 0);
+                    if ($sku === '' || $rial <= 0) continue;
+                    $plan = Plans::bySku('myket', $sku);
+                    if ($plan === null) continue;
+                    Db::update('plans', ['store_price_myket' => intdiv($rial, 10), 'updated_at' => Clock::sql()], 'id = ?', [$plan['id']]);
+                    $found++;
+                }
+                Admin::audit('plan_myket_prices_read', 'plan', null, $reason, null, ['updated' => $found]);
+                Admin::flash($found ? fa_digits($found) . ' قیمت از مایکت خوانده و ثبت شد.' : 'محصولی با شناسه‌های این پلن‌ها در مایکت پیدا نشد.');
+                Admin::redirect('p=plans');
+            }
+            $plan = Plans::byId((int)($_POST['id'] ?? 0));
+            if ($plan === null) throw new ApiError('plan', 'پلن پیدا نشد.');
+            if ($action === 'myket_push') {
+                if ($plan['type_myket'] !== 'consumable') throw new ApiError('type', 'مایکت تغییر قیمت از راه API را فقط برای محصول مصرفی پذیرفته؛ قیمت این محصول را در پنل مایکت تغییر دهید.');
+                $price = Plans::storePrice($plan, 'myket');
+                (new MyketVerifier())->setPrice((string)$plan['sku_myket'], $price);
+                Admin::audit('plan_myket_price_pushed', 'plan', $plan['id'], $reason, null, ['store_price_myket' => $price]);
+                Admin::flash('قیمت ' . money($price) . ' در مایکت ثبت شد.');
+                Admin::redirect('p=plans');
+            }
             $color = self::post('badge_color');
             if ($color !== '' && !preg_match('/^#[0-9a-fA-F]{6}$/', $color)) throw new ApiError('color', 'رنگ برچسب باید به شکل #RRGGBB باشد.');
-            $sku = fn($k) => preg_match('/^[a-z0-9_.]{0,64}$/', self::post($k)) ? (self::post($k) ?: null) : null;
-            $type = fn($k) => in_array(self::post($k), ['consumable', 'permanent', 'subscription'], true) ? self::post($k) : 'consumable';
             $row = [
                 'title' => mb_substr(self::post('title'), 0, 80) ?: $plan['title'],
                 'description' => mb_substr(self::post('description'), 0, 400),
-                'base_price_toman' => $price,
                 'sort' => (int)self::post('sort', '0'),
                 'active' => isset($_POST['active']) ? 1 : 0,
                 'badge_text' => mb_substr(self::post('badge_text'), 0, 40) ?: null,
                 'badge_color' => $color ?: null,
                 'renewal_note' => mb_substr(self::post('renewal_note'), 0, 300) ?: null,
                 'purchase_limit' => self::intOrNull('purchase_limit'),
-                'sku_bazaar' => $sku('sku_bazaar'), 'sku_myket' => $sku('sku_myket'),
-                'type_bazaar' => $type('type_bazaar'), 'type_myket' => $plan['duration_days'] === null ? 'permanent' : 'consumable',
-                'store_price_bazaar' => self::intOrNull('store_price_bazaar'), 'store_price_myket' => self::intOrNull('store_price_myket'),
                 'updated_at' => Clock::sql(),
             ];
-            if ($plan['duration_days'] === null && $row['type_bazaar'] === 'subscription') $row['type_bazaar'] = 'permanent';
+            foreach (Plans::STORES as $s) {
+                $name = Admin::storeName($s);
+                $price = (int)self::post("price_$s");
+                if ($price < 1000) throw new ApiError('price', "قیمت $name باید دست‌کم ۱٬۰۰۰ تومان باشد.");
+                $list = self::intOrNull("list_$s");
+                if ($list !== null && $list <= $price) $list = null; // a struck-through price is only shown when it is really higher
+                $sku = self::post("sku_$s");
+                if ($sku !== '' && !preg_match('/^[A-Za-z0-9_.]{1,64}$/', $sku)) throw new ApiError('sku', "شناسهٔ محصول $name فقط حروف لاتین، رقم، نقطه و _ باشد.");
+                $type = self::post("type_$s");
+                if (!isset($types[$s][$type])) $type = $plan['duration_days'] === null ? 'permanent' : 'consumable';
+                if ($plan['duration_days'] === null && $type === 'subscription') $type = 'permanent';
+                $row += ["on_$s" => isset($_POST["on_$s"]) ? 1 : 0, "sku_$s" => $sku ?: null, "type_$s" => $type, "store_price_$s" => $price, "list_price_$s" => $list];
+            }
+            $row['base_price_toman'] = $row['store_price_bazaar'];
             $before = array_intersect_key($plan, $row);
             Db::update('plans', $row, 'id = ?', [$plan['id']]);
             Admin::audit('plan_update', 'plan', $plan['id'], $reason, $before, $row);
-            Admin::flash('پلن ذخیره شد.' . ((int)$plan['base_price_toman'] !== $price ? ' قیمت عوض شد؛ تا قیمت فروشگاه‌ها با آن یکی نشود، این پلن در اپ «در انتظار همگام‌سازی قیمت» می‌ماند.' : ''));
-            Admin::redirect('p=plans');
+            Admin::flash('«' . $row['title'] . '» ذخیره شد و حداکثر یک دقیقه بعد در اپ دیده می‌شود.');
+            Admin::redirect('p=plans#plan' . (int)$plan['id']);
         }
         $plans = Plans::all();
-        Admin::layout('پلن‌ها و قیمت‌ها', function () use ($plans) {
+        $myketApi = (new MyketVerifier())->configured();
+        Admin::layout('پلن‌ها و قیمت‌ها', function () use ($plans, $types, $myketApi) {
             ?>
-            <div class="alert info">قیمت نمایش‌داده در اپ همیشه همان قیمتی است که فروشگاه می‌گیرد. اگر قیمت پنل با قیمت ثبت‌شده در بازار یا مایکت یکی نباشد، دکمهٔ خرید آن پلن در همان فروشگاه غیرفعال می‌شود تا کاربر قیمت متفاوتی نبیند. بعد از تغییر قیمت در پنل فروشگاه، همان عدد را در «قیمت تأییدشده در فروشگاه» وارد کنید (یا برای مایکت دکمهٔ ارسال قیمت را بزنید).</div>
-            <div class="alert warn">بازار به‌طور پیش‌فرض قیمت محصول درون‌برنامه‌ای را تا ۱۰۰٬۰۰۰ تومان می‌پذیرد؛ برای پلن مادام‌العمر ۲۲۰٬۰۰۰ تومانی باید از پشتیبانی بازار افزایش سقف را درخواست کنید.</div>
-            <?php foreach ($plans as $p):
-                $ob = Plans::offer($p, 'bazaar'); $om = Plans::offer($p, 'myket'); ?>
-            <div class="card">
-              <h3><?= e($p['title']) ?> <small class="muted">(<?= e($p['code']) ?> — <?= $p['duration_days'] === null ? 'مادام‌العمر' : fa_digits($p['duration_days']) . ' روز' ?>)</small>
-                <?= $p['badge_text'] ? '<span class="badge" style="background:' . e($p['badge_color'] ?: '#eee') . ';color:#fff;border:0">' . e($p['badge_text']) . '</span>' : '' ?></h3>
-              <p>بازار: <?= Admin::statusBadge($ob['state']) ?> قیمت نهایی <?= money($ob['final_price']) ?><?= $ob['dynamic_price'] ? ' <span class="badge info">تخفیف پویای بازار</span>' : '' ?> — مایکت: <?= Admin::statusBadge($om['state']) ?> قیمت نهایی <?= money($om['final_price']) ?></p>
+            <div class="alert info">
+              هر فروشگاه قیمت و شناسهٔ محصول خودش را دارد. <b>همان شناسه و همان قیمتی را که در پنل توسعه‌دهندهٔ کافه‌بازار یا مایکت ساخته‌اید اینجا بنویسید.</b>
+              اپ هنگام نمایش، قیمت را از خود فروشگاه هم می‌خواند؛ اگر با پنل فرق داشته باشد، قیمت فروشگاه نمایش داده می‌شود تا کاربر همان را ببیند که می‌پردازد.
+              <br>برای تخفیف: قیمت را در پنل فروشگاه کم کنید، قیمت تازه را در «قیمت» و قیمت قبلی را در «قیمت قبل از تخفیف» بنویسید (خط‌خورده نمایش داده می‌شود).
+            </div>
+            <div class="table-wrap"><table><thead><tr><th>پلن</th><th>مدت</th><th>کافه‌بازار</th><th>مایکت</th></tr></thead><tbody>
+            <?php foreach ($plans as $p): $ob = Plans::offer($p, 'bazaar'); $om = Plans::offer($p, 'myket'); ?>
+              <tr><td><a href="#plan<?= (int)$p['id'] ?>"><b><?= e($p['title']) ?></b></a><?= $p['active'] ? '' : ' <span class="badge">غیرفعال</span>' ?></td>
+                <td><?= $p['duration_days'] === null ? 'مادام‌العمر' : fa_digits($p['duration_days']) . ' روز' ?></td>
+                <?php foreach ([$ob, $om] as $o): ?>
+                <td><?= Admin::statusBadge($o['state']) ?> <b><?= money($o['final_price']) ?></b><?= $o['base_price'] > $o['final_price'] ? ' <s class="muted">' . money($o['base_price']) . '</s>' : '' ?><br><code class="ltr"><?= e($o['sku'] ?: '—') ?></code></td>
+                <?php endforeach; ?></tr>
+            <?php endforeach; ?>
+            </tbody></table></div>
+            <?php if ($myketApi): ?>
+            <form method="post" style="margin:8px 0"><?= Admin::csrfField() ?><button class="btn ghost" name="action" value="myket_read">خواندن قیمت‌ها از مایکت</button> <small class="muted">قیمت محصولات هم‌شناسه را از مایکت می‌خواند و در ستون مایکت ثبت می‌کند.</small></form>
+            <?php endif; ?>
+            <?php foreach ($plans as $p): ?>
+            <div class="card" id="plan<?= (int)$p['id'] ?>">
+              <h3><?= e($p['title']) ?> <small class="muted">(<?= e($p['code']) ?> — <?= $p['duration_days'] === null ? 'مادام‌العمر' : fa_digits($p['duration_days']) . ' روز' ?>)</small></h3>
               <form method="post"><?= Admin::csrfField() ?><input type="hidden" name="id" value="<?= (int)$p['id'] ?>">
                 <div class="row">
                   <div><label>عنوان</label><input type="text" name="title" value="<?= e($p['title']) ?>" maxlength="80"></div>
-                  <div><label>قیمت پایه (تومان)</label><input type="number" name="base_price_toman" value="<?= (int)$p['base_price_toman'] ?>" min="1000"></div>
-                  <div><label>ترتیب نمایش</label><input type="number" name="sort" value="<?= (int)$p['sort'] ?>"></div>
-                  <div><label>سقف خرید برای هر حساب</label><input type="number" name="purchase_limit" value="<?= e($p['purchase_limit']) ?>" min="1" placeholder="نامحدود"></div>
+                  <div style="flex:2"><label>توضیح</label><input type="text" name="description" value="<?= e($p['description']) ?>" maxlength="400"></div>
+                  <div><label>برچسب</label><input type="text" name="badge_text" value="<?= e($p['badge_text']) ?>" maxlength="40" placeholder="مثلاً: محبوب‌ترین"></div>
+                  <div style="flex:0;min-width:70px"><label>رنگ</label><input type="color" name="badge_color" value="<?= e($p['badge_color'] ?: '#C9A24B') ?>"></div>
                 </div>
-                <label>توضیح</label><input type="text" name="description" value="<?= e($p['description']) ?>" maxlength="400">
-                <div class="row">
-                  <div><label>متن برچسب</label><input type="text" name="badge_text" value="<?= e($p['badge_text']) ?>" maxlength="40" placeholder="مثلاً: محبوب‌ترین"></div>
-                  <div><label>رنگ برچسب</label><input type="text" name="badge_color" value="<?= e($p['badge_color']) ?>" class="ltr" placeholder="#C9A24B"></div>
-                  <div><label>متن تمدید</label><input type="text" name="renewal_note" value="<?= e($p['renewal_note']) ?>" maxlength="300"></div>
+                <div class="grid g2" style="margin-top:8px">
+                <?php foreach (Plans::STORES as $s): $o = Plans::offer($p, $s); ?>
+                  <div class="blk" style="border:1px solid var(--line);border-radius:12px;padding:10px">
+                    <h4 style="margin:0 0 6px"><?= Admin::storeName($s) ?> <?= Admin::statusBadge($o['state']) ?></h4>
+                    <label class="check"><input type="checkbox" name="on_<?= $s ?>" <?= Plans::onStore($p, $s) ? 'checked' : '' ?>> در <?= Admin::storeName($s) ?> عرضه شود</label>
+                    <label>شناسهٔ محصول (SKU)</label><input type="text" name="sku_<?= $s ?>" value="<?= e($p["sku_$s"]) ?>" class="ltr" placeholder="divan_pro_1m">
+                    <label>نوع محصول</label><select name="type_<?= $s ?>"><?php foreach ($types[$s] as $k => $l) { if ($p['duration_days'] === null && $k === 'subscription') continue; echo '<option value="' . $k . '"' . ($p["type_$s"] === $k ? ' selected' : '') . '>' . $l . '</option>'; } ?></select>
+                    <div class="row">
+                      <div><label>قیمت (تومان)</label><input type="number" name="price_<?= $s ?>" value="<?= Plans::storePrice($p, $s) ?>" min="1000" step="100" required></div>
+                      <div><label>قیمت قبل از تخفیف</label><input type="number" name="list_<?= $s ?>" value="<?= e($p["list_price_$s"] ?? '') ?>" min="0" step="100" placeholder="خالی = بدون تخفیف"></div>
+                    </div>
+                    <?php if ($s === 'myket' && $myketApi && $p['type_myket'] === 'consumable' && $p['sku_myket']): ?><button class="btn sm ghost" name="action" value="myket_push" data-confirm="قیمت ذخیره‌شدهٔ این پلن در مایکت هم ثبت شود؟">ثبت همین قیمت در مایکت</button><?php endif; ?>
+                  </div>
+                <?php endforeach; ?>
                 </div>
-                <div class="row">
-                  <div><label>SKU بازار</label><input type="text" name="sku_bazaar" value="<?= e($p['sku_bazaar']) ?>" class="ltr"></div>
-                  <div><label>نوع محصول بازار</label><select name="type_bazaar"><?php foreach (($p['duration_days'] === null ? ['permanent' => 'دائمی (مصرف‌نشدنی)'] : ['consumable' => 'مصرفی (دوره در سرور)', 'subscription' => 'اشتراک بازار']) as $k => $l) echo '<option value="' . $k . '"' . ($p['type_bazaar'] === $k ? ' selected' : '') . '>' . $l . '</option>'; ?></select></div>
-                  <div><label>قیمت تأییدشده در بازار (تومان)</label><input type="number" name="store_price_bazaar" value="<?= e($p['store_price_bazaar']) ?>" placeholder="هنوز ثبت نشده"></div>
-                </div>
-                <div class="row">
-                  <div><label>SKU مایکت</label><input type="text" name="sku_myket" value="<?= e($p['sku_myket']) ?>" class="ltr"></div>
-                  <div><label>نوع محصول مایکت</label><input type="text" value="<?= $p['duration_days'] === null ? 'دائمی (مصرف‌نشدنی)' : 'مصرفی (مایکت اشتراک ندارد)' ?>" disabled></div>
-                  <div><label>قیمت تأییدشده در مایکت (تومان)</label><input type="number" name="store_price_myket" value="<?= e($p['store_price_myket']) ?>" placeholder="هنوز ثبت نشده"></div>
-                </div>
-                <label class="check"><input type="checkbox" name="active" <?= $p['active'] ? 'checked' : '' ?>> فعال (در اپ نمایش داده شود)</label>
-                <div class="row" style="margin-top:8px">
-                  <div style="flex:3"><input type="text" name="reason" placeholder="دلیل تغییر (اجباری، در گزارش ثبت می‌شود)" required minlength="5"></div>
-                  <div style="flex:0"><button class="btn gold">ذخیره</button></div>
-                  <?php if ($p['duration_days'] !== null && $p['sku_myket']): ?><div style="flex:0"><button class="btn ghost" name="action" value="myket_push" data-confirm="قیمت نهایی این پلن در مایکت تنظیم شود؟">ارسال قیمت به مایکت</button></div><?php endif; ?>
+                <details style="margin-top:8px"><summary>بیشتر</summary>
+                  <div class="row">
+                    <div><label>ترتیب نمایش</label><input type="number" name="sort" value="<?= (int)$p['sort'] ?>"></div>
+                    <div><label>سقف خرید هر حساب</label><input type="number" name="purchase_limit" value="<?= e($p['purchase_limit']) ?>" min="1" placeholder="نامحدود"></div>
+                    <div style="flex:2"><label>متن تمدید</label><input type="text" name="renewal_note" value="<?= e($p['renewal_note']) ?>" maxlength="300"></div>
+                  </div>
+                </details>
+                <div class="row" style="margin-top:8px;align-items:center">
+                  <label class="check" style="flex:0;white-space:nowrap"><input type="checkbox" name="active" <?= $p['active'] ? 'checked' : '' ?>> فعال</label>
+                  <div style="flex:3"><input type="text" name="reason" placeholder="یادداشت (اختیاری)"></div>
+                  <div style="flex:0"><button class="btn gold" name="action" value="save">ذخیره</button></div>
                 </div>
               </form>
             </div>
-            <?php endforeach;
+            <?php endforeach; ?>
+            <div class="card"><h3>پلن تازه</h3>
+              <form method="post"><?= Admin::csrfField() ?><input type="hidden" name="action" value="create">
+                <div class="row">
+                  <div><label>کد (لاتین)</label><input type="text" name="code" class="ltr" placeholder="m12" required></div>
+                  <div><label>عنوان</label><input type="text" name="title" placeholder="اشتراک یک‌ساله" required></div>
+                  <div><label>مدت (روز)</label><input type="number" name="days" value="365" min="1"></div>
+                  <div><label>قیمت (تومان)</label><input type="number" name="price" min="1000" step="100" required></div>
+                  <div><label>شناسهٔ محصول</label><input type="text" name="sku" class="ltr" placeholder="divan_pro_12m"></div>
+                </div>
+                <label>توضیح</label><input type="text" name="description" maxlength="400">
+                <label class="check"><input type="checkbox" name="lifetime"> مادام‌العمر (بدون مدت)</label>
+                <p><button class="btn teal">ساخت پلن</button></p>
+              </form>
+            </div>
+            <?php
         }, 'plans');
     }
 
@@ -140,13 +218,14 @@ final class ConfigPages
             if ($plan === null) throw new ApiError('plan', 'پلن را انتخاب کنید.');
             $price = (int)self::post('price_toman');
             // A discount must be real: lower than the regular price that buyers otherwise pay.
-            if ($price < 1000 || $price >= (int)$plan['base_price_toman']) throw new ApiError('price', 'قیمت کمپین باید کمتر از قیمت عادی (' . money($plan['base_price_toman']) . ') و دست‌کم ۱٬۰۰۰ تومان باشد؛ تخفیف ساختگی مجاز نیست.');
+            $regular = Plans::storePrice($plan, 'bazaar');
+            if ($price < 1000 || $price >= $regular) throw new ApiError('price', 'قیمت کمپین باید کمتر از قیمت عادی بازار (' . money($regular) . ') و دست‌کم ۱٬۰۰۰ تومان باشد.');
             $starts = Admin::dtParse(self::post('starts_at')); $ends = Admin::dtParse(self::post('ends_at'));
             if ($ends !== null && $starts !== null && Clock::ts($ends) <= Clock::ts($starts)) throw new ApiError('dates', 'پایان کمپین باید بعد از شروع آن باشد.');
             $color = self::post('label_color');
             $row = [
                 'name' => mb_substr(self::post('name'), 0, 80) ?: 'کمپین', 'plan_id' => $plan['id'],
-                'store' => in_array(self::post('store'), ['all', 'bazaar', 'myket'], true) ? self::post('store') : 'all',
+                'store' => 'bazaar',
                 'price_toman' => $price, 'label' => mb_substr(self::post('label'), 0, 40) ?: null,
                 'label_color' => preg_match('/^#[0-9a-fA-F]{6}$/', $color) ? $color : null,
                 'starts_at' => $starts, 'ends_at' => $ends, 'active' => isset($_POST['active']) ? 1 : 0, 'updated_at' => Clock::sql(),
@@ -161,18 +240,17 @@ final class ConfigPages
         $plans = Plans::all();
         Admin::layout('کمپین‌های تخفیف', function () use ($rows, $plans, $edit) {
             ?>
-            <div class="alert info">
-              تخفیف فقط وقتی در اپ نمایش داده می‌شود که کاربر واقعاً همان قیمت کمتر را بپردازد:
-              <br>• <b>بازار:</b> اگر «کلید تخفیف پویا» در تنظیمات بازار ثبت شده باشد، سرور برای هر خرید یک توکن امضاشده می‌سازد و بازار همان قیمت کمتر را می‌گیرد (بازار ۱۳٫۳ یا جدیدتر). در غیر این صورت قیمت محصول را در پنل بازار کم کنید و قیمت تأییدشده را در صفحهٔ پلن‌ها ثبت کنید.
-              <br>• <b>مایکت:</b> قیمت را با دکمهٔ «ارسال قیمت به مایکت» در صفحهٔ پلن‌ها یا در پنل مایکت تغییر دهید. پس از پایان کمپین، قیمت عادی را برگردانید.
-              <br>تا قیمت فروشگاه با قیمت کمپین یکی نشود، آن پلن در همان فروشگاه غیرقابل خرید نشان داده می‌شود.
+            <?php $hasKey = Settings::secret('bazaar_discount_key') !== ''; ?>
+            <div class="alert <?= $hasKey ? 'info' : 'warn' ?>">
+              کمپین زمان‌دار یعنی تخفیف خودکار برای یک بازه (مثلاً نوروز) که خودش شروع و تمام می‌شود. این کار فقط در <b>کافه‌بازار</b> با «تخفیف پویا» ممکن است: سرور برای هر خرید توکن امضاشده می‌سازد و بازار همان قیمت کمتر را می‌گیرد.
+              <?= $hasKey ? '<br>کلید تخفیف پویا ثبت شده است ✓' : '<br><b>کلید تخفیف پویای بازار ثبت نشده؛</b> تا ثبت نشود کمپین اجرا نمی‌شود. <a href="index.php?p=stores">ثبت کلید</a>' ?>
+              <br>برای مایکت (یا بدون کلید): در صفحهٔ <a href="index.php?p=plans">پلن‌ها</a> قیمت را کم کنید و قیمت قبلی را در «قیمت قبل از تخفیف» بنویسید.
             </div>
             <div class="card"><h3><?= $edit ? 'ویرایش کمپین' : 'کمپین جدید' ?></h3>
               <form method="post"><?= Admin::csrfField() ?><input type="hidden" name="id" value="<?= (int)($edit['id'] ?? 0) ?>">
                 <div class="row">
                   <div><label>نام</label><input type="text" name="name" value="<?= e($edit['name'] ?? '') ?>" required></div>
-                  <div><label>پلن</label><select name="plan_id"><?php foreach ($plans as $p) echo '<option value="' . (int)$p['id'] . '"' . (($edit['plan_id'] ?? 0) == $p['id'] ? ' selected' : '') . '>' . e($p['title']) . ' — ' . money($p['base_price_toman']) . '</option>'; ?></select></div>
-                  <div><label>فروشگاه</label><select name="store"><?php foreach (['all' => 'هر دو', 'bazaar' => 'بازار', 'myket' => 'مایکت'] as $k => $l) echo '<option value="' . $k . '"' . (($edit['store'] ?? 'all') === $k ? ' selected' : '') . '>' . $l . '</option>'; ?></select></div>
+                  <div><label>پلن</label><select name="plan_id"><?php foreach ($plans as $p) echo '<option value="' . (int)$p['id'] . '"' . (($edit['plan_id'] ?? 0) == $p['id'] ? ' selected' : '') . '>' . e($p['title']) . ' — ' . money(Plans::storePrice($p, 'bazaar')) . '</option>'; ?></select></div>
                   <div><label>قیمت کمپین (تومان)</label><input type="number" name="price_toman" value="<?= e($edit['price_toman'] ?? '') ?>" required></div>
                 </div>
                 <div class="row">
@@ -182,7 +260,7 @@ final class ConfigPages
                   <div><label>پایان</label><input type="datetime-local" name="ends_at" value="<?= e(Admin::dtInput($edit['ends_at'] ?? null)) ?>"></div>
                 </div>
                 <label class="check"><input type="checkbox" name="active" <?= ($edit['active'] ?? 1) ? 'checked' : '' ?>> فعال</label>
-                <div class="row"><div style="flex:3"><input type="text" name="reason" placeholder="دلیل (اجباری)" required minlength="5"></div><div style="flex:0"><button class="btn gold">ذخیره</button></div></div>
+                <div class="row"><div style="flex:3"><input type="text" name="reason" placeholder="یادداشت (اختیاری)"></div><div style="flex:0"><button class="btn gold">ذخیره</button></div></div>
               </form>
             </div>
             <div class="table-wrap"><table><thead><tr><th>نام</th><th>پلن</th><th>فروشگاه</th><th>قیمت</th><th>تخفیف</th><th>بازه</th><th>وضعیت در بازار / مایکت</th><th></th></tr></thead><tbody>
@@ -196,7 +274,7 @@ final class ConfigPages
                     $states[] = Admin::storeName($s) . ': ' . ($running && (int)$running['id'] === (int)$c['id'] ? Admin::statusBadge($o['state']) : '<span class="badge">اجرا نمی‌شود</span>');
                 } ?>
               <tr><td><?= e($c['name']) ?></td><td><?= e($c['plan_title']) ?></td><td><?= e(['all' => 'هر دو', 'bazaar' => 'بازار', 'myket' => 'مایکت'][$c['store']] ?? $c['store']) ?></td><td><?= money($c['price_toman']) ?></td>
-                <td><?= fa_digits((int)round(((int)$c['base_price_toman'] - (int)$c['price_toman']) * 100 / max(1, (int)$c['base_price_toman']))) ?>٪</td>
+                <?php $reg = Plans::storePrice($plan, 'bazaar'); ?><td><?= fa_digits((int)round(($reg - (int)$c['price_toman']) * 100 / max(1, $reg))) ?>٪</td>
                 <td><?= e(jdate($c['starts_at'])) ?> تا <?= e(jdate($c['ends_at'])) ?></td><td><?= implode('<br>', $states) ?></td>
                 <td><a class="btn sm ghost" href="index.php?p=campaigns&id=<?= (int)$c['id'] ?>">ویرایش</a>
                   <form method="post" style="display:inline"><?= Admin::csrfField() ?><input type="hidden" name="action" value="toggle"><input type="hidden" name="id" value="<?= (int)$c['id'] ?>"><input type="hidden" name="reason" value="<?= $c['active'] ? 'توقف کمپین از فهرست' : 'فعال‌سازی کمپین از فهرست' ?>"><button class="btn sm <?= $c['active'] ? 'red' : 'teal' ?>"><?= $c['active'] ? 'توقف' : 'فعال' ?></button></form></td></tr>
@@ -239,7 +317,8 @@ final class ConfigPages
             <div class="alert info">
               <b>رایگان:</b> برای همه باز است. <b>فقط Pro:</b> کاربر رایگان صفحهٔ معرفی Pro را می‌بیند. <b>رایگان محدود:</b> کاربر رایگان تا «محدودیت» (مثلاً تعداد لیگ یا عکس) استفاده می‌کند.
               <b>غیرفعال:</b> برای همه بسته است. <b>فقط هدیه:</b> فقط کسانی که دسترسی ویژه گرفته‌اند.
-              <br>برای سناریوهای مافیا، کارت‌های حرکت آخر، نوع مسابقهٔ پانتومیم و سبک‌های ظاهری می‌توانید <b>هر مورد را جدا</b> Pro کنید (بخش را «رایگان» بگذارید و موردها را تیک بزنید).
+              <br><b>سناریوهای مافیا، کارت‌های حرکت آخر، نوع مسابقهٔ پانتومیم و سبک‌ها:</b> اگر موردی را تیک بزنید، <b>فقط همان موردها</b> Pro می‌شوند و بقیه رایگان می‌مانند. اگر هیچ موردی تیک نخورد و حالت «فقط Pro» باشد، <b>همهٔ موردها</b> Pro می‌شوند.
+              <br>تغییرات حداکثر یک دقیقه بعد از باز کردن برنامه در گوشی کاربران اعمال می‌شود.
               <br>بازی‌ای که کاربر شروع کرده و داده‌ای که ساخته هیچ‌وقت قفل یا پاک نمی‌شود؛ قانون فقط هنگام ورود به بخش یا شروع مورد تازه اعمال می‌شود.
             </div>
             <form method="post"><?= Admin::csrfField() ?>
@@ -250,6 +329,7 @@ final class ConfigPages
               <tr><td><b><?= e($f['title']) ?></b><br><small class="muted"><?= e($f['description']) ?></small> <code><?= e($f['k']) ?></code>
                 <?php if ($catalog): $extra = array_diff($sel, array_keys($catalog)); ?>
                   <details style="margin-top:6px"<?= $sel ? ' open' : '' ?>><summary>موردهای فقط Pro (<?= fa_digits(count($sel)) ?> از <?= fa_digits(count($catalog)) ?>)</summary>
+                    <p style="margin:6px 0"><button type="button" class="btn sm ghost" data-check-all="items[<?= e($f['k']) ?>][]">همه</button> <button type="button" class="btn sm ghost" data-check-none="items[<?= e($f['k']) ?>][]">هیچ‌کدام</button></p>
                     <div class="grid g3" style="gap:2px;margin-top:6px">
                     <?php foreach ($catalog as $id => $title) echo '<label class="check"><input type="checkbox" name="items[' . e($f['k']) . '][]" value="' . e($id) . '"' . (in_array($id, $sel, true) ? ' checked' : '') . '> ' . e($title) . '</label>'; ?>
                     </div>
@@ -261,7 +341,7 @@ final class ConfigPages
             <?php endforeach; ?>
             </tbody></table></div></div>
             <?php endforeach; ?>
-            <div class="row" style="margin-top:12px"><div style="flex:3"><input type="text" name="reason" placeholder="دلیل تغییر (اجباری)" required minlength="5"></div><div style="flex:0"><button class="btn gold" data-confirm="تغییر دسترسی‌ها برای همهٔ کاربران اعمال شود؟">ذخیره</button></div></div>
+            <div class="row" style="margin-top:12px"><div style="flex:3"><input type="text" name="reason" placeholder="یادداشت (اختیاری)"></div><div style="flex:0"><button class="btn gold" data-confirm="تغییر دسترسی‌ها برای همهٔ کاربران اعمال شود؟">ذخیره</button></div></div>
             </form>
             <?php
         }, 'features');
@@ -418,9 +498,9 @@ final class ConfigPages
                   <label class="check"><input type="checkbox" name="closable" <?= $a['closable'] ? 'checked' : '' ?>> قابل بستن</label>
                   <label class="check"><input type="checkbox" name="active" <?= $a['active'] ? 'checked' : '' ?>> فعال</label>
                 </div>
-                <div class="row" style="margin-top:8px"><div style="flex:3"><input type="text" name="reason" placeholder="دلیل (اجباری)" required minlength="5"></div><div style="flex:0"><button class="btn gold">ذخیره</button></div></div>
+                <div class="row" style="margin-top:8px"><div style="flex:3"><input type="text" name="reason" placeholder="یادداشت (اختیاری)"></div><div style="flex:0"><button class="btn gold">ذخیره</button></div></div>
               </form>
-              <?php if ($ad): ?><form method="post" style="margin-top:10px" class="row"><?= Admin::csrfField() ?><input type="hidden" name="action" value="delete"><div style="flex:3"><input type="text" name="reason" placeholder="دلیل حذف" required minlength="5"></div><div style="flex:0"><button class="btn red" data-confirm="این تبلیغ حذف شود؟">حذف تبلیغ</button></div></form><?php endif; ?>
+              <?php if ($ad): ?><form method="post" style="margin-top:10px" class="row"><?= Admin::csrfField() ?><input type="hidden" name="action" value="delete"><div style="flex:3"><input type="text" name="reason" placeholder="یادداشت (اختیاری)"></div><div style="flex:0"><button class="btn red" data-confirm="این تبلیغ حذف شود؟">حذف تبلیغ</button></div></form><?php endif; ?>
             </div>
             <div>
               <div class="card"><h3>پیش‌نمایش</h3>
@@ -486,7 +566,7 @@ final class ConfigPages
                 <td><input type="checkbox" name="active[<?= e($p['k']) ?>]" <?= $p['active'] ? 'checked' : '' ?>></td></tr>
             <?php endforeach; ?>
             </tbody></table></div>
-            <div class="row" style="margin-top:12px"><div style="flex:3"><input type="text" name="reason" placeholder="دلیل (اجباری)" required minlength="5"></div><div style="flex:0"><button class="btn gold">ذخیره</button></div></div>
+            <div class="row" style="margin-top:12px"><div style="flex:3"><input type="text" name="reason" placeholder="یادداشت (اختیاری)"></div><div style="flex:0"><button class="btn gold">ذخیره</button></div></div>
             </form>
             <?php
         }, 'placements');
@@ -524,7 +604,7 @@ final class ConfigPages
                 <?php if ($m['kind'] === 'video'): ?><video src="<?= e($url) ?>" style="width:100%;border-radius:10px" muted controls preload="metadata"></video>
                 <?php else: ?><img src="<?= e($url) ?>" alt="" style="width:100%;border-radius:10px;max-height:160px;object-fit:contain;background:#f1eee6"><?php endif; ?>
                 <div style="font-size:.8rem;margin-top:6px">#<?= fa_digits($m['id']) ?> <?= e($m['original_name']) ?><br><span class="muted"><?= fa_digits(number_format((int)round($m['size'] / 1024))) ?> KB<?= $m['width'] ? ' — ' . fa_digits($m['width'] . '×' . $m['height']) : '' ?> — <?= $m['used'] ? 'در ' . fa_digits($m['used']) . ' تبلیغ' : 'استفاده‌نشده' ?></span></div>
-                <?php if (!$m['used']): ?><form method="post" class="row" style="gap:4px;margin-top:6px"><?= Admin::csrfField() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= (int)$m['id'] ?>"><input type="text" name="reason" placeholder="دلیل حذف" required minlength="5"><button class="btn sm red" style="flex:0">حذف</button></form><?php endif; ?>
+                <?php if (!$m['used']): ?><form method="post" class="row" style="gap:4px;margin-top:6px"><?= Admin::csrfField() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= (int)$m['id'] ?>"><input type="text" name="reason" placeholder="یادداشت (اختیاری)"><button class="btn sm red" style="flex:0">حذف</button></form><?php endif; ?>
               </div>
             <?php endforeach; ?>
             </div>
@@ -579,7 +659,7 @@ final class ConfigPages
               <p class="hint">کلید اپ (App ID) تپسل هنگام ساخت APK در برنامه قرار می‌گیرد؛ شناسهٔ تبلیغ‌گاه‌ها از همین‌جا قابل تغییر است. تپسل API گزارش درآمد عمومی ندارد؛ درآمد را از پنل تپسل بخوانید و در «درآمد و عملکرد» با برچسب «واقعی» ثبت کنید.</p>
             </div>
             </div>
-            <div class="row"><div style="flex:3"><input type="text" name="reason" placeholder="دلیل (اجباری)" required minlength="5"></div><div style="flex:0"><button class="btn gold">ذخیره</button></div></div>
+            <div class="row"><div style="flex:3"><input type="text" name="reason" placeholder="یادداشت (اختیاری)"></div><div style="flex:0"><button class="btn gold">ذخیره</button></div></div>
             </form>
             <?php
         }, 'adnetwork');
@@ -680,7 +760,7 @@ final class ConfigPages
               <p class="hint">اگر کاربر تا این مدت اینترنت نداشته باشد هم Pro او کار می‌کند؛ پس از اتصال، گواهی تازه می‌گیرد. اشتراک زمان‌دار هیچ‌وقت بعد از تاریخ پایانش آفلاین تمدید نمی‌شود.</p>
               <label>متن راهنمای پشتیبانی در اپ</label><input type="text" name="support_text" value="<?= e(Settings::get('support_text', '')) ?>">
             </div>
-            <div class="row"><div style="flex:3"><input type="text" name="reason" placeholder="دلیل تغییر (اجباری)" minlength="5"></div><div style="flex:0"><button class="btn gold" name="action" value="save">ذخیره</button></div></div>
+            <div class="row"><div style="flex:3"><input type="text" name="reason" placeholder="یادداشت (اختیاری)"></div><div style="flex:0"><button class="btn gold" name="action" value="save">ذخیره</button></div></div>
             </form>
             <?php
         }, 'stores');
@@ -757,7 +837,7 @@ final class ConfigPages
                 <label>کلید پشتیبان (اگر فایل از نصب دیگری است)</label><input type="password" name="backup_key" class="ltr" autocomplete="off">
                 <label class="check"><input type="checkbox" name="adopt_keys"> انتقال کلیدهای امضا و رمزنگاری (فقط روی نصب تازه و خالی؛ برای جابه‌جایی هاست)</label>
                 <label>رمز عبور شما</label><input type="password" name="password" required autocomplete="current-password">
-                <label>دلیل</label><input type="text" name="reason" required minlength="5">
+                <label>یادداشت (اختیاری)</label><input type="text" name="reason">
                 <p><button class="btn red" data-confirm="بازگردانی انجام شود؟">بازگردانی</button></p>
               </form>
               <form method="post" class="row" style="margin-top:10px"><?= Admin::csrfField() ?><input type="hidden" name="action" value="show_key"><div style="flex:3"><input type="password" name="password" placeholder="رمز عبور شما" required></div><div style="flex:0"><button class="btn ghost">نمایش کلید پشتیبان</button></div></form>
@@ -871,7 +951,7 @@ final class ConfigPages
                 <td><?php if ((int)$a['id'] !== (int)Admin::$me['id'] && Admin::owner()): ?>
                   <form method="post" class="row" style="gap:4px"><?= Admin::csrfField() ?><input type="hidden" name="id" value="<?= (int)$a['id'] ?>">
                     <select name="role" style="max-width:110px"><?php foreach (Admin::ROLES as $k => $l) if ($k !== 'owner') echo '<option value="' . $k . '"' . ($a['role'] === $k ? ' selected' : '') . '>' . $l . '</option>'; ?></select>
-                    <input type="text" name="reason" placeholder="دلیل" required minlength="5" style="min-width:100px">
+                    <input type="text" name="reason" placeholder="یادداشت (اختیاری)" style="min-width:100px">
                     <button class="btn sm ghost" name="action" value="role">تغییر نقش</button>
                     <button class="btn sm ghost" name="action" value="reset_totp">کد دومرحله‌ای تازه</button>
                     <button class="btn sm <?= $a['active'] ? 'red' : 'teal' ?>" name="action" value="toggle"><?= $a['active'] ? 'غیرفعال' : 'فعال' ?></button>
@@ -886,7 +966,7 @@ final class ConfigPages
                   <div><label>نقش</label><select name="role"><option value="manager">مدیر — همه‌چیز جز مدیران و بازگردانی</option><option value="support">پشتیبان — کاربران، خریدها، هدیه</option><option value="analyst">تحلیلگر — فقط مشاهدهٔ گزارش‌ها</option></select></div>
                   <div><label>رمز (۱۲+ نویسه با حرف بزرگ، کوچک و رقم)</label><input type="password" name="password" class="ltr" required autocomplete="new-password"></div>
                 </div>
-                <label>دلیل</label><input type="text" name="reason" required minlength="5">
+                <label>یادداشت (اختیاری)</label><input type="text" name="reason">
                 <p><button class="btn gold">ساخت مدیر</button></p>
               </form>
             </div>

@@ -7,8 +7,8 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 
-const val APP_VERSION_NAME = "5.2.0"
-const val APP_VERSION_LABEL = "نسخهٔ ۵.۲.۰"
+const val APP_VERSION_NAME = "5.3.0"
+const val APP_VERSION_LABEL = "نسخهٔ ۵.۳.۰"
 
 class SplashScreen(host: MainActivity) : Screen(host) {
     override fun build(): View = FrameLayout(host).apply {
@@ -66,12 +66,12 @@ class HomeScreen(host: MainActivity) : Screen(host) {
         AdEngine.slot(this, "home_inline")?.let { column.addView(it) }
         column.addView(kit.section("انتخاب بازی", RoyalIcon.PLAY))
         val tiles = GameType.values().map { game ->
-            kit.gameTile(GameSealView(host, game), game.title, gameSummary(game)) { Gate.open(this, game.key) { host.push(SetupScreen(host, game)) } }
+            kit.gameTile(GameSealView(host, game), game.title, gameSummary(game), pro = needsPro(game.key)) { Gate.open(this, game.key) { host.push(SetupScreen(host, game)) } }
         } + listOf(
             kit.gameTile(RoleSealView(host, MafiaGlyph.MASK, MafiaColors.MAFIA), "راوی مافیا", "${kit.n(MafiaScenarios.builtin.size)} سناریو • ${kit.n(MafiaRoleRegistry.available().size)} نقش",
-                host.mafia.latestUnfinished()?.let { "در جریان" }) { Gate.open(this, "mafia") { host.push(MafiaHomeScreen(host)) } },
+                host.mafia.latestUnfinished()?.let { "در جریان" }, needsPro("mafia")) { Gate.open(this, "mafia") { host.push(MafiaHomeScreen(host)) } },
             kit.gameTile(RoleSealView(host, PantoLook.glyph, PantoLook.TINT), "پانتومیم", "پنج نوع مسابقه و دور طلایی",
-                host.panto.latestUnfinished()?.let { "در جریان" }) { Gate.open(this, "panto") { host.push(PantoHomeScreen(host)) } }
+                host.panto.latestUnfinished()?.let { "در جریان" }, needsPro("panto")) { Gate.open(this, "panto") { host.push(PantoHomeScreen(host)) } }
         )
         column.addView(kit.grid(2, tiles, 10), kit.spaced(10))
         column.addView(spyTile(), kit.spaced(6))
@@ -181,6 +181,7 @@ class HomeScreen(host: MainActivity) : Screen(host) {
         addView(kit.vertical().apply {
             addView(kit.text("جاسوس", TextStyle.HEADING, Royal.title))
             addView(kit.text("پخش نقش، کلمهٔ مخفی، زمان‌سنج و رأی‌گیری", TextStyle.CAPTION, Royal.muted, maxLines = 2))
+            if (needsPro("spy")) { addView(kit.gap(4)); addView(kit.badge("Pro", Royal.gold, true)) }
             host.spy.latestUnfinished()?.let { addView(kit.gap(4)); addView(kit.badge("در جریان", Royal.turquoise, true)) }
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         addView(kit.icon(RoyalIcon.NEXT, Royal.goldLight, 18))
@@ -188,6 +189,9 @@ class HomeScreen(host: MainActivity) : Screen(host) {
         contentDescription = "جاسوس"
         setOnClickListener { kit.tap(it); Gate.open(this@HomeScreen, "spy") { host.push(SpyHomeScreen(host)) } }
     }
+
+    /** Sections the panel made Pro carry a crown badge, so a free user knows before tapping. */
+    private fun needsPro(key: String): Boolean = !ProState.isPro && !ProState.feature(key).second
 
     private fun gameSummary(game: GameType): String = when (game) {
         GameType.SHALAM -> "تا ${kit.n(settings.shalam.mode(settings.shalam.defaultJoker).defaultEndPoint)} • ${if (settings.shalam.defaultJoker) "با جوکر" else "بدون جوکر"}"

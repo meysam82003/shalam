@@ -127,6 +127,39 @@ class ProTest {
         assertNull(life.days)
     }
 
+    @Test fun storePriceText() {
+        assertEquals(19000, PlanOffer.storeToman("۱۹٬۰۰۰ تومان"))
+        assertEquals(49000, PlanOffer.storeToman("49,000 تومان"))
+        assertEquals(19000, PlanOffer.storeToman("190000 ریال"))
+        assertNull(PlanOffer.storeToman("رایگان"))
+    }
+
+    @Test fun proRulesFromPanel() {
+        ProState.logout()
+        fun f(mode: String, items: List<String> = emptyList()) = JSONObject().put("mode", mode).put("allowed", mode == "free").put("items", org.json.JSONArray(items)).put("pro_items", org.json.JSONArray(items))
+        ProState.configJson = JSONObject().put("features", JSONObject()
+            .put("mafia", f("pro"))
+            .put("mafia_scenarios", f("pro"))
+            .put("mafia_last_cards", f("free", listOf("SILENCE")))
+            .put("themes", f("pro", listOf("neon")))
+            .put("panto_modes", f("disabled"))).toString()
+        // A whole section made Pro asks a free user to buy.
+        assertFalse(ProState.feature("mafia").second)
+        // Every scenario is Pro when the section is Pro and no single scenario is ticked.
+        assertTrue(Gate.itemLocked("mafia_scenarios", "classic"))
+        assertTrue(Gate.itemLocked("mafia_scenarios", "godfather"))
+        // Ticked items only: the rest stays free and the section stays open.
+        assertTrue(Gate.itemLocked("mafia_last_cards", "SILENCE"))
+        assertFalse(Gate.itemLocked("mafia_last_cards", "BEAUTIFUL_MIND"))
+        assertTrue(ProState.feature("themes").second)
+        assertTrue(Gate.itemLocked("themes", "neon"))
+        assertFalse(Gate.itemLocked("themes", "cobalt"))
+        assertTrue(Gate.itemLocked("panto_modes", "NORMAL"))
+        // Unknown modules stay free.
+        assertTrue(ProState.feature("spy").second)
+        ProState.configJson = null
+    }
+
     @Test fun receiptsSurviveStorage() {
         val r = StoreReceipt("divan_pro_1m", "tok", "ORD-1", "{\"a\":1}", "sig", "dvabc", 123L)
         assertEquals(r, StoreReceipt.from(JSONObject(r.toJson().toString())))

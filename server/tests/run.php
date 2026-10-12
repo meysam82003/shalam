@@ -155,24 +155,34 @@ scenario('accounts: recovery key, rotation, sessions', function () {
     throws(fn() => Users::recover('recover_me', 'x', 'third1234'), 'rate_limited', 'recovery attempts are limited per account');
 });
 
-scenario('plans: price sync gate and real discounts', function () {
+scenario('plans: separate store prices, list price and Bazaar campaigns', function () {
     freshIp();
     [$u] = Users::register('buyer0', 'secret123');
-    foreach (Plans::offers('bazaar') as $o) check($o['state'] === 'price_sync_pending' && !$o['purchasable'], "plan {$o['code']} not purchasable before the store price is confirmed");
-    throws(fn() => Purchases::intent($u, 'm1', 'bazaar'), 'not_purchasable', 'intent refused while prices are not synced');
-    syncPrices();
+    // 5.3: a plan with a SKU and a price can be bought right away; no price sync step.
+    foreach (Plans::offers('bazaar') as $o) check($o['state'] === 'ok' && $o['purchasable'], "plan {$o['code']} purchasable with its store price");
     $offers = array_column(Plans::offers('myket'), null, 'code');
     check($offers['m1']['final_price'] === 19000 && $offers['m3']['final_price'] === 49000 && $offers['m6']['final_price'] === 89000 && $offers['life']['final_price'] === 220000, 'default prices 19/49/89/220 thousand toman');
-    check($offers['m1']['purchasable'] && $offers['life']['lifetime'], 'plans purchasable after sync');
+    check($offers['m1']['purchasable'] && $offers['life']['lifetime'], 'Myket plans purchasable');
     $plan = Plans::byCode('m3');
-    $cid = Db::insert('campaigns', ['name' => 'نوروز', 'plan_id' => $plan['id'], 'store' => 'all', 'price_toman' => 39000, 'label' => 'نوروزی', 'starts_at' => Clock::sql(Clock::now() - 60), 'ends_at' => Clock::sql(Clock::now() + 86400), 'active' => 1, 'created_at' => Clock::sql(), 'updated_at' => Clock::sql()]);
-    $m = Plans::offer(Plans::byCode('m3'), 'myket');
-    check($m['final_price'] === 39000 && $m['discount_percent'] === 20 && $m['state'] === 'price_sync_pending', 'campaign shows only after the store price matches (Myket)');
+    // Each store has its own price and list (struck-through) price.
+    Db::update('plans', ['store_price_myket' => 45000, 'list_price_myket' => 60000], 'id = ?', [$plan['id']]);
+    $m = Plans::offer(Plans::byCode('m3'), 'myket'); $b = Plans::offer(Plans::byCode('m3'), 'bazaar');
+    check($m['final_price'] === 45000 && $m['base_price'] === 60000 && $m['discount_percent'] === 25, 'Myket price with a struck-through list price');
+    check($b['final_price'] === 49000 && $b['discount_percent'] === 0, 'Bazaar keeps its own price');
+    Db::update('plans', ['on_myket' => 0], 'id = ?', [$plan['id']]);
+    check(!in_array('m3', array_column(Plans::offers('myket'), 'code'), true) && in_array('m3', array_column(Plans::offers('bazaar'), 'code'), true), 'a plan can be offered in one store only');
+    throws(fn() => Purchases::intent($u, 'm3', 'myket'), 'not_purchasable', 'a plan switched off in Myket cannot be bought there');
+    Db::update('plans', ['on_myket' => 1, 'store_price_myket' => 49000, 'list_price_myket' => null], 'id = ?', [$plan['id']]);
+    Db::update('plans', ['sku_myket' => null], 'id = ?', [$plan['id']]);
+    check(Plans::offer(Plans::byCode('m3'), 'myket')['state'] === 'no_sku', 'a plan without a product id is not purchasable');
+    Db::update('plans', ['sku_myket' => 'divan_pro_3m'], 'id = ?', [$plan['id']]);
+    $cid = Db::insert('campaigns', ['name' => 'نوروز', 'plan_id' => $plan['id'], 'store' => 'bazaar', 'price_toman' => 39000, 'label' => 'نوروزی', 'starts_at' => Clock::sql(Clock::now() - 60), 'ends_at' => Clock::sql(Clock::now() + 86400), 'active' => 1, 'created_at' => Clock::sql(), 'updated_at' => Clock::sql()]);
     $b = Plans::offer(Plans::byCode('m3'), 'bazaar');
-    check($b['state'] === 'price_sync_pending', 'Bazaar without discount key also waits');
+    check($b['final_price'] === 49000 && !$b['dynamic_price'] && $b['purchasable'], 'without the dynamic-price key a campaign never shows a price the store would not charge');
     Settings::setSecret('bazaar_discount_key', 'k3y-for-dynamic-pricing');
     $b = Plans::offer(Plans::byCode('m3'), 'bazaar');
-    check($b['state'] === 'ok' && $b['dynamic_price'], 'Bazaar dynamic discount makes the campaign purchasable');
+    check($b['state'] === 'ok' && $b['dynamic_price'] && $b['final_price'] === 39000 && $b['discount_percent'] === 20, 'Bazaar dynamic discount applies the campaign');
+    check(Plans::offer(Plans::byCode('m3'), 'myket')['final_price'] === 49000, 'a Bazaar campaign does not change Myket');
     $i = Purchases::intent($u, 'm3', 'bazaar');
     [$h, $c, $s] = explode('.', (string)$i['dynamic_price_token']);
     $claims = json_decode(Crypto::b64uDecode($c), true);
@@ -376,6 +386,14 @@ scenario('features, gifts and ads', function () use ($storeKey) {
     check($fi['mafia_scenarios']['pro_items'] === ['godfather', 'zodiac'] && $fi['mafia_scenarios']['allowed'], 'Pro-only scenarios listed for a free user; the module stays open');
     check(Features::forUser((int)$pro['id'], true)['mafia_scenarios']['pro_items'] === [], 'Pro user has no locked items');
     check($fi['mafia_last_cards']['pro_items'] === ['INTELLIGENCE'], 'single last-move card as Pro');
+    Db::update('features', ['mode' => 'pro', 'pro_items' => null], 'k = ?', ['themes']);
+    $ft = Features::forUser((int)$free['id'], false)['themes'];
+    check(!$ft['allowed'] && $ft['all_items'], 'a whole item module as Pro locks every item for a free user');
+    check(!Features::forUser((int)$pro['id'], true)['themes']['all_items'], 'a Pro user has every item');
+    Db::update('features', ['pro_items' => 'neon'], 'k = ?', ['themes']);
+    $ft = Features::forUser((int)$free['id'], false)['themes'];
+    check($ft['allowed'] && !$ft['all_items'] && $ft['items'] === ['neon'], 'ticked items only: the module stays open');
+    Db::update('features', ['mode' => 'free', 'pro_items' => null], 'k = ?', ['themes']);
     check(count(Catalog::items('mafia_scenarios')) === 48 && isset(Catalog::items('mafia_last_cards')['INTELLIGENCE']) && isset(Catalog::items('themes')['emerald']), 'item catalog from the app');
     Db::run("UPDATE {features} SET pro_items = NULL");
     Db::update('features', ['mode' => 'pro'], 'k = ?', ['cloud_backup']);

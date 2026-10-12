@@ -79,7 +79,7 @@ final class SalesPages
             foreach (Plans::all() as $p) {
                 if (!$p['active']) continue;
                 $o = Plans::offer($p, $s);
-                if ($o['state'] === 'price_sync_pending') { $w[] = ['warn', 'قیمت «' . e($p['title']) . '» در ' . Admin::storeName($s) . ' هنوز با پنل یکی نشده؛ تا آن زمان این پلن در اپ قابل خرید نیست. <a href="index.php?p=plans">پلن‌ها</a>']; }
+                if ($o['state'] === 'no_sku') { $w[] = ['warn', 'برای «' . e($p['title']) . '» در ' . Admin::storeName($s) . ' شناسهٔ محصول ثبت نشده؛ در اپ قابل خرید نیست. <a href="index.php?p=plans">پلن‌ها</a>']; }
             }
             $verify = $s === 'myket' ? Settings::secret('myket_access_token') : (Settings::secret('bazaar_api_secret') ?: Settings::secret('bazaar_refresh_token'));
             if ($verify === '') $w[] = ['warn', 'دسترسی صحت‌سنجی ' . Admin::storeName($s) . ' ثبت نشده؛ خریدها فقط با امضا تأیید موقت می‌شوند. <a href="index.php?p=stores">تنظیم</a>'];
@@ -188,7 +188,7 @@ final class SalesPages
                   <input type="text" name="target" class="ltr" list="ua-users" placeholder="نام کاربری را بنویسید یا از فهرست انتخاب کنید">
                   <datalist id="ua-users"><?php foreach (Db::all('SELECT username FROM {users} WHERE id <> ? ORDER BY id DESC LIMIT 3000', [$u['id']]) as $o) echo '<option value="' . e($o['username']) . '">'; ?></datalist>
                 </div>
-                <label>دلیل (اجباری)</label><textarea name="reason" required minlength="5" placeholder="مثلاً: مالکیت با شمارهٔ سفارش بازار ۱۲۳۴ تأیید شد"></textarea>
+                <label>یادداشت (اختیاری)</label><textarea name="reason" placeholder="مثلاً: مالکیت با شمارهٔ سفارش بازار ۱۲۳۴ تأیید شد"></textarea>
                 <p><button class="btn gold" data-confirm="این اقدام انجام شود؟">ثبت اقدام</button></p>
               </form>
             </div>
@@ -221,7 +221,7 @@ final class SalesPages
             <h3 style="margin-top:14px">هدیه‌ها و دسترسی‌های ویژه</h3>
             <div class="table-wrap"><table><thead><tr><th>قابلیت</th><th>تا</th><th>دلیل</th><th></th></tr></thead><tbody>
             <?php foreach ($grants as $g): ?><tr><td><?= e($g['feature_k'] === 'pro' ? 'Pro کامل' : $g['feature_k']) ?></td><td><?= $g['expires_at'] === null ? 'دائمی' : e(jdate($g['expires_at'], false)) ?></td><td><?= e($g['reason']) ?></td>
-              <td><?php if ($g['revoked_at'] === null): ?><form method="post" class="row" style="gap:4px"><?= Admin::csrfField() ?><input type="hidden" name="action" value="revoke_grant"><input type="hidden" name="grant" value="<?= (int)$g['id'] ?>"><input type="text" name="reason" placeholder="دلیل لغو" required minlength="5" style="min-width:110px"><button class="btn sm red">لغو</button></form><?php else: ?><span class="badge">لغوشده</span><?php endif; ?></td></tr><?php endforeach;
+              <td><?php if ($g['revoked_at'] === null): ?><form method="post" class="row" style="gap:4px"><?= Admin::csrfField() ?><input type="hidden" name="action" value="revoke_grant"><input type="hidden" name="grant" value="<?= (int)$g['id'] ?>"><input type="text" name="reason" placeholder="یادداشت (اختیاری)" style="min-width:110px"><button class="btn sm red">لغو</button></form><?php else: ?><span class="badge">لغوشده</span><?php endif; ?></td></tr><?php endforeach;
             if (!$grants) echo '<tr><td colspan="4" class="muted">—</td></tr>'; ?>
             </tbody></table></div></div>
             <div class="card"><h3>رویدادهای امنیتی حساب</h3><div class="table-wrap"><table><thead><tr><th>رویداد</th><th>IP</th><th>زمان</th></tr></thead><tbody>
@@ -457,7 +457,7 @@ final class SalesPages
                   <option value="refunded">ثبت بازپرداخت</option>
                   <option value="revoked">ابطال</option>
                 </select>
-                <label>دلیل (اجباری)</label><textarea name="reason" required minlength="5"></textarea>
+                <label>یادداشت (اختیاری)</label><textarea name="reason"></textarea>
                 <p><button class="btn gold" data-confirm="این اقدام روی خرید کاربر انجام شود؟">ثبت</button></p>
               </form>
               <h3>پاسخ خام فروشگاه</h3>
@@ -535,7 +535,7 @@ final class SalesPages
               <h3>تغییر وضعیت</h3>
               <form method="post"><?= Admin::csrfField() ?>
                 <select name="status"><option value="in_review">در بررسی</option><option value="resolved">حل‌شده</option><option value="open">باز</option></select>
-                <label>شرح اقدام / دلیل (اجباری)</label><textarea name="reason" required minlength="5"></textarea>
+                <label>شرح اقدام (اختیاری)</label><textarea name="reason"></textarea>
                 <p><button class="btn gold">ثبت</button></p>
               </form>
             </div></div>
@@ -580,7 +580,7 @@ final class SalesPages
                   <div><label>هدیه</label><select name="feature"><option value="pro" selected>Pro کامل — همهٔ قابلیت‌ها و بدون تبلیغ</option><optgroup label="فقط یک قابلیت (اختیاری)"><?php foreach ($features as $f) echo '<option value="' . e($f['k']) . '">' . e($f['title']) . '</option>'; ?></optgroup></select></div>
                   <div><label>مدت به روز (خالی = دائمی)</label><input type="number" name="days" min="1" max="3650" placeholder="مثلاً ۳۰"></div>
                 </div>
-                <label>دلیل (اجباری)</label><input type="text" name="reason" required minlength="5" placeholder="مثلاً: برندهٔ مسابقهٔ کانال">
+                <label>یادداشت (اختیاری)</label><input type="text" name="reason" placeholder="مثلاً: برندهٔ مسابقهٔ کانال">
                 <p><button class="btn gold">ثبت هدیه</button></p>
               </form>
               <p class="hint">برای هدیه به کسانی که هنوز حساب ندارند یا برای یک کمپین عمومی، از «کد تخفیف و کد هدیه» یک کد هدیه بسازید.</p>
@@ -681,7 +681,7 @@ final class SalesPages
                 <details><summary>فقط برای حساب‌های خاص (اختیاری؛ اگر کسی را انتخاب نکنید، کد برای همه است)</summary>
                   <?= Admin::userPicker('users') ?>
                 </details>
-                <label>توضیح / دلیل (اجباری)</label><input type="text" name="reason" required minlength="5" placeholder="مثلاً: کمپین نوروز کانال تلگرام">
+                <label>توضیح (اختیاری)</label><input type="text" name="reason" placeholder="مثلاً: کمپین نوروز کانال تلگرام">
                 <p><button class="btn gold">ساخت کد</button></p>
               </form>
             </div>
@@ -777,7 +777,7 @@ final class SalesPages
               <div class="table-wrap" style="margin-top:10px"><table><thead><tr><th>تاریخ</th><th>منبع</th><th>مبلغ</th><th>برچسب</th><th>توضیح</th><th>ثبت‌کننده</th><th></th></tr></thead><tbody>
               <?php foreach ($revenue as $r): [$lk, $ll] = $labels[$r['label']] ?? ['', $r['label']]; ?>
                 <tr><td><?= e(jdate($r['day'] . ' 00:00:00', false)) ?></td><td><?= e($r['source']) ?></td><td><?= money($r['amount_toman']) ?></td><td><span class="badge <?= $lk ?>"><?= $ll ?></span></td><td><?= e($r['note'] ?? '') ?></td><td><?= e($r['admin_name'] ?? '—') ?></td>
-                  <td><form method="post" class="row" style="gap:4px"><?= Admin::csrfField() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= (int)$r['id'] ?>"><input type="text" name="reason" placeholder="دلیل حذف" required minlength="5" style="min-width:100px"><button class="btn sm red">حذف</button></form></td></tr>
+                  <td><form method="post" class="row" style="gap:4px"><?= Admin::csrfField() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= (int)$r['id'] ?>"><input type="text" name="reason" placeholder="یادداشت (اختیاری)" style="min-width:100px"><button class="btn sm red">حذف</button></form></td></tr>
               <?php endforeach; if (!$revenue) echo '<tr><td colspan="7" class="muted">—</td></tr>'; ?>
               </tbody></table></div>
             </div>

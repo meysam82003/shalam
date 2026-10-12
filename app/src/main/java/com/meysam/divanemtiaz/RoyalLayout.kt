@@ -121,7 +121,7 @@ fun RoyalKit.stat(value: String, label: String): View = vertical(Gravity.CENTER_
 }
 
 /** Dashboard tile of a game: seal, name and one line about it. */
-fun RoyalKit.gameTile(seal: View, title: String, caption: String, badge: String? = null, onClick: () -> Unit): View = vertical().apply {
+fun RoyalKit.gameTile(seal: View, title: String, caption: String, badge: String? = null, pro: Boolean = false, onClick: () -> Unit): View = vertical().apply {
     background = PanelDrawable(density, PanelStyle.RAISED, 22f)
     setPadding(dp(12), dp(12), dp(12), dp(15))
     addView(horizontal().apply {
@@ -135,9 +135,13 @@ fun RoyalKit.gameTile(seal: View, title: String, caption: String, badge: String?
     addView(gap(8))
     addView(text(title, TextStyle.HEADING, Royal.title, maxLines = 1))
     addView(text(caption, TextStyle.CAPTION, Royal.muted, maxLines = 2))
-    if (badge != null) {
+    if (badge != null || pro) {
         addView(gap(6))
-        addView(badge(badge, Royal.turquoise, true), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        addView(horizontal().apply {
+            if (pro) addView(badge("Pro", Royal.gold, true))
+            if (pro && badge != null) addView(View(context), LinearLayout.LayoutParams(dp(6), 1))
+            if (badge != null) addView(badge(badge, Royal.turquoise, true))
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     }
     isClickable = true
     contentDescription = "شروع $title"
