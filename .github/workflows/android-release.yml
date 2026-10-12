@@ -59,6 +59,39 @@ jobs:
           cp web/index.html "Divan-Emtiaz-Web-v$VERSION.html"
           sha256sum "Divan-Emtiaz-v$VERSION.apk" "Divan-Emtiaz-Web-v$VERSION.html" > SHA256SUMS.txt
 
+      - name: Use the release-signed APK kept in the repository
+        if: env.RELEASE_SIGNED != 'true'
+        run: |
+          SIGNED="release/Divan-Emtiaz-v$VERSION.apk"
+          if [ -f "$SIGNED" ]; then
+            APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+            "$APKSIGNER" verify --print-certs "$SIGNED" | tee signed-cert.txt
+            if grep -qi "CN=Android Debug" signed-cert.txt; then echo "::error::$SIGNED is debug-signed"; exit 1; fi
+            cp "$SIGNED" "Divan-Emtiaz-v$VERSION.apk"
+            sha256sum "Divan-Emtiaz-v$VERSION.apk" "Divan-Emtiaz-Web-v$VERSION.html" > SHA256SUMS.txt
+            echo "RELEASE_SIGNED=true" >> "$GITHUB_ENV"
+            echo "Release-signed APK found for v$VERSION."
+          fi
+
+      - name: Release notes from README
+        run: |
+          python3 - <<'PY'
+          import os, re
+          v = os.environ["VERSION"].translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))
+          text = open("README.md", encoding="utf-8").read()
+          m = re.search(r"^## نسخهٔ " + re.escape(v) + r"\s*\n(.*?)(?=^## |\Z)", text, re.S | re.M)
+          notes = m.group(1).strip() if m else ""
+          body = f"""نسخهٔ {os.environ['VERSION']}
+
+          دانلود: فایل `Divan-Emtiaz-v{os.environ['VERSION']}.apk` (امضای انتشار، مناسب کافه‌بازار؛ روی نسخهٔ قبلی نصب می‌شود و داده‌ها حفظ می‌شوند)
+
+          تازه‌ها:
+          {notes}
+          """
+          open("release-notes.md", "w", encoding="utf-8").write("\n".join(l.strip() if l.startswith("          ") else l for l in body.splitlines()) + "\n")
+          PY
+          cat release-notes.md
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
@@ -97,36 +130,7 @@ jobs:
           tag_name: v${{ env.VERSION }}
           target_commitish: ${{ github.sha }}
           name: دیوان امتیاز سلطنتی v${{ env.VERSION }}
-          body: |
-            نسخهٔ ${{ env.VERSION }} — اپ اندروید و نسخهٔ تحت وب
-
-            دانلود:
-            - اپ اندروید: فایل `Divan-Emtiaz-v${{ env.VERSION }}.apk` (روی نسخهٔ قبلی نصب می‌شود و داده‌ها حفظ می‌شوند)
-            - نسخهٔ تحت وب: https://meysam82003.github.io/shalam/ یا فایل `Divan-Emtiaz-Web-v${{ env.VERSION }}.html` (بدون نصب، در هر مرورگری باز می‌شود)
-
-            تازه‌های نسخهٔ ۴.۲:
-            - رابط اپ هم‌اندازه و هم‌رنگ نسخهٔ وب: متن‌ها، دکمه‌ها و نشان‌ها بزرگ‌تر و پررنگ‌تر
-            - اسکرول روان: پس‌زمینه و نشان‌ها یک بار کشیده و ذخیره می‌شوند
-            - امضای انتشار ثابت، مناسب بارگذاری در کافه‌بازار
-
-            تازه‌های نسخهٔ ۴.۱:
-            - ماشین‌حساب هزارتایی: فقط تعداد نفرات و ورق‌ها را بدهید؛ برنامه خودش ورق هر نفر و پخش دور اول، دوم و سوم را تعیین می‌کند (مثلاً ۶/۴/۴)
-            - امکان وارد کردن تعداد کل ورق‌ها (مثلاً ۸۰ برگ) به جای تعداد دسته و جوکر
-            - تساوی در منفی (عادی و لیگ): داور ۲، ۳ یا هر تعداد دست اضافه انتخاب می‌کند؛ پیش‌فرض در تنظیمات
-            - پشتیبان‌گیری کامل (Import / Export): بازی‌ها، تاریخچه، تیم‌ها، بازیکنان، لیگ‌ها و تنظیمات؛ ادغام یا جایگزینی
-            - اشتراک تصویر هر دست، وضعیت بازی، نتیجه، لیگ و پروفایل
-            - نمودار روند امتیاز، پروفایل تیم و بازیکن (برد/مساوی/باخت، رودررو، قدرت حریف، بهترین برد و بدترین باخت)
-            - رنک‌بندی تیم‌ها و بازیکنان با درجه‌های طلایی، نقره‌ای و برنزی
-
-            از نسخهٔ ۴:
-            - اندازهٔ درست صفحه و عدم همپوشانی با نوار سیستم
-            - قوانین جدید منفی (جمع ۱۳، ۱۴ و ۱۵ به بالا) و جدول امتیاز قابل تنظیم
-            - ثبت دستی امتیاز توسط داور در همهٔ بازی‌ها
-            - هزارتایی با تعداد نامحدود بازیکن
-            - لیگ حذفی «دو برده» و دوره‌ای
-            - بازی جدید «دو لو گشنیز» و ماشین‌حساب ورق
-
-            Android 5.0 و بالاتر، کاملاً آفلاین و بدون تبلیغ
+          body_path: release-notes.md
           files: |
             Divan-Emtiaz-v${{ env.VERSION }}.apk
             Divan-Emtiaz-Web-v${{ env.VERSION }}.html
