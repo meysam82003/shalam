@@ -213,4 +213,34 @@ class PantoSpyTest {
         SpyEngine.end(g, SpyOutcome.GUESSED)
         assertEquals(true, g.spiesWin)
     }
+
+    @Test fun teamsOfAnySizeRotateThePerformer() {
+        val big = PantoTeam("بزرگ", members = ArrayList((1..50).map { "نفر$it" }))
+        val m = PantoEngine.create(9, PantoMode.NORMAL, listOf(big, PantoTeam("کوچک", size = 12)), 3, null)
+        assertEquals(50, m.teams[0].people)
+        assertEquals("نفر1", m.teams[0].performer)
+        PantoEngine.startTurn(m, bank, emptyList(), HashSet(), PantoChoice(2, 1), Random(1)); PantoEngine.correct(m)
+        assertEquals("نفر2", m.teams[0].performer)
+        assertEquals(1, m.teams[0].turns)
+        assertEquals(1, m.teams[0].correct)
+        assertEquals(12, PantoCodec.decode(PantoCodec.encode(m)).teams[1].people)
+        val split = PantoEngine.split((1..23).map { "p$it" }, 4, Random(2))
+        assertEquals(23, split.flatten().toSet().size)
+        assertTrue(split.all { it.size in 5..6 })
+    }
+
+    @Test fun spyVoteHintAndStarter() {
+        val g = SpyEngine.start(1, SpySettings(6, 1, 5, spyHint = true), emptyList(), spyWords, Random(5))
+        assertTrue(g.starter in 0 until 6)
+        val spy = g.spies.first()
+        assertTrue(SpyEngine.cardText(g, spy).contains(g.category.title))
+        assertFalse(SpyEngine.cardText(g, spy).contains(g.word))
+        val innocent = (0 until 6).first { !g.isSpy(it) }
+        assertEquals(SpyOutcome.HIDDEN, SpyEngine.vote(g, innocent))
+        assertEquals(true, g.spiesWin)
+        val g2 = SpyEngine.start(2, SpySettings(6, 1, 5), emptyList(), spyWords, Random(6))
+        assertEquals(SpyOutcome.FOUND, SpyEngine.vote(g2, g2.spies.first()))
+        assertEquals(false, g2.spiesWin)
+        assertEquals(g2.accused, SpyCodec.decode(SpyCodec.encode(g2)).accused)
+    }
 }

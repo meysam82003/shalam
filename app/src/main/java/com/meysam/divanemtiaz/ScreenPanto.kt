@@ -26,7 +26,7 @@ private val Screen.pantoSounds: GameSounds get() = PantoSoundHolder.get(host)
 
 private object PantoSoundHolder {
     private var sounds: GameSounds? = null
-    fun get(host: MainActivity): GameSounds = sounds ?: GameSounds { true }.also { sounds = it }
+    fun get(host: MainActivity): GameSounds = sounds ?: GameSounds { host.spy.sound() }.also { sounds = it }
 }
 
 /** Big emblem card used at the top of the game pages. */
@@ -78,6 +78,8 @@ class PantoHomeScreen(host: MainActivity) : Screen(host) {
                 menuTile(RoyalIcon.RULES, "قوانین", "قوانین هر نوع مسابقه") { host.push(PantoRulesScreen(host)) },
                 menuTile(RoyalIcon.HISTORY, "مسابقه‌های گذشته", "${kit.n(host.panto.index().size)} مسابقه") { host.push(PantoMatchesScreen(host)) }
             ), 8))
+            addView(kit.gap(8))
+            addView(kit.switchRow("صدای بازی", "صدای پاسخ درست و نادرست، ثانیه‌های آخر و زنگ پایان", host.spy.sound()) { host.spy.setSound(it) })
         }
     }
 }
@@ -129,6 +131,14 @@ class PantoSetupScreen(host: MainActivity) : Screen(host) {
                 addView(kit.iconButton(RoyalIcon.PLUS, "افزودن", ButtonKind.CHIP_GOLD, 40) { if (teams.size < PantoEngine.MAX_TEAMS) { addTeam(); host.refresh() } else kit.toast("حداکثر ${kit.n(PantoEngine.MAX_TEAMS)}") })
             }))
         teams.forEachIndexed { i, t -> addView(teamRow(i, t)) }
+        addView(kit.horizontal().apply {
+            layoutParams = kit.spaced(8)
+            if (!mode.individual) {
+                addView(kit.weight(kit.button("تقسیم تصادفی افراد", ButtonKind.SECONDARY, RoyalIcon.PLAYERS, 44) { randomSplit() }))
+                addView(kit.hgap(6))
+            }
+            addView(kit.weight(kit.button("ترتیب تصادفی", ButtonKind.SECONDARY, RoyalIcon.SWAP, 44) { teams.shuffle(); host.refresh() }))
+        })
         addView(kit.section("دورها و زمان", RoyalIcon.TIMER))
         if (mode == PantoMode.JANGI) {
             addView(kit.settingRow("تعداد دورها", "خودکار: یکی کمتر از تعداد تیم‌ها (${kit.n(teams.size - 1)} دور)", kit.badge("خودکار", Royal.turquoise)))
@@ -153,6 +163,18 @@ class PantoSetupScreen(host: MainActivity) : Screen(host) {
         })
     }
 
+    /** Chosen people are dealt at random into the teams (as evenly as possible). */
+    private fun randomSplit() {
+        memberPicker(teams.flatMap { it.members }, 999, "افراد این مسابقه") { names ->
+            if (names.size < teams.size) { kit.toast("دست‌کم ${kit.n(teams.size)} نفر انتخاب کنید"); return@memberPicker }
+            PantoEngine.split(names, teams.size, Random.Default).forEachIndexed { i, group ->
+                teams[i].members.clear(); teams[i].members += group; teams[i].size = group.size
+            }
+            kit.toast("${kit.n(names.size)} نفر به ${kit.n(teams.size)} تیم تقسیم شدند")
+            host.refresh()
+        }
+    }
+
     private fun teamRow(i: Int, t: PantoTeam): View = kit.vertical().apply {
         background = PanelDrawable(kit.density, PanelStyle.NORMAL, 16f)
         setPadding(kit.dp(10), kit.dp(8), kit.dp(10), kit.dp(10))
@@ -162,8 +184,8 @@ class PantoSetupScreen(host: MainActivity) : Screen(host) {
             addView(kit.hgap(8))
             addView(kit.vertical().apply {
                 addView(kit.text(t.name, TextStyle.BODY_BOLD, Royal.goldLight, maxLines = 1))
-                addView(kit.text(if (t.members.isEmpty()) (if (mode.individual) "از افراد انتخاب کنید یا نام بنویسید" else "اعضا را از افراد انتخاب کنید (هر تعداد)")
-                    else t.members.joinToString("، "), TextStyle.CAPTION, Royal.muted, maxLines = 3))
+                addView(kit.text(if (t.members.isEmpty()) (if (mode.individual) "از افراد انتخاب کنید یا نام بنویسید" else "${kit.n(t.size)} نفر • اعضا را از افراد انتخاب کنید (هر تعداد)")
+                    else "${kit.n(t.members.size)} نفر: " + t.members.joinToString("، "), TextStyle.CAPTION, Royal.muted, maxLines = 3))
             }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             addView(kit.iconButton(RoyalIcon.EDIT, "نام ${t.name}", ButtonKind.CHIP, 40) {
                 kit.textPrompt(if (mode.individual) "نام شرکت‌کننده" else "نام تیم", t.name) { n -> if (n.isNotBlank()) { t.name = n.trim(); host.refresh() } }
@@ -175,6 +197,7 @@ class PantoSetupScreen(host: MainActivity) : Screen(host) {
                     val clash = names.filter { it in taken }
                     if (clash.isNotEmpty()) kit.toast("${clash.joinToString("، ")} در تیم دیگری است")
                     t.members.clear(); t.members += names.filter { it !in taken }
+                    if (t.members.isNotEmpty()) t.size = t.members.size
                     if (mode.individual && t.members.size == 1) {
                         t.name = t.members.first()
                         host.repo.roster().firstOrNull { it.name == t.name && !it.isTeam }?.let { e -> t.avatar = e.avatar }
@@ -183,12 +206,16 @@ class PantoSetupScreen(host: MainActivity) : Screen(host) {
                 }
             })
         })
+        if (!mode.individual && t.members.isEmpty()) {
+            addView(kit.gap(6))
+            addView(kit.stepperRow("تعداد نفرات تیم", "بدون محدودیت؛ برای چرخش اجراکننده", t.size, 2, 99, 1) { t.size = it })
+        }
     }
 
     private fun start() {
         if (teams.map { it.name.trim() }.toSet().size != teams.size) { kit.toast("نام‌ها نباید تکراری باشند"); return }
         val id = System.currentTimeMillis()
-        val m = PantoEngine.create(id, mode, teams.map { PantoTeam(it.name.trim(), it.avatar, ArrayList(it.members)) }, rounds, if (manual && mode != PantoMode.FIVE) seconds else null)
+        val m = PantoEngine.create(id, mode, teams.map { PantoTeam(it.name.trim(), it.avatar, ArrayList(it.members), size = if (mode.individual) 1 else it.people) }, rounds, if (manual && mode != PantoMode.FIVE) seconds else null)
         m.referee = referee
         host.panto.save(m)
         host.replace(PantoBoardScreen(host, id))
@@ -296,7 +323,7 @@ class PantoBoardScreen(host: MainActivity, matchId: Long) : PantoScreen(host, ma
         val sub = when (m.mode) {
             PantoMode.JANGI -> "همهٔ تیم‌ها با هم • ${kit.n(m.inside.size)} تیم در مسابقه"
             PantoMode.FIVE -> "نوبت ${m.teams[m.current].name}"
-            else -> "نوبت ${m.teams[m.current].name}"
+            else -> "نوبت ${m.teams[m.current].name} • اجراکننده: ${m.teams[m.current].performer}"
         }
         addView(kit.text(sub, TextStyle.BODY_BOLD, if (m.golden) Royal.ivory else Royal.turquoiseLight, Gravity.CENTER))
     }
@@ -478,6 +505,7 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
         if (phase == 0) {
             addView(kit.icon(RoyalIcon.EYE_OFF, Royal.gold, 36))
             addView(kit.text("کلمه پنهان است", TextStyle.TITLE, Royal.ivory, Gravity.CENTER))
+            addView(kit.text("اجراکننده: ${m.teams[t.team].performer}", TextStyle.HEADING, Royal.turquoiseLight, Gravity.CENTER))
             addView(kit.text("فقط اجراکننده صفحه را ببیند و «نمایش کلمه» را بزند.", TextStyle.LABEL, Royal.muted, Gravity.CENTER))
         } else {
             if (golden) addView(kit.text("موضوع طلایی", TextStyle.LABEL_BOLD, Royal.goldLight, Gravity.CENTER))
@@ -712,6 +740,8 @@ class PantoResultScreen(host: MainActivity, matchId: Long) : PantoScreen(host, m
                     addView(kit.vertical().apply {
                         addView(kit.text(t.name, TextStyle.BODY_BOLD, Royal.ivory, maxLines = 1))
                         if (t.members.isNotEmpty()) addView(kit.text(t.members.joinToString("، "), TextStyle.CAPTION, Royal.muted, maxLines = 2))
+                        addView(kit.text("${kit.n(t.turns)} نوبت • ${kit.n(t.correct)} پاسخ درست • ${kit.n(t.faults)} خطا" + if (!t.inGame && m.mode != PantoMode.JANGI) " • حذف‌شده" else "",
+                            TextStyle.CAPTION, Royal.turquoiseLight, maxLines = 1))
                     }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
                     addView(kit.text(kit.n(t.points), TextStyle.TITLE, Royal.goldLight))
                 })

@@ -29,7 +29,8 @@ fun Screen.spyEnabledWords(): List<SpyWord> {
     return spyAllWords().filter { it.id !in off }
 }
 
-private val spySounds = GameSounds { true }
+private var spySoundsHolder: GameSounds? = null
+private val Screen.spySounds: GameSounds get() = spySoundsHolder ?: GameSounds { host.spy.sound() }.also { spySoundsHolder = it }
 
 /** «جاسوس» home: players, spies and time, the words, and the start. */
 class SpyHomeScreen(host: MainActivity) : Screen(host) {
@@ -76,7 +77,21 @@ class SpyHomeScreen(host: MainActivity) : Screen(host) {
             addView(kit.section("کلمات", RoyalIcon.CARDS))
             addView(kit.settingRow("${kit.n(enabled.size)} کلمهٔ انتخاب‌شده", SpyCategory.values().joinToString("  •  ") { c -> "${c.title} ${kit.n(enabled.count { it.category == c })}" },
                 kit.icon(RoyalIcon.EDIT, Royal.gold, 20)) { host.push(SpyWordsScreen(host)) })
+            addView(kit.flow(SpyCategory.values().map { c ->
+                val inCat = spyAllWords().filter { it.category == c }
+                val on = inCat.isNotEmpty() && inCat.any { it.id !in host.spy.disabled() }
+                kit.chip("${c.title} ${kit.n(enabled.count { it.category == c })}", on, ButtonKind.CHIP_GOLD) {
+                    val d = host.spy.disabled()
+                    if (on) d += inCat.map { it.id } else d -= inCat.map { it.id }.toSet()
+                    host.spy.saveDisabled(d); host.refresh()
+                }.apply { setPadding(kit.dp(10), kit.dp(4), kit.dp(10), kit.dp(6)) }
+            }, 6), kit.spaced(8))
             addView(kit.text("در شروع بازی، یک کلمه به‌صورت تصادفی از میان کلمات انتخاب‌شده انتخاب می‌شود.", TextStyle.CAPTION, Royal.muted, Gravity.CENTER), kit.spaced(10))
+            addView(kit.section("گزینه‌ها", RoyalIcon.SETTINGS))
+            addView(kit.switchRow("راهنمای دسته برای جاسوس", "جاسوس فقط دستهٔ کلمه (مثلاً «مکان») را می‌بیند؛ مناسب تازه‌کارها", s.spyHint) { v ->
+                host.spy.saveSettings(host.spy.settings().copy(spyHint = v))
+            })
+            addView(kit.switchRow("صدای بازی", "زنگ پایان زمان", host.spy.sound()) { host.spy.setSound(it) })
             val games = host.spy.games().filter { it.finished }
             if (games.isNotEmpty()) {
                 addView(kit.section("بازی‌های گذشته", RoyalIcon.HISTORY))
@@ -135,6 +150,7 @@ class SpyRevealScreen(host: MainActivity, private val gameId: Long) : Screen(hos
             addView(RoleSealView(host, SpyLook.glyph, 0xFFA62B35.toInt()), LinearLayout.LayoutParams(kit.dp(120), kit.dp(120)))
             addView(kit.gap(12))
             addView(kit.text("نقش شما: جاسوس", TextStyle.DISPLAY, 0xFFFFD0D4.toInt(), Gravity.CENTER).apply { setTextSize(TypedValue.COMPLEX_UNIT_PX, kit.dpf(36f)) })
+            if (g.spyHint) addView(kit.text("دستهٔ کلمه: ${g.category.title}", TextStyle.HEADING, Royal.goldLight, Gravity.CENTER))
             addView(kit.text("کلمه را نمی‌دانید؛ از سؤال‌ها حدسش بزنید و لو نروید.", TextStyle.LABEL, Royal.ivory, Gravity.CENTER))
         } else {
             background = PanelDrawable(kit.density, PanelStyle.SELECTED, 26f)
@@ -188,6 +204,11 @@ class SpyTimerScreen(host: MainActivity, private val gameId: Long) : Screen(host
                 addView(timeText)
                 addView(kit.text(if (over) "زمان تمام شد" else "بازیکنان به نوبت از یکدیگر سؤال بپرسند", TextStyle.BODY_BOLD, Royal.ivory, Gravity.CENTER))
             })
+            addView(kit.settingRow("سؤال اول را ${game.players.getOrElse(game.starter) { "" }} می‌پرسد", "بعد هر نفر از نفر کناری‌اش می‌پرسد",
+                kit.iconButton(RoyalIcon.SWAP, "قرعهٔ دوباره", ButtonKind.CHIP, 40) {
+                    host.spy.game(gameId)?.let { st -> SpyEngine.newStarter(st, Random.Default); st.remainingMs = timer?.remaining ?: st.remainingMs; host.spy.save(st) }
+                    host.refresh()
+                }))
             addView(kit.text("سؤال‌ها باید با کلمهٔ مخفی ارتباط داشته باشند ولی آن را مستقیم لو ندهند.", TextStyle.LABEL, Royal.muted, Gravity.CENTER))
         }
     }
@@ -229,6 +250,7 @@ class SpyTimerScreen(host: MainActivity, private val gameId: Long) : Screen(host
         spySounds.stopAlarm()
         val game = g ?: return
         kit.dialog("نتیجهٔ بازی", "چه اتفاقی افتاد؟", kit.vertical().apply {
+            addView(kit.button("رأی‌گیری: انتخاب متهم", ButtonKind.PRIMARY, RoyalIcon.USER, 50) { vote(game) }, kit.spaced(10))
             SpyOutcome.values().forEach { o ->
                 addView(kit.button(o.title, if (o.spiesWin) ButtonKind.DANGER else ButtonKind.SUCCESS, null, 50) {
                     game.remainingMs = timer?.remaining ?: game.remainingMs
@@ -237,6 +259,32 @@ class SpyTimerScreen(host: MainActivity, private val gameId: Long) : Screen(host
                 }, kit.spaced(6))
             }
         }, listOf(DialogAction("بستن"))).show()
+    }
+
+    /** The others choose one player; the app shows whether he was a spy and records the result. */
+    private fun vote(game: SpyGame) {
+        lateinit var d: android.app.Dialog
+        val grid = kit.grid(3, game.players.mapIndexed { i, n ->
+            kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
+                background = PanelDrawable(kit.density, PanelStyle.FLAT, 14f)
+                setPadding(kit.dp(4), kit.dp(8), kit.dp(4), kit.dp(10))
+                addView(kit.avatar(game.avatars.getOrElse(i) { 0 }, 42))
+                addView(kit.text(n, TextStyle.LABEL_BOLD, Royal.ivory, Gravity.CENTER, 1))
+                isClickable = true
+                contentDescription = n
+                setOnClickListener {
+                    kit.tap(it); d.dismiss()
+                    game.remainingMs = timer?.remaining ?: game.remainingMs
+                    val o = SpyEngine.vote(game, i)
+                    host.spy.save(game)
+                    kit.dialog(if (o == SpyOutcome.FOUND) "$n جاسوس بود!" else "$n جاسوس نبود", o.title, null, listOf(DialogAction("دیدن نتیجه", ButtonKind.PRIMARY) {
+                        host.replace(SpyResultScreen(host, gameId))
+                    })).apply { setCancelable(false) }.show()
+                }
+            }
+        }, 6)
+        d = kit.dialog("متهم کیست؟", "بازیکنان روی یک نفر توافق کنند", grid, listOf(DialogAction("بستن")))
+        d.show()
     }
 
     override fun onHide() { timer?.pause(); save(); spySounds.stopAlarm() }
@@ -260,6 +308,7 @@ class SpyResultScreen(host: MainActivity, private val gameId: Long) : Screen(hos
                 addView(TrophyView(host), LinearLayout.LayoutParams(kit.dp(90), kit.dp(90)))
                 addView(kit.text(if (spiesWin) "جاسوس برنده شد" else "بازیکنان عادی برنده شدند", TextStyle.TITLE, if (spiesWin) Royal.crimsonLight else Royal.turquoiseLight, Gravity.CENTER))
                 addView(kit.text("کلمهٔ مخفی: ${g.word}", TextStyle.HEADING, Royal.goldLight, Gravity.CENTER))
+                if (g.accused >= 0) addView(kit.text("متهم: ${g.players.getOrElse(g.accused) { "" }}", TextStyle.LABEL, Royal.ivory, Gravity.CENTER))
             })
             addView(kit.section("بازیکنان", RoyalIcon.PLAYERS))
             g.players.forEachIndexed { i, n ->

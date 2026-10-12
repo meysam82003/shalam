@@ -27,7 +27,7 @@ enum class SpyOutcome(val title: String, val spiesWin: Boolean) {
     }
 }
 
-data class SpySettings(val players: Int = 6, val spies: Int = 1, val minutes: Int = 5)
+data class SpySettings(val players: Int = 6, val spies: Int = 1, val minutes: Int = 5, val spyHint: Boolean = false)
 
 class SpyGame(val id: Long) {
     /** Names of the players in seating order (people of the roster or «بازیکن n»). */
@@ -45,6 +45,12 @@ class SpyGame(val id: Long) {
     var outcome: SpyOutcome? = null
     /** Players were chosen from the people list (their games count in the rankings). */
     var named: Boolean = false
+    /** The spy is told the category of the word (a variant for beginners). */
+    var spyHint: Boolean = false
+    /** Player who asks the first question. */
+    var starter: Int = 0
+    /** Player the others voted for at the end (-1 = no vote). */
+    var accused: Int = -1
     var createdAt: Long = System.currentTimeMillis()
     var updatedAt: Long = createdAt
 
@@ -80,6 +86,8 @@ object SpyEngine {
                 avatars += p?.second ?: (i * 5 + 2) % Emblems.COUNT
             }
             named = names.isNotEmpty()
+            spyHint = s.spyHint
+            starter = rng.nextInt(s.players)
             spies += (0 until s.players).shuffled(rng).take(s.spies)
             word = w.text
             category = w.category
@@ -89,7 +97,25 @@ object SpyEngine {
     }
 
     /** What the player at [i] sees after touching his card. */
-    fun cardText(g: SpyGame, i: Int): String = if (g.isSpy(i)) "نقش شما: جاسوس" else "کلمهٔ مخفی: ${g.word}"
+    fun cardText(g: SpyGame, i: Int): String = if (g.isSpy(i)) "نقش شما: جاسوس" + (if (g.spyHint) "\nدسته: ${g.category.title}" else "") else "کلمهٔ مخفی: ${g.word}"
+
+    /**
+     * The others vote for one player: a spy found → the players win (unless he then names the word: [guessed]);
+     * anyone else → the spy wins.
+     */
+    fun vote(g: SpyGame, accused: Int, guessed: Boolean = false): SpyOutcome {
+        g.accused = accused
+        val o = when {
+            g.isSpy(accused) && guessed -> SpyOutcome.GUESSED
+            g.isSpy(accused) -> SpyOutcome.FOUND
+            else -> SpyOutcome.HIDDEN
+        }
+        end(g, o)
+        return o
+    }
+
+    /** Draws another player to ask the first question. */
+    fun newStarter(g: SpyGame, rng: Random) { g.starter = rng.nextInt(g.players.size.coerceAtLeast(1)) }
 
     /** Shows the current player's card. */
     fun reveal(g: SpyGame) { if (!g.allViewed) g.revealed = true }
@@ -135,7 +161,7 @@ object SpyCodec {
     fun encode(g: SpyGame): JSONObject = JSONObject().apply {
         put("id", g.id); put("players", JSONArray(g.players)); put("avatars", JSONArray(g.avatars)); put("spies", JSONArray(g.spies.toList()))
         put("word", g.word); put("cat", g.category.name); put("min", g.minutes); put("ri", g.revealIndex); put("rv", g.revealed)
-        put("rem", g.remainingMs); put("fin", g.finished); put("named", g.named); g.outcome?.let { put("out", it.name) }; put("created", g.createdAt); put("updated", g.updatedAt)
+        put("rem", g.remainingMs); put("fin", g.finished); put("named", g.named); put("hint", g.spyHint); put("st", g.starter); put("acc", g.accused); g.outcome?.let { put("out", it.name) }; put("created", g.createdAt); put("updated", g.updatedAt)
     }
 
     fun decode(o: JSONObject): SpyGame = SpyGame(o.optLong("id")).apply {
@@ -144,7 +170,7 @@ object SpyCodec {
         o.optJSONArray("spies")?.let { a -> for (i in 0 until a.length()) spies += a.optInt(i) }
         word = o.optString("word"); category = SpyCategory.of(o.optString("cat")); minutes = o.optInt("min", 5)
         revealIndex = o.optInt("ri"); revealed = o.optBoolean("rv"); remainingMs = o.optLong("rem")
-        finished = o.optBoolean("fin"); named = o.optBoolean("named"); outcome = SpyOutcome.of(o.optString("out")); createdAt = o.optLong("created"); updatedAt = o.optLong("updated", createdAt)
+        finished = o.optBoolean("fin"); named = o.optBoolean("named"); spyHint = o.optBoolean("hint"); starter = o.optInt("st"); accused = o.optInt("acc", -1); outcome = SpyOutcome.of(o.optString("out")); createdAt = o.optLong("created"); updatedAt = o.optLong("updated", createdAt)
     }
 
     fun encodeWords(list: List<SpyWord>): String = JSONArray(list.map { JSONObject().put("i", it.id).put("t", it.text).put("c", it.category.name) }).toString()
@@ -160,10 +186,14 @@ object SpyCodec {
 /** Settings, word selection, the players' own words and the games of «جاسوس». */
 class SpyRepository(private val kv: KeyValueStore) {
     fun settings(): SpySettings = kv.get(KEY_SETTINGS)?.let { raw ->
-        runCatching { JSONObject(raw).let { SpySettings(it.optInt("p", 6), it.optInt("s", 1), it.optInt("m", 5)) } }.getOrNull()
+        runCatching { JSONObject(raw).let { SpySettings(it.optInt("p", 6), it.optInt("s", 1), it.optInt("m", 5), it.optBoolean("h")) } }.getOrNull()
     } ?: SpySettings()
 
-    fun saveSettings(s: SpySettings) = kv.write(mapOf(KEY_SETTINGS to JSONObject().put("p", s.players).put("s", s.spies).put("m", s.minutes).toString()))
+    fun saveSettings(s: SpySettings) = kv.write(mapOf(KEY_SETTINGS to JSONObject().put("p", s.players).put("s", s.spies).put("m", s.minutes).put("h", s.spyHint).toString()))
+
+    /** Sound of the party games (pantomime and spy). */
+    fun sound(): Boolean = kv.get(KEY_SOUND) != "0"
+    fun setSound(on: Boolean) = kv.write(mapOf(KEY_SOUND to if (on) "1" else "0"))
 
     /** Ids of words switched off (every word is on by default). */
     fun disabled(): MutableSet<Int> = kv.get(KEY_DISABLED)?.split(',')?.mapNotNull { it.toIntOrNull() }?.toHashSet() ?: HashSet()
@@ -194,6 +224,7 @@ class SpyRepository(private val kv: KeyValueStore) {
 
     companion object {
         const val KEY_SETTINGS = "spy_settings"
+        const val KEY_SOUND = "party_sound"
         const val KEY_DISABLED = "spy_disabled"
         const val KEY_USER_WORDS = "spy_user_words"
         const val KEY_INDEX = "spy_index"

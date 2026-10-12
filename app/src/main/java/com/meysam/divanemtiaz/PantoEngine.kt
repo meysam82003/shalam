@@ -134,8 +134,20 @@ class PantoTeam(
     val members: MutableList<String> = ArrayList(),
     var points: Int = 0,
     var faults: Int = 0,
-    var inGame: Boolean = true
-)
+    var inGame: Boolean = true,
+    /** Number of people in the team (any number; the named members when there are any). */
+    var size: Int = 2,
+    /** Rotation of the performer: how many turns the team has played. */
+    var turns: Int = 0,
+    /** Right answers over the match. */
+    var correct: Int = 0
+) {
+    /** People counted in the team. */
+    val people: Int get() = if (members.isNotEmpty()) members.size else size.coerceAtLeast(1)
+
+    /** Who performs the team's next turn (members in turn, or «نفر n»). */
+    val performer: String get() = if (members.isNotEmpty()) members[turns % members.size] else "نفر ${PersianText.digits(turns % people + 1)}"
+}
 
 /** The turn being played: its words, answers, faults and time (kept so a game can be resumed). */
 class PantoTurn(
@@ -433,6 +445,13 @@ object PantoEngine {
         val team = t?.team ?: m.current
         m.teams[team].points += points
         if (points != 0 && t != null) m.teams[team].faults += t.faults
+        if (t != null && t.words.isNotEmpty()) {
+            m.teams[team].turns++
+            m.teams[team].correct += when (m.mode) {
+                PantoMode.SPEEDY, PantoMode.SEDA -> t.correct
+                else -> if (points > 0) 1 else 0
+            }
+        }
         m.log += PantoLog(m.round, m.golden, team, listOfNotNull(t?.choice?.title, text).joinToString(" • "), points)
         m.turn = null
         advance(m)
@@ -490,9 +509,15 @@ object PantoEngine {
 
     /** A new match with the same mode, teams and settings. */
     fun rematch(id: Long, old: PantoMatch): PantoMatch = create(id, old.mode,
-        old.teams.map { PantoTeam(it.name, it.avatar, ArrayList(it.members)) }, if (old.mode == PantoMode.JANGI) old.teams.size - 1 else old.rounds, old.manualSeconds)
+        old.teams.map { PantoTeam(it.name, it.avatar, ArrayList(it.members), size = it.size) }, if (old.mode == PantoMode.JANGI) old.teams.size - 1 else old.rounds, old.manualSeconds)
 
     // ------------------------------------------------------------------ the players' own words
+
+    /** Splits [people] at random into [teams] teams as evenly as possible. */
+    fun split(people: List<String>, teams: Int, rng: Random): List<List<String>> {
+        val shuffled = people.shuffled(rng)
+        return (0 until teams).map { t -> shuffled.filterIndexed { i, _ -> i % teams == t } }
+    }
 
     /** Validation of a new word: not empty and not a duplicate of another own word. */
     fun userWordError(text: String, existing: List<PantoWord>, exceptId: Int? = null): String? {
@@ -558,6 +583,7 @@ object PantoCodec {
         put("used", JSONArray(m.usedSubjects.toList()))
         put("teams", JSONArray(m.teams.map { t ->
             JSONObject().put("n", t.name).put("a", t.avatar).put("m", JSONArray(t.members)).put("p", t.points).put("f", t.faults).put("in", t.inGame)
+                .put("sz", t.size).put("tu", t.turns).put("co", t.correct)
         }))
         put("log", JSONArray(m.log.map { JSONObject().put("r", it.round).put("g", it.golden).put("t", it.team).put("x", it.text).put("p", it.points) }))
         m.turn?.let { t ->
@@ -581,7 +607,7 @@ object PantoCodec {
             for (i in 0 until a.length()) a.optJSONObject(i)?.let { t ->
                 teams += PantoTeam(t.optString("n"), t.optInt("a"), ArrayList<String>().apply {
                     t.optJSONArray("m")?.let { mm -> for (k in 0 until mm.length()) add(mm.optString(k)) }
-                }, t.optInt("p"), t.optInt("f"), t.optBoolean("in", true))
+                }, t.optInt("p"), t.optInt("f"), t.optBoolean("in", true), t.optInt("sz", 2), t.optInt("tu"), t.optInt("co"))
             }
         }
         o.optJSONArray("log")?.let { a ->
