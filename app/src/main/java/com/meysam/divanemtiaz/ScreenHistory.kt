@@ -203,6 +203,8 @@ fun Screen.describeRound(session: GameSession, round: Round): String {
 }
 
 class HistoryScreen(host: MainActivity) : Screen(host) {
+    override val navTab: Int get() = NavBar.HISTORY
+
     private var status = 0
     private var gameFilter: GameType? = null
     /** "mafia", "panto" or "spy" for the narrator and party games. */

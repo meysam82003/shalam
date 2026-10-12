@@ -180,7 +180,11 @@ class PantoSetupScreen(host: MainActivity) : Screen(host) {
         setPadding(kit.dp(10), kit.dp(8), kit.dp(10), kit.dp(10))
         layoutParams = kit.spaced(6)
         addView(kit.horizontal().apply {
-            addView(kit.avatar(t.avatar, 40))
+            addView(kit.avatar(t.avatar, 44).apply {
+                isClickable = true
+                contentDescription = "عکس ${t.name}"
+                setOnClickListener { avatarPicker(t.avatar) { picked -> t.avatar = picked; host.refresh() } }
+            })
             addView(kit.hgap(8))
             addView(kit.vertical().apply {
                 addView(kit.text(t.name, TextStyle.BODY_BOLD, Royal.goldLight, maxLines = 1))
@@ -460,6 +464,7 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
     private var wordHidden = false
     private var timer: Countdown? = null
     private var timeText: TextView? = null
+    private var ring: RingTimerView? = null
     private var lastSecond = -1
     private var ended = false
 
@@ -502,12 +507,14 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
         background = PanelDrawable(kit.density, PanelStyle.RAISED, 22f)
         setPadding(kit.dp(10), kit.dp(10), kit.dp(10), kit.dp(12))
         layoutParams = kit.spaced(10)
-        timeText = kit.text(clockText(t.remainingMs), TextStyle.DISPLAY, Royal.goldLight, Gravity.CENTER).apply {
-            setTextSize(TypedValue.COMPLEX_UNIT_PX, kit.dpf(58f))
-            layoutDirection = View.LAYOUT_DIRECTION_LTR
+        ring = RingTimerView(host).apply {
+            totalMs = t.seconds * 1000L
+            alertSeconds = if (m.mode == PantoMode.FIVE) 2 else 10
+            label = if (phase == 2 && !wantRunning && !ended) "زمان متوقف است" else "زمان باقی‌مانده"
+            runningSource = { timer?.running == true }
+            update(t.remainingMs, false)
         }
-        addView(timeText)
-        if (phase == 2 && !wantRunning && !ended) addView(kit.text("زمان متوقف است", TextStyle.CAPTION, Royal.muted, Gravity.CENTER))
+        addView(ring, LinearLayout.LayoutParams(kit.dp(if (m.mode == PantoMode.FIVE) 150 else 176), kit.dp(if (m.mode == PantoMode.FIVE) 150 else 176)))
     }
 
     private fun wordCard(t: PantoTurn): View = kit.vertical(Gravity.CENTER).apply {
@@ -615,10 +622,11 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
     private fun onTick(ms: Long) {
         m.turn?.remainingMs = ms
         timeText?.text = clockText(ms)
+        ring?.update(ms, true)
         val s = ((ms + 999) / 1000).toInt()
         if (s != lastSecond) {
             lastSecond = s
-            timeText?.setTextColor(if (s <= 10) 0xFFFF4F58.toInt() else Royal.goldLight)
+            timeText?.setTextColor(if (s <= 10) Royal.alert else Royal.goldLight)
             if (s in 1..10) pantoSounds.tick()
             if (s % 5 == 0) store()
         }

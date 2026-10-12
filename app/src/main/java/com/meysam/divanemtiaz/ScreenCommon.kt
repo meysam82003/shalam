@@ -84,7 +84,7 @@ fun Screen.avatarPicker(current: Int, onPick: (Int) -> Unit) {
     lateinit var dialog: Dialog
     val cells = (0 until Emblems.COUNT).map { index ->
         kit.vertical(Gravity.CENTER).apply {
-            background = PanelDrawable(kit.density, if (index == current) PanelStyle.SELECTED else PanelStyle.FLAT, 14f)
+            background = PanelDrawable(kit.density, if (index == current && !PhotoStore.isPhoto(current)) PanelStyle.SELECTED else PanelStyle.FLAT, 14f)
             setPadding(kit.dp(4), kit.dp(6), kit.dp(4), kit.dp(8))
             addView(kit.avatar(index, 52))
             addView(kit.text(Emblems.names[index], TextStyle.CAPTION, Royal.muted, Gravity.CENTER, 1))
@@ -97,7 +97,29 @@ fun Screen.avatarPicker(current: Int, onPick: (Int) -> Unit) {
             }
         }
     }
-    dialog = kit.dialog("انتخاب نشان", null, kit.grid(4, cells, 6), listOf(DialogAction("بستن")))
+    val body = kit.vertical().apply {
+        addView(kit.horizontal().apply {
+            layoutParams = kit.spaced(10)
+            if (PhotoStore.exists(current)) {
+                addView(kit.avatar(current, 52))
+                addView(kit.hgap(8))
+            }
+            addView(kit.weight(kit.button(if (PhotoStore.exists(current)) "عکس دیگر از گالری" else "انتخاب عکس از گالری", ButtonKind.PRIMARY, RoyalIcon.PLUS, 46) {
+                host.pickFile(arrayOf("image/*")) { uri ->
+                    if (uri == null) return@pickFile
+                    Thread {
+                        val id = PhotoStore.save(host, uri)
+                        host.runOnUiThread {
+                            if (id == null) kit.toast("این عکس باز نشد") else { dialog.dismiss(); onPick(id) }
+                        }
+                    }.start()
+                }
+            }))
+        })
+        addView(kit.text("یا یکی از نشان‌ها:", TextStyle.LABEL, Royal.muted), kit.spaced(6))
+        addView(kit.grid(4, cells, 6))
+    }
+    dialog = kit.dialog("عکس یا نشان", null, body, listOf(DialogAction("بستن")))
     dialog.show()
 }
 

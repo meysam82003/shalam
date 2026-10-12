@@ -26,10 +26,10 @@ object MafiaColors {
     const val PLATE_BOTTOM = 0xFF2A050B.toInt()
 
     fun light(side: Int): Int = when (side) {
-        CITY -> Royal.turquoiseLight
-        MAFIA -> Royal.crimsonLight
+        CITY -> RoyalClassic.turquoiseLight
+        MAFIA -> RoyalClassic.crimsonLight
         INDEPENDENT -> 0xFFC6A2F2.toInt()
-        else -> Royal.goldLight
+        else -> RoyalClassic.goldLight
     }
 }
 
@@ -97,7 +97,7 @@ class RoleCardView(context: Context) : CachedArtView(context) {
             paint.shader = null
             paint.color = 0xAA050B1A.toInt()
             canvas.drawRoundRect(outer, u * 5f, u * 5f, paint)
-            paint.color = Royal.crimson
+            paint.color = RoyalClassic.crimson
             paint.style = Paint.Style.STROKE
             paint.strokeWidth = u * 3f
             paint.strokeCap = Paint.Cap.ROUND
@@ -130,7 +130,7 @@ class RoleCardView(context: Context) : CachedArtView(context) {
             paint.shader = null
             paint.style = Paint.Style.STROKE
             paint.strokeWidth = u * 0.35f
-            paint.color = Royal.alpha(Royal.goldLight, 0.09f)
+            paint.color = Royal.alpha(RoyalClassic.goldLight, 0.09f)
             val step = u * 14f
             var y = r.top
             var row = 0
@@ -148,12 +148,12 @@ class RoleCardView(context: Context) : CachedArtView(context) {
             val cx = r.centerX()
             val cy = r.top + r.height() * 0.46f
             val size = min(r.width(), r.height()) * 0.7f
-            paint.shader = RadialGradient(cx, cy, size * 0.62f, intArrayOf(Royal.alpha(Royal.goldLight, 0.32f), 0), null, Shader.TileMode.CLAMP)
+            paint.shader = RadialGradient(cx, cy, size * 0.62f, intArrayOf(Royal.alpha(RoyalClassic.goldLight, 0.32f), 0), null, Shader.TileMode.CLAMP)
             canvas.drawCircle(cx, cy, size * 0.62f, paint)
             paint.shader = null
             for (i in 0 until 24) {
                 val a = Math.PI * 2 * i / 24
-                paint.color = Royal.alpha(Royal.goldLight, if (i % 2 == 0) 0.12f else 0.06f)
+                paint.color = Royal.alpha(RoyalClassic.goldLight, if (i % 2 == 0) 0.12f else 0.06f)
                 paint.strokeWidth = u * 0.5f
                 paint.style = Paint.Style.STROKE
                 canvas.drawLine(cx + (cos(a) * size * 0.36f).toFloat(), cy + (sin(a) * size * 0.36f).toFloat(),
@@ -196,7 +196,7 @@ class RoleCardView(context: Context) : CachedArtView(context) {
         canvas.drawRoundRect(r, u * 3f, u * 3f, paint)
         paint.shader = null
         paint.strokeWidth = u * 0.35f
-        paint.color = Royal.alpha(Royal.gold, 0.5f)
+        paint.color = Royal.alpha(RoyalClassic.gold, 0.5f)
         canvas.drawRoundRect(RectF(r.left + u * 2f, r.top + u * 2f, r.right - u * 2f, r.bottom - u * 2f), u * 2f, u * 2f, paint)
         paint.style = Paint.Style.FILL
         // Medallion sitting on the plate's top edge.
@@ -231,7 +231,7 @@ class RoleCardView(context: Context) : CachedArtView(context) {
         paint.shader = null
         if (subtitle.isNotBlank()) {
             val lineY = titleY + u * 3.2f
-            paint.color = Royal.alpha(Royal.gold, 0.6f)
+            paint.color = Royal.alpha(RoyalClassic.gold, 0.6f)
             paint.strokeWidth = u * 0.35f
             paint.style = Paint.Style.STROKE
             canvas.drawLine(r.left + u * 10f, lineY, r.right - u * 10f, lineY, paint)
@@ -239,7 +239,7 @@ class RoleCardView(context: Context) : CachedArtView(context) {
             val subSize = fitText(subtitle, r.width() - u * 10f, u * 5.6f, false)
             paint.typeface = RoyalFonts.get(context, false)
             paint.textSize = subSize
-            paint.color = Royal.ivory
+            paint.color = RoyalClassic.ivory
             canvas.drawText(subtitle, r.centerX(), lineY + u * 2.4f + subSize, paint)
         }
     }
@@ -264,7 +264,7 @@ class RoleCardView(context: Context) : CachedArtView(context) {
         paint.shader = null
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = u * 0.4f
-        paint.color = Royal.alpha(Royal.gold, 0.22f)
+        paint.color = Royal.alpha(RoyalClassic.gold, 0.22f)
         var y = r.top + u * 6f
         var row = 0
         while (y < r.bottom) {
@@ -288,7 +288,7 @@ class RoleCardView(context: Context) : CachedArtView(context) {
         paint.color = Color.BLACK
         paint.strokeWidth = u * 1.4f
         paint.shader = LinearGradient(outer.left, outer.top, outer.right, outer.bottom,
-            intArrayOf(Royal.goldLight, Royal.goldDeep, Royal.goldLight, Royal.bronze, Royal.gold), floatArrayOf(0f, 0.3f, 0.5f, 0.8f, 1f), Shader.TileMode.CLAMP)
+            intArrayOf(RoyalClassic.goldLight, RoyalClassic.goldDeep, RoyalClassic.goldLight, RoyalClassic.bronze, RoyalClassic.gold), floatArrayOf(0f, 0.3f, 0.5f, 0.8f, 1f), Shader.TileMode.CLAMP)
         canvas.drawRoundRect(outer, u * 5f, u * 5f, paint)
         paint.strokeWidth = u * 0.5f
         canvas.drawRoundRect(RectF(outer.left + u * 2.2f, outer.top + u * 2.2f, outer.right - u * 2.2f, outer.bottom - u * 2.2f), u * 3.5f, u * 3.5f, paint)

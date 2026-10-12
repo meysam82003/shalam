@@ -6,6 +6,8 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 
 class SettingsScreen(host: MainActivity, private var tab: Int = TAB_GENERAL) : Screen(host) {
+    override val navTab: Int get() = NavBar.SETTINGS
+
     private var shalamTab = 0
 
     override fun build(): View = scaffold(title = "تنظیمات", subtitle = "همهٔ تغییرات خودکار ذخیره می‌شوند") {
@@ -22,7 +24,7 @@ class SettingsScreen(host: MainActivity, private var tab: Int = TAB_GENERAL) : S
                 resetButton(this, "منفی") { it.copy(menfi = MenfiSettings()) }
             }
             TAB_HEZAR -> {
-                addView(kit.section("قوانین هزارتایی", RoyalIcon.TROPHY))
+                addView(kit.section("قوانین هزارتایی", RoyalIcon.CARDS))
                 editHezar(this, settings.hezar.rules()) { r ->
                     host.updateSettings { it.copy(hezar = it.hezar.copy(target = r.target, rounds = r.rounds, zeroPenalty = r.zeroPenalty)) }
                 }
@@ -67,6 +69,8 @@ class SettingsScreen(host: MainActivity, private var tab: Int = TAB_GENERAL) : S
 
     private fun general(parent: LinearLayout) {
         val g = settings.general
+        parent.addView(kit.section("ظاهر برنامه", RoyalIcon.STAR))
+        parent.addView(themeGrid(this), kit.spaced(8))
         parent.addView(kit.section("تجربهٔ برنامه", RoyalIcon.SETTINGS))
         parent.addView(kit.switchRow("بازخورد لمسی", "لرزش کوتاه هنگام لمس دکمه‌ها", g.haptic) { v -> host.updateSettings { it.copy(general = it.general.copy(haptic = v)) } })
         parent.addView(kit.switchRow("انیمیشن‌های روان", "جابه‌جایی نرم صفحه‌ها، پنجره‌ها و دکمه‌ها", g.animations) { v -> host.updateSettings { it.copy(general = it.general.copy(animations = v)) } })
@@ -403,7 +407,7 @@ class SessionRulesScreen(host: MainActivity, private val session: GameSession) :
                 editMenfi(this, session.rules.menfi, legacyGame) { m -> apply(session.rules.copy(menfi = m)) }
             }
             GameType.HEZARTAII -> {
-                addView(kit.section("قوانین هزارتایی", RoyalIcon.TROPHY))
+                addView(kit.section("قوانین هزارتایی", RoyalIcon.CARDS))
                 editHezar(this, session.rules.hezar) { h -> apply(session.rules.copy(hezar = h)) }
             }
             GameType.DOLO -> {

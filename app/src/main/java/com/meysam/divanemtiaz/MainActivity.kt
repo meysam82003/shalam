@@ -13,6 +13,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
+import android.view.WindowInsetsController
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -31,6 +32,9 @@ abstract class Screen(val host: MainActivity) {
 
     /** Scroll position of the page, kept while another page is on top and across rebuilds. */
     var savedScroll = 0
+
+    /** Tab of the bottom navigation this page belongs to ([NavBar]); -1 = no navigation bar. */
+    open val navTab: Int get() = -1
 
     /** Session shown by this screen, used to restore the game after process death. */
     open val sessionId: Long? get() = null
@@ -57,7 +61,7 @@ abstract class Screen(val host: MainActivity) {
             bar.addView(kit.hgap(8))
         }
         bar.addView(kit.vertical().apply {
-            addView(kit.text(title, TextStyle.TITLE, Royal.goldLight, maxLines = 1))
+            addView(kit.text(title, TextStyle.TITLE, Royal.title, maxLines = 1))
             subtitleView = null
             if (!subtitle.isNullOrBlank()) addView(kit.text(subtitle, TextStyle.CAPTION, Royal.muted, maxLines = 1).also { subtitleView = it })
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
@@ -69,7 +73,7 @@ abstract class Screen(val host: MainActivity) {
         root.addView(View(host).apply {
             background = android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.RIGHT_LEFT,
-                intArrayOf(0, Royal.alpha(Royal.gold, 0.55f), 0)
+                intArrayOf(0, Royal.alpha(Royal.gold, if (ThemeEngine.spec.light) 0.35f else 0.55f), 0)
             )
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(1)))
         val column = kit.vertical().apply {
@@ -86,12 +90,13 @@ abstract class Screen(val host: MainActivity) {
             root.addView(FrameLayout(host).apply {
                 background = android.graphics.drawable.GradientDrawable(
                     android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
-                    intArrayOf(Royal.alpha(Royal.night, 0.2f), Royal.alpha(Royal.night, 0.92f))
+                    intArrayOf(Royal.alpha(Royal.scrim, 0.2f), Royal.alpha(Royal.scrim, 0.92f))
                 )
                 setPadding(kit.dp(14), kit.dp(8), kit.dp(14), kit.dp(10))
                 addView(bottom, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
             })
         }
+        if (navTab >= 0) root.addView(NavBar.view(this, navTab))
         return root
     }
 }
@@ -104,6 +109,7 @@ class MainActivity : Activity() {
     lateinit var kit: RoyalKit
         private set
     private lateinit var container: FrameLayout
+    private lateinit var rootView: FrameLayout
     private val stack = ArrayList<Screen>()
     private val handler = Handler(Looper.getMainLooper())
     private var resumed = false
@@ -127,11 +133,14 @@ class MainActivity : Activity() {
         repo = GameStore.open(this)
         settings = repo.settings()
         kit = RoyalKit(this) { settings }
+        ThemeEngine.apply(Themes.byId(settings.general.theme))
+        PhotoStore.init(this)
         MafiaRoleRegistry.user = mafia.roleDefs()
         val root = FrameLayout(this).apply {
             background = BackdropDrawable(resources.displayMetrics.density)
             layoutDirection = View.LAYOUT_DIRECTION_RTL
         }
+        rootView = root
         container = FrameLayout(this)
         root.addView(container, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         setContentView(root)
@@ -183,8 +192,7 @@ class MainActivity : Activity() {
      */
     @Suppress("DEPRECATION")
     private fun fitSystemBars(root: FrameLayout) {
-        window.statusBarColor = Royal.alpha(Royal.night, 0.55f)
-        window.navigationBarColor = Royal.alpha(Royal.night, 0.75f)
+        paintSystemBars()
         if (Build.VERSION.SDK_INT >= 30) {
             window.setDecorFitsSystemWindows(false)
         } else {
@@ -205,15 +213,44 @@ class MainActivity : Activity() {
         root.requestApplyInsets()
     }
 
+    /** Bar colours of the active style; light styles get dark status and navigation icons. */
+    @Suppress("DEPRECATION")
+    private fun paintSystemBars() {
+        val light = ThemeEngine.spec.light
+        window.statusBarColor = Royal.alpha(Royal.scrim, if (light) 0.72f else 0.55f)
+        window.navigationBarColor = Royal.alpha(Royal.scrim, if (light) 0.9f else 0.75f)
+        if (Build.VERSION.SDK_INT >= 30) {
+            val mask = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+            window.insetsController?.setSystemBarsAppearance(if (light) mask else 0, mask)
+        } else if (Build.VERSION.SDK_INT >= 23) {
+            var flags = rootView.systemUiVisibility
+            val lightFlags = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or if (Build.VERSION.SDK_INT >= 26) View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR else 0
+            flags = if (light) flags or lightFlags else flags and lightFlags.inv()
+            rootView.systemUiVisibility = flags
+        }
+    }
+
+    /** Switches the whole interface to another style without losing the page stack. */
+    fun applyTheme(id: String) {
+        val next = Themes.byId(id)
+        if (next === ThemeEngine.spec) return
+        ThemeEngine.apply(next)
+        rootView.background = BackdropDrawable(resources.displayMetrics.density)
+        paintSystemBars()
+        refresh()
+    }
+
     fun applyWindowSettings() {
         if (settings.general.keepScreenAwake) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
     fun updateSettings(transform: (AppSettings) -> AppSettings) {
+        val before = settings.general.theme
         settings = transform(settings)
         repo.saveSettings(settings)
         applyWindowSettings()
+        if (settings.general.theme != before) applyTheme(settings.general.theme)
     }
 
     fun push(screen: Screen) {
@@ -422,6 +459,7 @@ class MainActivity : Activity() {
     fun reloadSettings() {
         settings = repo.settings()
         applyWindowSettings()
+        applyTheme(settings.general.theme)
     }
 
     fun boardFor(session: GameSession): Screen = when (session.game) {

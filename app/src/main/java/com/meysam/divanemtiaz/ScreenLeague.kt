@@ -8,6 +8,8 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 
 class LeagueListScreen(host: MainActivity) : Screen(host) {
+    override val navTab: Int get() = NavBar.LEAGUES
+
     override fun build(): View {
         val leagues = host.repo.leagues()
         return scaffold(
@@ -25,7 +27,16 @@ class LeagueListScreen(host: MainActivity) : Screen(host) {
                     background = PanelDrawable(kit.density, if (league.finished) PanelStyle.RAISED else PanelStyle.NORMAL, 16f)
                     setPadding(kit.dp(10), kit.dp(9), kit.dp(10), kit.dp(12))
                     layoutParams = kit.spaced(8)
-                    addView(GameSealView(host, league.game), LinearLayout.LayoutParams(kit.dp(42), kit.dp(42)))
+                    addView((if (league.avatar >= 0) kit.avatar(league.avatar, 46) else GameSealView(host, league.game)).apply {
+                        isClickable = true
+                        contentDescription = "عکس لیگ ${league.name}"
+                        setOnClickListener {
+                            avatarPicker(league.avatar) { picked ->
+                                host.repo.league(league.id)?.let { l -> l.avatar = picked; host.repo.saveLeague(l) }
+                                host.refresh()
+                            }
+                        }
+                    }, LinearLayout.LayoutParams(kit.dp(46), kit.dp(46)))
                     addView(kit.hgap(10))
                     addView(kit.vertical().apply {
                         addView(kit.text(league.name, TextStyle.BODY_BOLD, Royal.goldLight, maxLines = 1))

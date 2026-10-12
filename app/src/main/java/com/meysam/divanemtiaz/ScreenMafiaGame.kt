@@ -346,11 +346,15 @@ class MafiaGameScreen(host: MainActivity, gameId: Long) : MafiaScreen(host, game
 
     private fun freeTimer() {
         val timers = ArrayList<MafiaTimer>()
-        val time = kit.text(clock(mafiaSettings.speakTime), TextStyle.DISPLAY, Royal.goldLight, Gravity.CENTER)
-        val timer = MafiaTimer(this, mafiaSettings.speakTime) { left, _ -> time.text = clock(left) }
+        val ring = RingTimerView(host).apply { totalMs = mafiaSettings.speakTime * 1000L; label = "زمان صحبت"; update(totalMs, false) }
+        lateinit var self: MafiaTimer
+        val timer = MafiaTimer(this, mafiaSettings.speakTime) { left, running -> ring.totalMs = self.total * 1000L; ring.update(left * 1000L, running) }
+        self = timer
+        ring.runningSource = { timer.running }
         timers += timer
         val body = kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
-            addView(time)
+            addView(ring, LinearLayout.LayoutParams(kit.dp(200), kit.dp(200)))
+            addView(kit.gap(6))
             addView(kit.flow(listOf(15, 30, 45, 60, 90, 120).map { s -> kit.chip(kit.n(s) + " ثانیه", false) { timer.reset(s) } }, 6))
         }
         val dialog = kit.dialog("تایمر", null, body, listOf(

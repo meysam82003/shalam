@@ -278,7 +278,7 @@ object Emblems {
         canvas.drawCircle(cx, cy + radius * 0.12f, radius * 1.1f, paint)
         paint.color = Color.BLACK
         paint.shader = LinearGradient(cx - radius, cy - radius, cx + radius, cy + radius,
-            intArrayOf(Royal.goldLight, Royal.goldDeep, Royal.goldLight, Royal.bronze, Royal.gold), floatArrayOf(0f, 0.35f, 0.55f, 0.8f, 1f), Shader.TileMode.CLAMP)
+            intArrayOf(Royal.metalLight, Royal.metalDeep, Royal.metalLight, Royal.metalShadow, Royal.metal), floatArrayOf(0f, 0.35f, 0.55f, 0.8f, 1f), Shader.TileMode.CLAMP)
         canvas.drawCircle(cx, cy, radius, paint)
         paint.shader = null
         paint.color = 0x99000000.toInt()
@@ -289,7 +289,7 @@ object Emblems {
         paint.shader = null
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = radius * 0.025f
-        paint.color = Royal.alpha(Royal.goldLight, 0.45f)
+        paint.color = Royal.alpha(Royal.metalLight, 0.45f)
         canvas.drawCircle(cx, cy, radius * 0.74f, paint)
         paint.style = Paint.Style.FILL
         if (selected) {
@@ -336,7 +336,7 @@ object Emblems {
 
     /** The web version's vertical gold gradient used for every relief. */
     fun goldFill(top: Float, bottom: Float): Shader =
-        LinearGradient(0f, top, 0f, bottom, intArrayOf(Royal.goldLight, Royal.gold, Royal.goldDeep), floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
+        LinearGradient(0f, top, 0f, bottom, intArrayOf(Royal.metalLight, Royal.metal, Royal.metalDeep), floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
 
     /** Gold text relief (used by the «۱۰۰۰» and «۲» seals). */
     fun drawReliefText(canvas: Canvas, text: String, x: Float, baseline: Float, size: Float, typeface: android.graphics.Typeface, paint: Paint) {
@@ -525,7 +525,7 @@ abstract class CachedArtView(context: Context) : View(context) {
         invalidate()
     }
 
-    private fun key(): String = "${javaClass.name}|$width|$height|${artKey()}"
+    private fun key(): String = "${javaClass.name}|$width|$height|${artKey()}|${ThemeEngine.version}"
 
     private fun render(key: String): android.graphics.Bitmap {
         val s = min(1f, maxArtDensity / resources.displayMetrics.density)
@@ -643,6 +643,26 @@ class EmblemAvatarView(context: Context, avatar: Int = 0) : CachedArtView(contex
         if (r <= 0f) return
         val cx = width / 2f
         val cy = height / 2f - r * 0.03f
+        val photo = PhotoStore.bitmap(avatar)
+        if (photo != null) {
+            // A gallery picture inside the metal ring of the medallion.
+            Emblems.drawMedallion(canvas, cx, cy, r, Emblems.hue(avatar), paint, selectedRing)
+            PhotoStore.drawCircle(canvas, photo, cx, cy, r * 0.84f, paint)
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = r * 0.03f
+            paint.color = Royal.alpha(Royal.metalLight, 0.6f)
+            canvas.drawCircle(cx, cy, r * 0.84f, paint)
+            paint.style = Paint.Style.FILL
+            if (selectedRing) {
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = r * 0.08f
+                paint.color = Royal.turquoise
+                canvas.drawCircle(cx, cy, r * 0.97f, paint)
+                paint.style = Paint.Style.FILL
+            }
+            Emblems.drawGloss(canvas, cx, cy, r * 0.83f, paint)
+            return
+        }
         Emblems.drawMedallion(canvas, cx, cy, r, Emblems.hue(avatar), paint, selectedRing)
         Emblems.drawRelief(canvas, Emblems.motif(avatar), cx, cy, r, paint)
         Emblems.drawGloss(canvas, cx, cy, r * 0.83f, paint)
@@ -666,12 +686,12 @@ class GameSealView(context: Context, private val game: GameType?) : CachedArtVie
         val ox = cx - 50f * unit
         val oy = cy - 50f * unit
         when (game) {
-            GameType.HEZARTAII -> Emblems.drawReliefText(canvas, "۱۰۰۰", cx, oy + 62f * unit, 31f * unit, RoyalFonts.get(context, true), paint)
+            GameType.HEZARTAII -> drawCardFan(canvas, ox, oy, unit)
             GameType.DOLO -> {
                 Emblems.drawRelief(canvas, SuitShapes.club(48f).apply { offset(23f, 22f) }, cx, cy, r, paint, 2f * 50f / 48f)
                 paint.style = Paint.Style.FILL
                 paint.shader = null
-                paint.color = Royal.night
+                paint.color = RoyalClassic.night
                 canvas.drawCircle(ox + 72f * unit, oy + 70f * unit, 11f * unit, paint)
                 paint.style = Paint.Style.STROKE
                 paint.strokeWidth = 2f * unit
@@ -683,7 +703,7 @@ class GameSealView(context: Context, private val game: GameType?) : CachedArtVie
                 paint.textAlign = Paint.Align.CENTER
                 paint.typeface = RoyalFonts.get(context, true)
                 paint.textSize = 15f * unit
-                paint.color = Royal.goldLight
+                paint.color = Royal.metalLight
                 canvas.drawText("۲", ox + 72f * unit, oy + 76f * unit, paint)
             }
             GameType.MENFI -> {
@@ -694,7 +714,7 @@ class GameSealView(context: Context, private val game: GameType?) : CachedArtVie
                 Emblems.drawRelief(canvas, eye, cx, cy, r, paint, 2f * 50f / 48f)
                 paint.style = Paint.Style.FILL
                 paint.shader = null
-                paint.color = Royal.alpha(Royal.night, 0.55f)
+                paint.color = Royal.alpha(RoyalClassic.night, 0.55f)
                 canvas.drawCircle(ox + 50f * unit, oy + 50f * unit, 8f * unit, paint)
                 paint.style = Paint.Style.STROKE
                 paint.strokeCap = Paint.Cap.ROUND
@@ -711,6 +731,44 @@ class GameSealView(context: Context, private val game: GameType?) : CachedArtVie
             null -> Emblems.drawRelief(canvas, CROWN, cx, cy, r, paint, 2f * 50f / 48f)
         }
         Emblems.drawGloss(canvas, cx, cy, r * 0.83f, paint)
+    }
+
+    /** Pasur identity of «هزارتایی»: three playing cards fanned out, the front one with a club, and «۱۰۰۰» beneath. */
+    private fun drawCardFan(canvas: Canvas, ox: Float, oy: Float, unit: Float) {
+        val pivotX = ox + 50f * unit
+        val pivotY = oy + 78f * unit
+        val w = 25f * unit
+        val h = 35f * unit
+        val corner = 3.6f * unit
+        listOf(-24f, 0f, 24f).forEachIndexed { i, angle ->
+            canvas.save()
+            canvas.rotate(angle, pivotX, pivotY)
+            val card = RectF(pivotX - w / 2f, pivotY - h - 9f * unit, pivotX + w / 2f, pivotY - 9f * unit)
+            paint.style = Paint.Style.FILL
+            paint.shader = null
+            paint.color = 0x66000000
+            canvas.drawRoundRect(RectF(card.left + 1.2f * unit, card.top + 1.6f * unit, card.right + 1.2f * unit, card.bottom + 1.6f * unit), corner, corner, paint)
+            paint.color = Color.BLACK
+            paint.shader = Emblems.goldFill(card.top, card.bottom)
+            canvas.drawRoundRect(card, corner, corner, paint)
+            paint.shader = null
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 1.1f * unit
+            paint.color = Royal.alpha(Royal.metalShadow, 0.9f)
+            canvas.drawRoundRect(card, corner, corner, paint)
+            paint.strokeWidth = 0.7f * unit
+            paint.color = Royal.alpha(Royal.metalShadow, 0.45f)
+            val inset = 2.4f * unit
+            canvas.drawRoundRect(RectF(card.left + inset, card.top + inset, card.right - inset, card.bottom - inset), corner * 0.6f, corner * 0.6f, paint)
+            paint.style = Paint.Style.FILL
+            val suit = when (i) { 0 -> SuitShapes.diamond(13f * unit); 1 -> SuitShapes.club(14f * unit); else -> SuitShapes.heart(13f * unit) }
+            val bounds = RectF().also { suit.computeBounds(it, true) }
+            suit.offset(card.centerX() - bounds.centerX(), card.centerY() - bounds.centerY() - 1.5f * unit)
+            paint.color = if (i == 1) Royal.alpha(0xFF0E1A33.toInt(), 0.85f) else Royal.alpha(0xFF8E1F2C.toInt(), 0.85f)
+            canvas.drawPath(suit, paint)
+            canvas.restore()
+        }
+        Emblems.drawReliefText(canvas, "۱۰۰۰", ox + 50f * unit, oy + 87f * unit, 15f * unit, RoyalFonts.get(context, true), paint)
     }
 
     companion object {
@@ -749,7 +807,7 @@ class HeroCrestView(context: Context) : CachedArtView(context) {
         paint.shader = null
         paint.strokeCap = Paint.Cap.ROUND
         paint.strokeWidth = 1.4f * k
-        paint.color = Royal.alpha(Royal.gold, 0.28f)
+        paint.color = Royal.alpha(Royal.metal, 0.28f)
         for (i in 0 until 32) {
             val a = i * Math.PI / 16
             val r1 = if (i % 2 == 1) 78f else 72f
@@ -766,16 +824,16 @@ class HeroCrestView(context: Context) : CachedArtView(context) {
         }
         star.close()
         paint.style = Paint.Style.FILL
-        paint.color = Royal.alpha(Royal.gold, 0.06f)
+        paint.color = Royal.alpha(Royal.metal, 0.06f)
         canvas.drawPath(star, paint)
         paint.style = Paint.Style.STROKE
-        paint.color = Royal.alpha(Royal.gold, 0.55f)
+        paint.color = Royal.alpha(Royal.metal, 0.55f)
         canvas.drawPath(star, paint)
         paint.strokeWidth = 1f * k
-        paint.color = Royal.alpha(Royal.gold, 0.35f)
+        paint.color = Royal.alpha(Royal.metal, 0.35f)
         canvas.drawCircle(cx, cy, 60f * k, paint)
         paint.strokeWidth = 3f * k
-        paint.color = Royal.alpha(Royal.gold, 0.2f)
+        paint.color = Royal.alpha(Royal.metal, 0.2f)
         paint.pathEffect = android.graphics.DashPathEffect(floatArrayOf(2f * k, 5f * k), 0f)
         canvas.drawCircle(cx, cy, 56f * k, paint)
         paint.pathEffect = null
@@ -809,20 +867,20 @@ class CrestView(context: Context) : CachedArtView(context) {
         paint.shader = RadialGradient(w / 2f, h * 0.45f, archW * 0.75f, intArrayOf(Royal.alpha(Royal.lapisLight, 0.75f), Royal.alpha(Royal.lapis, 0.35f), 0), floatArrayOf(0f, 0.6f, 1f), Shader.TileMode.CLAMP)
         canvas.drawPath(arch, paint)
         paint.shader = null
-        paint.color = Royal.alpha(Royal.gold, 0.16f)
+        paint.color = Royal.alpha(Royal.metal, 0.16f)
         canvas.drawPath(RoyalShapes.star8Path(w / 2f, h * 0.04f + archW * 0.16f, 9 * d), paint)
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = 1.6f * d
         paint.color = Color.BLACK
-        paint.shader = LinearGradient(0f, 0f, 0f, h, Royal.goldLight, Royal.alpha(Royal.goldDeep, 0.2f), Shader.TileMode.CLAMP)
+        paint.shader = LinearGradient(0f, 0f, 0f, h, Royal.metalLight, Royal.alpha(Royal.metalDeep, 0.2f), Shader.TileMode.CLAMP)
         canvas.drawPath(arch, paint)
         val inner = RoyalShapes.archPath(left + 7 * d, h * 0.04f + 9 * d, left + archW - 7 * d, h * 0.98f)
         paint.strokeWidth = 0.8f * d
         paint.shader = null
-        paint.color = Royal.alpha(Royal.gold, 0.35f)
+        paint.color = Royal.alpha(Royal.metal, 0.35f)
         canvas.drawPath(inner, paint)
         paint.strokeWidth = 1.1f * d
-        paint.color = Royal.alpha(Royal.gold, 0.25f)
+        paint.color = Royal.alpha(Royal.metal, 0.25f)
         val side = (w - archW) / 2f
         listOf(0f to side - 10 * d, left + archW + 10 * d to w).forEach { (a, b) ->
             val count = 3
@@ -833,7 +891,7 @@ class CrestView(context: Context) : CachedArtView(context) {
             }
         }
         paint.color = Color.BLACK
-        paint.shader = LinearGradient(0f, 0f, w, 0f, intArrayOf(0, Royal.gold, 0), null, Shader.TileMode.CLAMP)
+        paint.shader = LinearGradient(0f, 0f, w, 0f, intArrayOf(0, Royal.metal, 0), null, Shader.TileMode.CLAMP)
         paint.strokeWidth = 1.2f * d
         canvas.drawLine(0f, h - d, w, h - d, paint)
         paint.shader = null
@@ -854,7 +912,7 @@ class TrophyView(context: Context) : CachedArtView(context) {
         val m = Matrix().apply { setRectToRect(RectF(0f, 0f, 100f, 100f), RectF(left, top, left + s, top + s), Matrix.ScaleToFit.CENTER) }
         paint.style = Paint.Style.FILL
         paint.color = Color.BLACK
-        paint.shader = RadialGradient(width / 2f, height / 2f, s * 0.55f, intArrayOf(Royal.alpha(Royal.gold, 0.35f), 0), null, Shader.TileMode.CLAMP)
+        paint.shader = RadialGradient(width / 2f, height / 2f, s * 0.55f, intArrayOf(Royal.alpha(Royal.metal, 0.35f), 0), null, Shader.TileMode.CLAMP)
         canvas.drawCircle(width / 2f, height / 2f, s * 0.55f, paint)
         val cup = Path().apply {
             moveTo(28f, 16f); lineTo(72f, 16f); lineTo(72f, 34f); cubicTo(72f, 50f, 62f, 60f, 50f, 60f); cubicTo(38f, 60f, 28f, 50f, 28f, 34f); close()
@@ -872,7 +930,7 @@ class TrophyView(context: Context) : CachedArtView(context) {
         paint.color = 0x77000000
         canvas.drawPath(Path(all).apply { offset(0f, s * 0.02f) }, paint)
         paint.color = Color.BLACK
-        paint.shader = LinearGradient(left, 0f, left + s, 0f, intArrayOf(Royal.goldDeep, Royal.goldLight, Royal.gold, Royal.goldDeep), floatArrayOf(0f, 0.35f, 0.6f, 1f), Shader.TileMode.CLAMP)
+        paint.shader = LinearGradient(left, 0f, left + s, 0f, intArrayOf(Royal.metalDeep, Royal.metalLight, Royal.metal, Royal.metalDeep), floatArrayOf(0f, 0.35f, 0.6f, 1f), Shader.TileMode.CLAMP)
         canvas.drawPath(all, paint)
         paint.shader = null
         val star = RoyalShapes.star8Path(50f, 34f, 10f).apply { transform(m) }
@@ -880,7 +938,7 @@ class TrophyView(context: Context) : CachedArtView(context) {
         canvas.drawPath(star, paint)
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = s * 0.008f
-        paint.color = Royal.bronze
+        paint.color = Royal.metalShadow
         canvas.drawPath(all, paint)
         paint.style = Paint.Style.FILL
     }
@@ -897,14 +955,14 @@ class RoyalDivider(context: Context) : View(context) {
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = d
         paint.color = Color.BLACK
-        paint.shader = LinearGradient(0f, 0f, cx, 0f, 0, Royal.gold, Shader.TileMode.CLAMP)
+        paint.shader = LinearGradient(0f, 0f, cx, 0f, 0, Royal.metal, Shader.TileMode.CLAMP)
         canvas.drawLine(0f, cy, cx - 12 * d, cy, paint)
         paint.color = Color.BLACK
-        paint.shader = LinearGradient(cx, 0f, width.toFloat(), 0f, Royal.gold, 0, Shader.TileMode.CLAMP)
+        paint.shader = LinearGradient(cx, 0f, width.toFloat(), 0f, Royal.metal, 0, Shader.TileMode.CLAMP)
         canvas.drawLine(cx + 12 * d, cy, width.toFloat(), cy, paint)
         paint.shader = null
         paint.style = Paint.Style.FILL
-        paint.color = Royal.gold
+        paint.color = Royal.metal
         canvas.drawPath(RoyalShapes.star8Path(cx, cy, 6 * d), paint)
         paint.color = Royal.turquoise
         canvas.drawCircle(cx, cy, 2 * d, paint)
@@ -944,13 +1002,16 @@ class RoyalSwitch(context: Context, checked: Boolean) : View(context) {
         paint.shader = if (checked) {
             LinearGradient(0f, track.top, 0f, track.bottom, Royal.turquoise, Royal.turquoiseDeep, Shader.TileMode.CLAMP)
         } else {
-            LinearGradient(0f, track.top, 0f, track.bottom, 0xFF0A1630.toInt(), 0xFF142A5A.toInt(), Shader.TileMode.CLAMP)
+            val t = ThemeEngine.spec
+            if (t.id == "royal") LinearGradient(0f, track.top, 0f, track.bottom, 0xFF0A1630.toInt(), 0xFF142A5A.toInt(), Shader.TileMode.CLAMP)
+            else LinearGradient(0f, track.top, 0f, track.bottom, Royal.mix(t.flatLow or 0xFF000000.toInt(), Royal.ivory, if (t.light) 0.16f else 0.06f),
+                Royal.mix(t.flat or 0xFF000000.toInt(), Royal.ivory, if (t.light) 0.10f else 0.10f), Shader.TileMode.CLAMP)
         }
         canvas.drawRoundRect(track, h / 2f, h / 2f, paint)
         paint.shader = null
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = d
-        paint.color = if (checked) Royal.turquoiseLight else Royal.alpha(Royal.gold, 0.7f)
+        paint.color = if (checked) Royal.turquoiseLight else Royal.alpha(Royal.metal, 0.7f)
         canvas.drawRoundRect(track, h / 2f, h / 2f, paint)
         paint.style = Paint.Style.FILL
         val r = h / 2f - 3 * d
@@ -959,7 +1020,7 @@ class RoyalSwitch(context: Context, checked: Boolean) : View(context) {
         paint.color = 0x66000000
         canvas.drawCircle(cx, cy + d, r, paint)
         paint.color = Color.BLACK
-        paint.shader = RadialGradient(cx - r * 0.3f, cy - r * 0.4f, r * 1.4f, intArrayOf(Royal.goldLight, Royal.gold, Royal.goldDeep), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
+        paint.shader = RadialGradient(cx - r * 0.3f, cy - r * 0.4f, r * 1.4f, intArrayOf(Royal.metalLight, Royal.metal, Royal.metalDeep), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
         canvas.drawCircle(cx, cy, r, paint)
         paint.shader = null
     }

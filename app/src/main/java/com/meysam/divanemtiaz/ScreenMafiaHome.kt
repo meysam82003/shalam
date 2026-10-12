@@ -180,8 +180,25 @@ class MafiaGroupsScreen(host: MainActivity) : Screen(host) {
             val g = runCatching { MafiaCodec.decodeGame(o.getJSONObject("game")) }.getOrNull() ?: continue
             addView(kit.panel(PanelStyle.NORMAL, 12).apply {
                 layoutParams = kit.spaced(8)
-                addView(kit.text("نام گروه :\n${o.optString("name")}", TextStyle.BODY_BOLD, Royal.goldLight))
-                addView(kit.text("${kit.n(g.players.size)} بازیکن  •  ${kit.n(g.roleCounts.values.sum())} نقش  •  ${kit.n(g.deck.size)} کارت", TextStyle.CAPTION, Royal.muted))
+                addView(kit.horizontal().apply {
+                    val groupAvatar = o.optInt("avatar", (i * 5 + 2) % Emblems.COUNT)
+                    addView(kit.avatar(groupAvatar, 52).apply {
+                        isClickable = true
+                        contentDescription = "عکس گروه ${o.optString("name")}"
+                        setOnClickListener {
+                            avatarPicker(groupAvatar) { picked ->
+                                o.put("avatar", picked)
+                                host.mafia.saveGroups(groups)
+                                host.refresh()
+                            }
+                        }
+                    })
+                    addView(kit.hgap(10))
+                    addView(kit.vertical().apply {
+                        addView(kit.text("نام گروه :\n${o.optString("name")}", TextStyle.BODY_BOLD, Royal.goldLight))
+                        addView(kit.text("${kit.n(g.players.size)} بازیکن  •  ${kit.n(g.roleCounts.values.sum())} نقش  •  ${kit.n(g.deck.size)} کارت", TextStyle.CAPTION, Royal.muted))
+                    }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                })
                 addView(kit.gap(6))
                 addView(kit.horizontal().apply {
                     addView(kit.weight(kit.button("شروع", ButtonKind.SUCCESS, RoyalIcon.PLAY, 44) {

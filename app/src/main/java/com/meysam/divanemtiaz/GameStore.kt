@@ -183,6 +183,9 @@ class GameRepository(private val kv: KeyValueStore, private val legacy: () -> Le
             put("roster", GameCodec.encodeRoster(roster()))
             put("sessions", JSONArray().apply { sessions().forEach { put(GameCodec.encodeSession(it)) } })
             put("leagues", JSONArray().apply { leagues().forEach { put(GameCodec.encodeLeague(it)) } })
+            // Gallery pictures of people, teams and leagues (small JPEGs), so they come back with the data.
+            val photos = PhotoStore.export()
+            if (photos.isNotEmpty()) put("photos", JSONObject().apply { photos.forEach { (k, v) -> put(k.toString(), v) } })
         }
     }
 
@@ -254,6 +257,9 @@ class GameRepository(private val kv: KeyValueStore, private val legacy: () -> Le
             runCatching { GameCodec.decodeSettings(st) }.getOrNull()?.let { changes[KEY_SETTINGS] = GameCodec.encodeSettings(it).toString() }
         }
         kv.write(changes)
+        o.optJSONObject("photos")?.let { p ->
+            PhotoStore.import(p.keys().asSequence().mapNotNull { k -> k.toIntOrNull()?.let { it to p.optString(k) } }.toMap())
+        }
         return ImportResult(added, updated, leaguesAdded, rosterAdded)
     }
 
@@ -541,6 +547,7 @@ object GameCodec {
             put("defaultTeam1", s.general.defaultTeam1)
             put("defaultTeam2", s.general.defaultTeam2)
             put("uiScale", s.general.uiScale)
+            put("theme", s.general.theme)
         })
         put("shalam", JSONObject().apply {
             put("dealType", s.shalam.dealType)
@@ -620,6 +627,7 @@ object GameCodec {
         put("format", l.format)
         put("updatedAt", l.updatedAt)
         put("finished", l.finished)
+        put("avatar", l.avatar)
         put("config", encodeLeagueConfig(l.config))
         put("rules", encodeRules(l.rules))
         put("teams", JSONArray().apply { l.teams.forEach { put(encodeSide(it)) } })
@@ -671,7 +679,8 @@ object GameCodec {
                 )
             },
             updatedAt = o.optLong("updatedAt", id),
-            finished = o.optBoolean("finished", false)
+            finished = o.optBoolean("finished", false),
+            avatar = o.optInt("avatar", -1)
         )
     }
 
@@ -690,7 +699,8 @@ object GameCodec {
                 largeText = g.optBoolean("largeText", d.general.largeText),
                 defaultTeam1 = g.optString("defaultTeam1", d.general.defaultTeam1),
                 defaultTeam2 = g.optString("defaultTeam2", d.general.defaultTeam2),
-                uiScale = g.optInt("uiScale", d.general.uiScale)
+                uiScale = g.optInt("uiScale", d.general.uiScale),
+                theme = g.optString("theme", d.general.theme)
             ),
             shalam = ShalamSettings(
                 dealType = s.optInt("dealType", d.shalam.dealType),

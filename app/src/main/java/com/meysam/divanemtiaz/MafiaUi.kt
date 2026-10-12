@@ -211,11 +211,17 @@ class MafiaTimer(private val screen: Screen, var total: Int, private val onTick:
 fun Screen.timerRow(p: MafiaPlayer, seconds: Int, note: String?, blocked: String?, timers: MutableList<MafiaTimer>, extra: View? = null): View {
     val time = kit.text(clock(seconds), TextStyle.TITLE, Royal.goldLight, Gravity.CENTER, 1)
     lateinit var playButton: TextView
+    val ring = RingTimerView(host).apply { compact = true; totalMs = seconds * 1000L; update(seconds * 1000L, false) }
+    lateinit var self: MafiaTimer
     val timer = MafiaTimer(this, seconds) { left, running ->
         time.text = clock(left)
+        ring.totalMs = self.total * 1000L
+        ring.update(left * 1000L, running)
         time.setTextColor(if (left in 1..10) Royal.crimsonLight else if (running) Royal.turquoiseLight else Royal.goldLight)
         playButton.text = if (running) "توقف" else if (left == 0) "تمام" else "شروع"
     }
+    self = timer
+    ring.runningSource = { timer.running }
     timers += timer
     playButton = kit.chip("شروع", false, ButtonKind.CHIP_GOLD) {
         if (blocked != null) { kit.toast(blocked); return@chip }
@@ -236,7 +242,8 @@ fun Screen.timerRow(p: MafiaPlayer, seconds: Int, note: String?, blocked: String
                 if (blocked != null) addView(kit.text(blocked, TextStyle.CAPTION, Royal.crimsonLight, maxLines = 2))
                 else if (note != null) addView(kit.text(note, TextStyle.CAPTION, Royal.muted, maxLines = 2))
             }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            addView(time, LinearLayout.LayoutParams(kit.dp(64), ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(time, LinearLayout.LayoutParams(kit.dp(58), ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(ring, LinearLayout.LayoutParams(kit.dp(40), kit.dp(40)))
             addView(kit.hgap(6))
             addView(playButton)
             addView(kit.hgap(4))

@@ -309,7 +309,9 @@ data class GeneralSettings(
     val largeText: Boolean = false,
     val defaultTeam1: String = "ما",
     val defaultTeam2: String = "اونا",
-    val uiScale: Int = UiScale.NORMAL
+    val uiScale: Int = UiScale.NORMAL,
+    /** Visual style ([Themes]); every style shows the same screens and data. */
+    val theme: String = "royal"
 )
 
 /** Display size of the whole interface, in percent. */
@@ -426,7 +428,9 @@ class League(
     val config: LeagueSettings,
     matches: List<LeagueMatch> = emptyList(),
     var updatedAt: Long = id,
-    var finished: Boolean = false
+    var finished: Boolean = false,
+    /** Emblem or gallery picture of the league; -1 shows the game's seal. */
+    var avatar: Int = -1
 ) {
     val teams: MutableList<Side> = teams.toMutableList()
     val matches: MutableList<LeagueMatch> = matches.toMutableList()

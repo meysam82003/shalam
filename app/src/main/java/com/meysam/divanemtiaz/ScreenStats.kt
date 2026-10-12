@@ -151,6 +151,8 @@ private fun Screen.statTiles(p: PlayerStats): View = kit.grid(3, listOf(
 
 /** Rankings of teams and players with Elo ratings, plus the all-time records. */
 class RankingScreen(host: MainActivity) : Screen(host) {
+    override val navTab: Int get() = NavBar.RANKING
+
     private var teams = true
     private var people = true
     private var game: GameType? = null

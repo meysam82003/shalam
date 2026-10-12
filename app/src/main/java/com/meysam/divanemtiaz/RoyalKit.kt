@@ -135,7 +135,7 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
 
     fun avatar(index: Int, size: Int): EmblemAvatarView = EmblemAvatarView(context, index).apply {
         layoutParams = LinearLayout.LayoutParams(dp(size), dp(size))
-        contentDescription = Emblems.names[((index % Emblems.COUNT) + Emblems.COUNT) % Emblems.COUNT]
+        contentDescription = if (PhotoStore.isPhoto(index)) "عکس" else Emblems.names[((index % Emblems.COUNT) + Emblems.COUNT) % Emblems.COUNT]
     }
 
     fun section(title: String, icon: RoyalIcon? = null, trailing: View? = null): View = vertical().apply {
@@ -292,7 +292,7 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
     ): View {
         var current = value
         val label = text(format(current), TextStyle.HEADING, Royal.goldLight, Gravity.CENTER, 1)
-        fun paint() { label.setTextColor(if (alertAt != null && current >= alertAt) 0xFFFF4F58.toInt() else Royal.goldLight) }
+        fun paint() { label.setTextColor(if (alertAt != null && current >= alertAt) Royal.alert else Royal.goldLight) }
         paint()
         fun set(v: Int) {
             val before = current
@@ -397,7 +397,7 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
             // Keep tall dialogs inside the screen; the body scrolls instead.
             body?.let { content.post { limitDialogHeight(content) } }
             if (settings.general.animations) context.resources.getIdentifier("DivanDialogAnimation", "style", context.packageName).takeIf { it != 0 }?.let { anim -> window.attributes = window.attributes.apply { windowAnimations = anim } }
-            window.setDimAmount(0.72f)
+            window.setDimAmount(if (ThemeEngine.spec.light) 0.42f else 0.72f)
             window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
         }
         return dialog

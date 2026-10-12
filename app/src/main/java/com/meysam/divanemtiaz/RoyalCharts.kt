@@ -19,8 +19,9 @@ import kotlin.math.min
 import kotlin.math.pow
 
 object ChartColors {
-    val series = intArrayOf(
-        Royal.gold, Royal.turquoise, Royal.crimsonLight, 0xFF8FB4F5.toInt(), 0xFFC6A2F2.toInt(), Royal.ivory
+    val series: IntArray get() = intArrayOf(
+        Royal.gold, Royal.turquoise, Royal.crimsonLight, if (ThemeEngine.spec.light) 0xFF3A6FD8.toInt() else 0xFF8FB4F5.toInt(),
+        if (ThemeEngine.spec.light) 0xFF8A55C8.toInt() else 0xFFC6A2F2.toInt(), Royal.ivory
     )
 
     fun of(i: Int): Int = series[((i % series.size) + series.size) % series.size]
@@ -108,7 +109,7 @@ class LineChartView(
             paint.style = Paint.Style.FILL
             val last = s.values.lastIndex
             canvas.drawCircle(x(last), y(s.values[last]), 3.6f * density, paint)
-            paint.color = Royal.night
+            paint.color = Royal.scrim
             canvas.drawCircle(x(last), y(s.values[last]), 1.6f * density, paint)
         }
     }
@@ -143,7 +144,7 @@ class DonutView(
         val rect = RectF((width - size) / 2 + stroke, (height - size) / 2 + stroke, (width + size) / 2 - stroke, (height + size) / 2 - stroke)
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = stroke
-        paint.color = Royal.alpha(Royal.night, 0.8f)
+        paint.color = if (ThemeEngine.spec.light) Royal.alpha(Royal.ivory, 0.08f) else Royal.alpha(Royal.scrim, 0.8f)
         canvas.drawArc(rect, 0f, 360f, false, paint)
         val total = parts.sumOf { it.first }
         if (total > 0) {

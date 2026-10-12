@@ -166,6 +166,7 @@ class SpyRevealScreen(host: MainActivity, private val gameId: Long) : Screen(hos
 class SpyTimerScreen(host: MainActivity, private val gameId: Long) : Screen(host) {
     private var timer: Countdown? = null
     private var timeText: TextView? = null
+    private var ring: RingTimerView? = null
     private var g: SpyGame? = null
     private var lastSecond = -1
     /** The countdown should run (kept across page rebuilds; the countdown is recreated on each build). */
@@ -203,11 +204,16 @@ class SpyTimerScreen(host: MainActivity, private val gameId: Long) : Screen(host
                 background = PanelDrawable(kit.density, PanelStyle.RAISED, 26f)
                 setPadding(kit.dp(12), kit.dp(22), kit.dp(12), kit.dp(24))
                 layoutParams = kit.spaced(12)
-                addView(RoleSealView(host, SpyLook.glyph, SpyLook.TINT), LinearLayout.LayoutParams(kit.dp(84), kit.dp(84)))
-                timeText = kit.text(clockText(game.remainingMs), TextStyle.DISPLAY, if (over) 0xFFFF4F58.toInt() else Royal.goldLight, Gravity.CENTER).apply {
-                    setTextSize(TypedValue.COMPLEX_UNIT_PX, kit.dpf(72f)); layoutDirection = View.LAYOUT_DIRECTION_LTR
+                addView(RoleSealView(host, SpyLook.glyph, SpyLook.TINT), LinearLayout.LayoutParams(kit.dp(52), kit.dp(52)))
+                addView(kit.gap(4))
+                ring = RingTimerView(host).apply {
+                    totalMs = game.minutes * 60_000L
+                    alertSeconds = 10
+                    label = if (over) "زمان تمام شد" else if (wantRunning) "زمان باقی‌مانده" else "زمان متوقف است"
+                    runningSource = { timer?.running == true }
+                    update(game.remainingMs, false)
                 }
-                addView(timeText)
+                addView(ring, LinearLayout.LayoutParams(kit.dp(236), kit.dp(236)))
                 addView(kit.text(if (over) "زمان تمام شد" else "بازیکنان به نوبت از یکدیگر سؤال بپرسند", TextStyle.BODY_BOLD, Royal.ivory, Gravity.CENTER))
             })
             addView(kit.settingRow("سؤال اول را ${game.players.getOrElse(game.starter) { "" }} می‌پرسد", "بعد هر نفر از نفر کناری‌اش می‌پرسد",
@@ -228,10 +234,11 @@ class SpyTimerScreen(host: MainActivity, private val gameId: Long) : Screen(host
     private fun tick(ms: Long) {
         g?.remainingMs = ms
         timeText?.text = clockText(ms)
+        ring?.update(ms, true)
         val s = ((ms + 999) / 1000).toInt()
         if (s != lastSecond) {
             lastSecond = s
-            timeText?.setTextColor(if (s <= 10) 0xFFFF4F58.toInt() else Royal.goldLight)
+            timeText?.setTextColor(if (s <= 10) Royal.alert else Royal.goldLight)
             if (s % 10 == 0) save()
         }
     }

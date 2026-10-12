@@ -7,7 +7,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 
-const val APP_VERSION_LABEL = "نسخهٔ ۴.۹.۱"
+const val APP_VERSION_LABEL = "نسخهٔ ۵.۰.۰"
 
 class SplashScreen(host: MainActivity) : Screen(host) {
     override fun build(): View = FrameLayout(host).apply {
@@ -81,13 +81,17 @@ class HomeScreen(host: MainActivity) : Screen(host) {
                 val last = host.repo.sessions().firstOrNull()
                 if (last == null) kit.toast("هنوز بازی‌ای ثبت نشده است") else shareSession(last)
             },
-            tile(RoyalIcon.HEART, "درباره و تماس", "انتقاد و پیشنهاد") { host.push(AboutScreen(host)) }
+            tile(RoyalIcon.HEART, "درباره و تماس", "انتقاد و پیشنهاد") { host.push(AboutScreen(host)) },
+            tile(RoyalIcon.STAR, "ظاهر برنامه", "${kit.n(Themes.all.size)} سبک انتخابی") { host.push(ThemeScreen(host)) }
         ), 8))
         column.addView(kit.gap(16))
         column.addView(kit.text("$APP_VERSION_LABEL  •  آفلاین  •  بدون تبلیغ", TextStyle.CAPTION, Royal.dim, Gravity.CENTER))
-        return ScrollView(host).apply {
-            isVerticalScrollBarEnabled = false
-            addView(column)
+        return kit.vertical().apply {
+            addView(ScrollView(host).apply {
+                isVerticalScrollBarEnabled = false
+                addView(column)
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+            addView(NavBar.view(this@HomeScreen, NavBar.HOME))
         }
     }
 
