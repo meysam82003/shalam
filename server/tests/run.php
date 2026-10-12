@@ -108,6 +108,9 @@ function buy(array $u, string $plan, string $store, string $token, $key, string 
     return Purchases::verify($u, receipt($store, $i['sku'], $token, $i['payload'], $key));
 }
 
+function apiPost(string $route, array $body): array { Api::reset(); Http::$testBody = $body; return Api::handle($route, 'POST'); }
+function apiGet(string $route, array $query = []): array { Api::reset(); $_GET = $query; return Api::handle($route, 'GET'); }
+
 // ================================================================ scenarios
 scenario('accounts: register, login, lockout', function () {
     freshIp();
@@ -275,6 +278,7 @@ scenario('refund, expiry and restore after reinstall', function () use ($storeKe
 
 scenario('offline certificate', function () use ($storeKey) {
     freshIp();
+    Settings::set('single_device', false);
     [$u] = Users::register('cert_user', 'secret123');
     buy($u, 'm1', 'myket', 'tok-c1', $storeKey);
     $c = Entitlements::certificate(Users::byId((int)$u['id']), 'myket');
@@ -293,6 +297,58 @@ scenario('offline certificate', function () use ($storeKey) {
     [$f] = Users::register('free_user', 'secret123');
     $p = json_decode(Crypto::b64uDecode(explode('.', Entitlements::certificate($f)['certificate'])[0]), true);
     check($p['pro'] === false, 'free user certificate says not Pro');
+    Settings::set('single_device', true);
+});
+
+scenario('one phone per subscription', function () use ($storeKey) {
+    freshIp();
+    $phoneA = hash('sha256', 'phone-a'); $phoneB = hash('sha256', 'phone-b');
+    [$u] = Users::register('one_phone', 'secret123');
+    $tA = Sessions::create((int)$u['id'], ['device' => 'Samsung A54', 'device_id' => $phoneA]);
+    $tB = Sessions::create((int)$u['id'], ['device' => 'Xiaomi Note 12', 'device_id' => $phoneB]);
+    $sA = Db::one('SELECT * FROM {sessions} WHERE token_hash = ?', [Crypto::hash($tA)]);
+    $sB = Db::one('SELECT * FROM {sessions} WHERE token_hash = ?', [Crypto::hash($tB)]);
+    check($sA['device_id'] === $phoneA, 'session remembers its phone');
+    buy($u, 'm1', 'bazaar', 'tok-dev-1', $storeKey);
+    $cert = fn(array $s) => json_decode(Crypto::b64uDecode(explode('.', Entitlements::certificate(Users::byId((int)$u['id']), 'bazaar', $s)['certificate'])[0]), true);
+    $a = $cert($sA);
+    check($a['pro'] === true && $a['device'] === $phoneA, 'first phone gets Pro, signed for that phone');
+    $b = $cert($sB);
+    check($b['pro'] === false && $b['device_conflict']['name'] === 'Samsung A54', 'second phone: not Pro, told where it is active');
+    check($a['offline_until'] <= Clock::now() + 7 * 86400, 'timed plan with one-phone rule must check in within 7 days');
+    throws(fn() => Devices::transfer(Users::byId((int)$u['id']), $sB, 'wrong123'), 'bad_credentials', 'transfer needs the password');
+    Devices::transfer(Users::byId((int)$u['id']), $sB, 'secret123');
+    check($cert($sB)['pro'] === true && $cert($sA)['pro'] === false, 'after transfer only the new phone is Pro');
+    Devices::transfer(Users::byId((int)$u['id']), $sA, 'secret123');
+    Devices::transfer(Users::byId((int)$u['id']), $sB, 'secret123');
+    throws(fn() => Devices::transfer(Users::byId((int)$u['id']), $sA, 'secret123'), 'transfer_limit', 'at most 3 transfers in 30 days');
+    check((int)Db::value("SELECT COUNT(*) FROM {security_events} WHERE kind = 'device_transfer' AND user_id = ?", [$u['id']]) === 3, 'transfers are logged');
+    Clock::$fixed += 31 * 86400;
+    Devices::transfer(Users::byId((int)$u['id']), $sA, 'secret123');
+    check(Users::byId((int)$u['id'])['pro_device'] === $phoneA, 'transfer limit resets after 30 days');
+    Clock::$fixed -= 31 * 86400;
+    // Support releases the phone: the next phone that syncs takes the subscription.
+    Db::update('users', ['pro_device' => null], 'id = ?', [$u['id']]);
+    check($cert($sB)['pro'] === true && $cert($sA)['pro'] === false, 'released subscription binds to the next phone');
+    // Buying on a phone moves the subscription there.
+    [$w] = Users::register('two_phone', 'secret123');
+    $tC = Sessions::create((int)$w['id'], ['device' => 'C', 'device_id' => hash('sha256', 'c')]);
+    $tD = Sessions::create((int)$w['id'], ['device' => 'D', 'device_id' => hash('sha256', 'd')]);
+    $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $tC; Api::reset();
+    $i = apiPost('v1/purchases/intent', ['plan' => 'm1', 'store' => 'myket']);
+    $r = apiPost('v1/purchases/verify', receipt('myket', $i['sku'], 'tok-dev-c', $i['payload'], $storeKey) + ['store' => 'myket']);
+    check($r['entitlement']['this_device'] === true, 'purchase phone holds the subscription');
+    $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $tD;
+    $me = apiGet('v1/me');
+    check($me['entitlement']['this_device'] === false && $me['entitlement']['device_conflict']['name'] === 'C', 'other phone sees where it is active');
+    $t = apiPost('v1/devices/transfer', ['password' => 'secret123']);
+    check($t['entitlement']['this_device'] === true, 'transfer through the API');
+    unset($_SERVER['HTTP_AUTHORIZATION']);
+    Settings::set('single_device', false);
+    $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $tC;
+    check(apiGet('v1/me')['entitlement']['this_device'] === true, 'rule can be switched off in the panel');
+    unset($_SERVER['HTTP_AUTHORIZATION']);
+    Settings::set('single_device', true);
 });
 
 scenario('cross-store setting', function () use ($storeKey) {
@@ -385,8 +441,6 @@ scenario('backup and safe restore', function () use ($storeKey) {
     throws(fn() => Backup::restore($blob, true), 'not_fresh', 'keys are adopted only on a fresh install');
 });
 
-function apiPost(string $route, array $body): array { Api::reset(); Http::$testBody = $body; return Api::handle($route, 'POST'); }
-function apiGet(string $route, array $query = []): array { Api::reset(); $_GET = $query; return Api::handle($route, 'GET'); }
 
 scenario('API end to end', function () use ($storeKey, $myket) {
     freshIp();

@@ -322,6 +322,12 @@ final class Migrations
                     created_at DATETIME NOT NULL
                 ) $e",
             ],
+            // 5.1: one subscription works on one phone at a time.
+            2 => [
+                "ALTER TABLE {users} ADD COLUMN pro_device VARCHAR(64) NULL, ADD COLUMN pro_device_name VARCHAR(80) NULL,
+                    ADD COLUMN pro_device_at DATETIME NULL, ADD COLUMN device_moves INT NOT NULL DEFAULT 0, ADD COLUMN device_moves_since DATETIME NULL",
+                "ALTER TABLE {sessions} ADD COLUMN device_id VARCHAR(64) NULL",
+            ],
         ];
     }
 
@@ -380,6 +386,8 @@ final class Seed
             'renew_grace_days' => 3,
             'lifetime_offline_days' => 365,
             'cross_store' => true,
+            'single_device' => true,
+            'device_moves_limit' => 3,
             'ads_enabled' => false,
             'ads_priority' => 'direct_first',
             'ads_interstitial_min_minutes' => 10,

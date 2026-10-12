@@ -7,7 +7,8 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 
-const val APP_VERSION_LABEL = "نسخهٔ ۵.۰.۰"
+const val APP_VERSION_NAME = "5.1.0"
+const val APP_VERSION_LABEL = "نسخهٔ ۵.۱.۰"
 
 class SplashScreen(host: MainActivity) : Screen(host) {
     override fun build(): View = FrameLayout(host).apply {
@@ -61,14 +62,15 @@ class HomeScreen(host: MainActivity) : Screen(host) {
         column.addView(topBar())
         column.addView(banner())
         resume()?.let { column.addView(it) }
+        AdEngine.slot(this, "home_inline")?.let { column.addView(it) }
         column.addView(kit.section("انتخاب بازی", RoyalIcon.PLAY))
         val tiles = GameType.values().map { game ->
-            kit.gameTile(GameSealView(host, game), game.title, gameSummary(game)) { host.push(SetupScreen(host, game)) }
+            kit.gameTile(GameSealView(host, game), game.title, gameSummary(game)) { Gate.open(this, game.key) { host.push(SetupScreen(host, game)) } }
         } + listOf(
             kit.gameTile(RoleSealView(host, MafiaGlyph.MASK, MafiaColors.MAFIA), "راوی مافیا", "${kit.n(MafiaScenarios.builtin.size)} سناریو • ${kit.n(MafiaRoleRegistry.available().size)} نقش",
-                host.mafia.latestUnfinished()?.let { "در جریان" }) { host.push(MafiaHomeScreen(host)) },
+                host.mafia.latestUnfinished()?.let { "در جریان" }) { Gate.open(this, "mafia") { host.push(MafiaHomeScreen(host)) } },
             kit.gameTile(RoleSealView(host, PantoLook.glyph, PantoLook.TINT), "پانتومیم", "پنج نوع مسابقه و دور طلایی",
-                host.panto.latestUnfinished()?.let { "در جریان" }) { host.push(PantoHomeScreen(host)) }
+                host.panto.latestUnfinished()?.let { "در جریان" }) { Gate.open(this, "panto") { host.push(PantoHomeScreen(host)) } }
         )
         column.addView(kit.grid(2, tiles, 10), kit.spaced(10))
         column.addView(spyTile(), kit.spaced(6))
@@ -77,22 +79,26 @@ class HomeScreen(host: MainActivity) : Screen(host) {
             background = PanelDrawable(kit.density, PanelStyle.NORMAL, 22f)
             setPadding(kit.dp(6), kit.dp(10), kit.dp(6), kit.dp(12))
             addView(kit.grid(5, listOf(
-                kit.toolTile(RoyalIcon.TROPHY, "لیگ‌ها") { host.push(LeagueListScreen(host)) },
-                kit.toolTile(RoyalIcon.HISTORY, "تاریخچه") { host.push(HistoryScreen(host)) },
+                kit.toolTile(RoyalIcon.TROPHY, "لیگ‌ها") { Gate.open(this@HomeScreen, "leagues") { host.push(LeagueListScreen(host)) } },
+                kit.toolTile(RoyalIcon.HISTORY, "تاریخچه") { Gate.open(this@HomeScreen, "history") { host.push(HistoryScreen(host)) } },
                 kit.toolTile(RoyalIcon.PLAYERS, "افراد و تیم‌ها") { host.push(PlayersScreen(host)) },
-                kit.toolTile(RoyalIcon.CROWN, "رنک‌بندی") { host.push(RankingScreen(host)) },
+                kit.toolTile(RoyalIcon.CROWN, "رنک‌بندی") { Gate.open(this@HomeScreen, "rankings") { host.push(RankingScreen(host)) } },
                 kit.toolTile(RoyalIcon.RULES, "قوانین") { host.push(RulesScreen(host, null)) },
-                kit.toolTile(RoyalIcon.CHART, "ماشین‌حساب ورق") { host.push(DeckCalcScreen(host)) },
-                kit.toolTile(RoyalIcon.SAVE, "پشتیبان") { host.push(BackupScreen(host)) },
+                kit.toolTile(RoyalIcon.CHART, "ماشین‌حساب ورق") { Gate.open(this@HomeScreen, "deck_calc") { host.push(DeckCalcScreen(host)) } },
+                kit.toolTile(RoyalIcon.SAVE, "پشتیبان") { Gate.open(this@HomeScreen, "backup") { host.push(BackupScreen(host)) } },
                 kit.toolTile(RoyalIcon.SHARE, "اشتراک") {
-                    val last = host.repo.sessions().firstOrNull()
-                    if (last == null) kit.toast("هنوز بازی‌ای ثبت نشده است") else shareSession(last)
+                    Gate.open(this@HomeScreen, "share") {
+                        val last = host.repo.sessions().firstOrNull()
+                        if (last == null) kit.toast("هنوز بازی‌ای ثبت نشده است") else shareSession(last)
+                    }
                 },
                 kit.toolTile(RoyalIcon.STAR, "ظاهر برنامه") { host.push(ThemeScreen(host)) },
                 kit.toolTile(RoyalIcon.HEART, "درباره") { host.push(AboutScreen(host)) }
             ), 4))
         }, kit.spaced(12))
-        column.addView(kit.text("$APP_VERSION_LABEL  •  آفلاین  •  بدون تبلیغ", TextStyle.CAPTION, Royal.dim, Gravity.CENTER))
+        AdEngine.slot(this, "home_corner")?.let { column.addView(it) }
+        AdEngine.slot(this, "home_bottom")?.let { column.addView(it) }
+        column.addView(kit.text("$APP_VERSION_LABEL  •  آفلاین" + if (ProState.isPro) "  •  Pro" else "", TextStyle.CAPTION, Royal.dim, Gravity.CENTER))
         return kit.vertical().apply {
             addView(ScrollView(host).apply {
                 isVerticalScrollBarEnabled = false
@@ -110,6 +116,10 @@ class HomeScreen(host: MainActivity) : Screen(host) {
             addView(kit.text(greeting(), TextStyle.LABEL, Royal.muted, maxLines = 1))
             addView(kit.text("دیوان امتیاز", TextStyle.TITLE, Royal.title, maxLines = 1))
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        addView(kit.iconButton(RoyalIcon.CROWN, "دیوان Pro", if (ProState.isPro) ButtonKind.SUCCESS else ButtonKind.PRIMARY, 42) {
+            host.push(if (ProState.loggedIn) SubscriptionScreen(host) else ProScreen(host))
+        })
+        addView(kit.hgap(8))
         addView(kit.iconButton(RoyalIcon.STAR, "ظاهر برنامه", ButtonKind.SECONDARY, 42) { host.push(ThemeScreen(host)) })
         addView(kit.hgap(8))
         addView(kit.iconButton(RoyalIcon.SETTINGS, "تنظیمات", ButtonKind.SECONDARY, 42) { host.push(SettingsScreen(host)) })
@@ -175,7 +185,7 @@ class HomeScreen(host: MainActivity) : Screen(host) {
         addView(kit.icon(RoyalIcon.NEXT, Royal.goldLight, 18))
         isClickable = true
         contentDescription = "جاسوس"
-        setOnClickListener { kit.tap(it); host.push(SpyHomeScreen(host)) }
+        setOnClickListener { kit.tap(it); Gate.open(this@HomeScreen, "spy") { host.push(SpyHomeScreen(host)) } }
     }
 
     private fun gameSummary(game: GameType): String = when (game) {

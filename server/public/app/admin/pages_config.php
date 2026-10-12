@@ -27,7 +27,7 @@ final class ConfigPages
             'recover_throttled' => 'محدودیت بازیابی', 'recovered' => 'بازیابی موفق', 'recovery_key_rotated' => 'کلید بازیابی تازه', 'password_changed' => 'تغییر رمز',
             'sessions_revoked' => 'خروج از دستگاه‌ها', 'receipt_bad_signature' => 'رسید با امضای نادرست', 'receipt_reuse' => 'استفادهٔ دوباره از رسید',
             'receipt_mismatch' => 'رسید ناهمخوان', 'payload_mismatch' => 'رسید متعلق به حساب دیگر', 'receipt_without_intent' => 'رسید بدون شروع خرید',
-            'admin_login_failed' => 'ورود ناموفق مدیر', 'admin_totp_failed' => 'کد دومرحله‌ای نادرست مدیر', 'support_password_reset' => 'بازنشانی رمز توسط پشتیبانی',
+            'admin_login_failed' => 'ورود ناموفق مدیر', 'device_transfer' => 'انتقال اشتراک به گوشی دیگر', 'device_transfer_blocked' => 'انتقال گوشی رد شد (سقف)', 'admin_totp_failed' => 'کد دومرحله‌ای نادرست مدیر', 'support_password_reset' => 'بازنشانی رمز توسط پشتیبانی',
         ][$k] ?? $k;
     }
 
@@ -566,6 +566,10 @@ final class ConfigPages
             Settings::set('offline_days', max(1, min(90, (int)self::post('offline_days', '21'))));
             Settings::set('renew_grace_days', max(0, min(14, (int)self::post('renew_grace_days', '3'))));
             Settings::set('lifetime_offline_days', max(30, min(3650, (int)self::post('lifetime_offline_days', '365'))));
+            Settings::set('single_device', isset($_POST['single_device']));
+            Settings::set('device_moves_limit', max(0, min(50, (int)self::post('device_moves_limit', '3'))));
+            Settings::set('device_offline_days', max(1, min(90, (int)self::post('device_offline_days', '7'))));
+            Settings::set('device_offline_days_lifetime', max(1, min(365, (int)self::post('device_offline_days_lifetime', '30'))));
             Settings::set('support_text', mb_substr(self::post('support_text'), 0, 500));
             Admin::audit('store_settings', 'settings', 'stores', $reason, $before, ['bazaar' => Settings::get('bazaar'), 'myket' => Settings::get('myket'), 'cross_store' => Settings::get('cross_store'), 'offline_days' => Settings::get('offline_days'), 'secrets_changed' => array_values(array_filter(['bazaar_api_secret', 'bazaar_client_secret', 'bazaar_refresh_token', 'bazaar_discount_key', 'myket_access_token'], fn($s) => self::post($s) !== ''))]);
             Admin::flash('تنظیمات فروشگاه‌ها ذخیره شد.');
@@ -611,6 +615,13 @@ final class ConfigPages
                 <div><label>مهلت تمدید اشتراک فروشگاه (روز)</label><input type="number" name="renew_grace_days" value="<?= (int)Settings::get('renew_grace_days', 3) ?>" min="0" max="14"></div>
                 <div><label>اعتبار آفلاین مادام‌العمر (روز)</label><input type="number" name="lifetime_offline_days" value="<?= (int)Settings::get('lifetime_offline_days', 365) ?>" min="30"></div>
               </div>
+              <label class="check"><input type="checkbox" name="single_device" <?= Settings::get('single_device', true) ? 'checked' : '' ?>> هر اشتراک فقط روی یک گوشی فعال باشد</label>
+              <div class="row">
+                <div><label>سقف انتقال به گوشی دیگر (در ۳۰ روز)</label><input type="number" name="device_moves_limit" value="<?= (int)Settings::get('device_moves_limit', 3) ?>" min="0" max="50"></div>
+                <div><label>اعتبار آفلاین با قانون تک‌گوشی (روز)</label><input type="number" name="device_offline_days" value="<?= (int)Settings::get('device_offline_days', 7) ?>" min="1" max="90"></div>
+                <div><label>اعتبار آفلاین مادام‌العمر با قانون تک‌گوشی (روز)</label><input type="number" name="device_offline_days_lifetime" value="<?= (int)Settings::get('device_offline_days_lifetime', 30) ?>" min="1" max="365"></div>
+              </div>
+              <p class="hint">اشتراک روی گوشی خرید (یا اولین گوشی‌ای که Pro را می‌گیرد) فعال می‌شود. روی گوشی دیگر کاربر می‌تواند با رمز عبور، اشتراک را منتقل کند؛ گوشی قبلی در اولین اتصال یا حداکثر پس از پایان اعتبار آفلاین، Pro را از دست می‌دهد. هرچه اعتبار آفلاین کوتاه‌تر باشد، استفادهٔ هم‌زمان کمتر ممکن است.</p>
               <p class="hint">اگر کاربر تا این مدت اینترنت نداشته باشد هم Pro او کار می‌کند؛ پس از اتصال، گواهی تازه می‌گیرد. اشتراک زمان‌دار هیچ‌وقت بعد از تاریخ پایانش آفلاین تمدید نمی‌شود.</p>
               <label>متن راهنمای پشتیبانی در اپ</label><input type="text" name="support_text" value="<?= e(Settings::get('support_text', '')) ?>">
             </div>

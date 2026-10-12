@@ -68,7 +68,7 @@ final class Api
     private static function account(array $u): array
     {
         $store = self::$auth[1]['store'] ?? (in_array($_GET['store'] ?? '', Plans::STORES, true) ? $_GET['store'] : null);
-        $cert = Entitlements::certificate($u, $store);
+        $cert = Entitlements::certificate($u, $store, self::$auth[1] ?? null);
         return [
             'user' => Users::publicView($u),
             'entitlement' => $cert['summary'],
@@ -107,14 +107,14 @@ final class Api
             case 'v1/auth/register': {
                 self::post($method);
                 [$u, $key] = Users::register((string)($in['username'] ?? ''), (string)($in['password'] ?? ''), isset($in['email']) ? (string)$in['email'] : null);
-                $token = Sessions::create((int)$u['id'], $in);
+                $token = self::open($u, $in);
                 return ['token' => $token, 'recovery_key' => $key] + self::account($u);
             }
 
             case 'v1/auth/login': {
                 self::post($method);
                 $u = Users::login((string)($in['username'] ?? ''), (string)($in['password'] ?? ''));
-                $token = Sessions::create((int)$u['id'], $in);
+                $token = self::open($u, $in);
                 return ['token' => $token] + self::account($u);
             }
 
@@ -128,7 +128,7 @@ final class Api
             case 'v1/auth/recover': {
                 self::post($method);
                 [$u, $key] = Users::recover((string)($in['username'] ?? ''), (string)($in['recovery_key'] ?? ''), (string)($in['new_password'] ?? ''));
-                $token = Sessions::create((int)$u['id'], $in);
+                $token = self::open($u, $in);
                 return ['token' => $token, 'recovery_key' => $key] + self::account($u);
             }
 
@@ -149,7 +149,14 @@ final class Api
                 return self::account(self::user()) + ['sessions' => Sessions::list((int)self::user()['id']), 'current_session' => (int)self::$auth[1]['id']];
 
             case 'v1/entitlement':
-                return Entitlements::certificate(self::user(), self::$auth[1]['store'] ?? null);
+                return Entitlements::certificate(self::user(), self::$auth[1]['store'] ?? null, self::$auth[1]);
+
+            case 'v1/devices/transfer': {
+                self::post($method);
+                $u = self::user();
+                Devices::transfer($u, self::$auth[1], (string)($in['password'] ?? ''));
+                return self::account(Users::byId((int)$u['id']));
+            }
 
             case 'v1/sessions/revoke': {
                 self::post($method);
@@ -169,6 +176,11 @@ final class Api
                 self::post($method);
                 $u = self::user();
                 $r = Purchases::verify($u, $in);
+                // A purchase made on this phone puts the subscription on this phone.
+                if (in_array($r['purchase']['status'], Purchases::OK_STATES, true) && !empty(self::$auth[1]['device_id']) && Devices::enabled()) {
+                    $cur = Users::byId((int)$u['id']);
+                    if ($cur['pro_device'] !== self::$auth[1]['device_id']) Devices::bind((int)$u['id'], self::$auth[1]['device_id'], self::$auth[1]['device_name'], 'purchase');
+                }
                 return ['status' => $r['purchase']['status'], 'consume' => $r['consume'], 'purchase' => Purchases::publicView($r['purchase'])] + self::account($u);
             }
 
@@ -206,6 +218,14 @@ final class Api
                 return ['size' => UserData::put((int)$u['id'], (string)($in['data'] ?? ''))];
         }
         throw new ApiError('not_found', 'مسیر یافت نشد.', 404);
+    }
+
+    /** New session for this phone; it becomes the request's session. */
+    private static function open(array $u, array $in): string
+    {
+        $token = Sessions::create((int)$u['id'], $in);
+        self::$auth = [$u, Db::one('SELECT * FROM {sessions} WHERE token_hash = ?', [Crypto::hash($token)])];
+        return $token;
     }
 
     private static function post(string $method): void

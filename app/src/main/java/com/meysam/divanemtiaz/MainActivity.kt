@@ -166,6 +166,8 @@ class MainActivity : Activity() {
         kit = RoyalKit(this) { settings }
         ThemeEngine.apply(Themes.byId(settings.general.theme))
         PhotoStore.init(this)
+        ProState.init(this)
+        AdEngine.init(this)
         MafiaRoleRegistry.user = mafia.roleDefs()
         val root = FrameLayout(this).apply {
             background = BackdropDrawable(resources.displayMetrics.density)
@@ -198,11 +200,14 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        // Plans, module access and the account are refreshed in the background; games never wait for it.
+        if (Build.FINGERPRINT != "robolectric") ProSync.onStart()
         resumed = true
         current?.onShow()
     }
 
     override fun onPause() {
+        AdEngine.flush()
         current?.onHide()
         resumed = false
         if (audioUsed) {

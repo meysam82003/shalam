@@ -173,6 +173,8 @@ final class SalesPages
                   <option value="gift_pro">هدیهٔ Pro</option>
                   <option value="grant_feature">دسترسی ویژه به یک قابلیت</option>
                   <option value="transfer">انتقال خریدها به حساب دیگر</option>
+                  <option value="release_device">آزاد کردن گوشی اشتراک (فعال‌شدن روی گوشی بعدی)</option>
+                  <option value="reset_moves">صفر کردن شمارش انتقال‌های گوشی</option>
                   <option value="note">یادداشت داخلی</option>
                 </select>
                 <div class="row">
@@ -187,6 +189,8 @@ final class SalesPages
             <div class="card"><h3>اطلاعات حساب</h3>
               <p>نام کاربری: <b class="ltr"><?= e($u['username']) ?></b> — شناسه <?= fa_digits($u['id']) ?></p>
               <p>ایمیل (اختیاری): <span class="ltr"><?= e($u['email'] ?: '—') ?></span></p>
+              <p>گوشی فعال اشتراک: <b><?= $u['pro_device'] ? e($u['pro_device_name'] ?: 'نامشخص') . '</b> از ' . e(jdate($u['pro_device_at'])) : 'هنوز به گوشی‌ای وصل نشده</b>' ?>
+                — انتقال در ۳۰ روز اخیر: <?= fa_digits((Clock::ts($u['device_moves_since']) ?? 0) > Clock::now() - 30 * 86400 ? (int)$u['device_moves'] : 0) ?> از <?= fa_digits((int)Settings::get('device_moves_limit', 3)) ?></p>
               <p>پشتیبان ابری بازی‌ها: <?= $backup ? fa_digits(number_format((int)$backup['size'])) . ' بایت — ' . e(jdate($backup['updated_at'])) : 'ندارد' ?></p>
               <?php if ($u['note']): ?><p>یادداشت: <?= nl2br(e($u['note'])) ?></p><?php endif; ?>
               <h3 style="margin-top:14px">دستگاه‌ها و نشست‌ها</h3>
@@ -281,6 +285,8 @@ final class SalesPages
                 Support::action(null, (int)$target['id'], $adminId, 'transfer_in', $reason, ['from' => $u['username']]);
                 break;
             }
+            case 'release_device': Db::update('users', ['pro_device' => null, 'pro_device_name' => null, 'pro_device_at' => null], 'id = ?', [$id]); break;
+            case 'reset_moves': Db::update('users', ['device_moves' => 0, 'device_moves_since' => null], 'id = ?', [$id]); break;
             case 'note': Db::update('users', ['note' => trim(($u['note'] ?? '') . "\n" . gmdate('Y-m-d') . ' ' . Admin::$me['username'] . ': ' . $reason)], 'id = ?', [$id]); break;
             default: throw new ApiError('action', 'اقدام نامعتبر است.');
         }

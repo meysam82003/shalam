@@ -49,28 +49,46 @@ jobs:
           DIVAN_KEYSTORE_PASSWORD: ${{ secrets.DIVAN_KEYSTORE_PASSWORD }}
           DIVAN_KEY_ALIAS: ${{ secrets.DIVAN_KEY_ALIAS }}
           DIVAN_KEY_PASSWORD: ${{ secrets.DIVAN_KEY_PASSWORD }}
+          # Public values for the Pro subscription (none is secret); empty ones keep the feature off.
+          DIVAN_MYKET_RSA_KEY: ${{ vars.DIVAN_MYKET_RSA_KEY || secrets.DIVAN_MYKET_RSA_KEY }}
+          DIVAN_TAPSELL_APP_ID: ${{ vars.DIVAN_TAPSELL_APP_ID || secrets.DIVAN_TAPSELL_APP_ID }}
+          DIVAN_LICENSE_KEY: ${{ vars.DIVAN_LICENSE_KEY || secrets.DIVAN_LICENSE_KEY }}
         run: gradle --no-daemon testReleaseUnitTest assembleRelease
+
+      - name: Check the server
+        run: |
+          sudo systemctl start mysql
+          mysql -uroot -proot -e "CREATE DATABASE divan_test2 CHARACTER SET utf8mb4; CREATE USER 'divan'@'localhost' IDENTIFIED BY 'ci-only'; GRANT ALL ON divan_test2.* TO 'divan'@'localhost';"
+          for f in $(find server -name '*.php'); do php -l "$f" > /dev/null; done
+          DIVAN_TEST_DSN="host=localhost;dbname=divan_test2" DIVAN_TEST_PASS=ci-only php server/tests/run.php
 
       - name: Prepare release files
         run: |
           VERSION=$(grep -oP "versionName '\K[^']+" app/build.gradle)
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          cp app/build/outputs/apk/release/app-release.apk "Divan-Emtiaz-v$VERSION.apk"
+          cp app/build/outputs/apk/bazaar/release/app-bazaar-release.apk "Divan-Emtiaz-Bazaar-v$VERSION.apk"
+          cp app/build/outputs/apk/myket/release/app-myket-release.apk "Divan-Emtiaz-Myket-v$VERSION.apk"
           cp web/index.html "Divan-Emtiaz-Web-v$VERSION.html"
-          sha256sum "Divan-Emtiaz-v$VERSION.apk" "Divan-Emtiaz-Web-v$VERSION.html" > SHA256SUMS.txt
+          rm -rf pack && mkdir -p pack && cp -r server/public pack/divan && (cd pack && zip -qr ../Divan-Emtiaz-Web-Installer.zip divan)
+          sha256sum Divan-Emtiaz-*-v$VERSION.apk "Divan-Emtiaz-Web-v$VERSION.html" Divan-Emtiaz-Web-Installer.zip > SHA256SUMS.txt
 
       - name: Use the release-signed APK kept in the repository
         if: env.RELEASE_SIGNED != 'true'
         run: |
-          SIGNED="release/Divan-Emtiaz-v$VERSION.apk"
-          if [ -f "$SIGNED" ]; then
-            APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          FOUND=0
+          for STORE in Bazaar Myket; do
+            SIGNED="release/Divan-Emtiaz-$STORE-v$VERSION.apk"
+            [ -f "$SIGNED" ] || continue
             "$APKSIGNER" verify --print-certs "$SIGNED" | tee signed-cert.txt
             if grep -qi "CN=Android Debug" signed-cert.txt; then echo "::error::$SIGNED is debug-signed"; exit 1; fi
-            cp "$SIGNED" "Divan-Emtiaz-v$VERSION.apk"
-            sha256sum "Divan-Emtiaz-v$VERSION.apk" "Divan-Emtiaz-Web-v$VERSION.html" > SHA256SUMS.txt
+            cp "$SIGNED" "Divan-Emtiaz-$STORE-v$VERSION.apk"
+            FOUND=$((FOUND+1))
+          done
+          if [ "$FOUND" = "2" ]; then
+            sha256sum Divan-Emtiaz-*-v$VERSION.apk "Divan-Emtiaz-Web-v$VERSION.html" Divan-Emtiaz-Web-Installer.zip > SHA256SUMS.txt
             echo "RELEASE_SIGNED=true" >> "$GITHUB_ENV"
-            echo "Release-signed APK found for v$VERSION."
+            echo "Release-signed APKs found for v$VERSION."
           fi
 
       - name: Release notes from README
@@ -83,7 +101,11 @@ jobs:
           notes = m.group(1).strip() if m else ""
           body = f"""نسخهٔ {os.environ['VERSION']}
 
-          دانلود: فایل `Divan-Emtiaz-v{os.environ['VERSION']}.apk` (امضای انتشار، مناسب کافه‌بازار؛ روی نسخهٔ قبلی نصب می‌شود و داده‌ها حفظ می‌شوند)
+          دانلود:
+          - `Divan-Emtiaz-Bazaar-v{os.environ['VERSION']}.apk` برای کافه‌بازار (پرداخت با بازار)
+          - `Divan-Emtiaz-Myket-v{os.environ['VERSION']}.apk` برای مایکت (پرداخت با مایکت)
+          - `Divan-Emtiaz-Web-Installer.zip` سرور اشتراک و پنل مدیریت برای هاست
+          هر دو APK امضای انتشار دارند و روی نسخهٔ قبلی نصب می‌شوند؛ داده‌ها حفظ می‌شوند.
 
           تازه‌ها:
           {notes}
@@ -97,16 +119,20 @@ jobs:
         with:
           name: Divan-Emtiaz-v${{ env.VERSION }}
           path: |
-            Divan-Emtiaz-v${{ env.VERSION }}.apk
+            Divan-Emtiaz-Bazaar-v${{ env.VERSION }}.apk
+            Divan-Emtiaz-Myket-v${{ env.VERSION }}.apk
             Divan-Emtiaz-Web-v${{ env.VERSION }}.html
+            Divan-Emtiaz-Web-Installer.zip
             SHA256SUMS.txt
 
       - name: Verify release signature
         if: env.RELEASE_SIGNED == 'true'
         run: |
           APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
-          "$APKSIGNER" verify --print-certs "Divan-Emtiaz-v$VERSION.apk" | tee cert.txt
-          if grep -qi "CN=Android Debug" cert.txt; then echo "::error::APK is debug-signed"; exit 1; fi
+          for STORE in Bazaar Myket; do
+            "$APKSIGNER" verify --print-certs "Divan-Emtiaz-$STORE-v$VERSION.apk" | tee cert.txt
+            if grep -qi "CN=Android Debug" cert.txt; then echo "::error::$STORE APK is debug-signed"; exit 1; fi
+          done
 
       - name: Publish unsigned build for re-signing
         if: env.RELEASE_SIGNED != 'true' && github.event_name == 'workflow_dispatch'
@@ -120,7 +146,8 @@ jobs:
           body: |
             این فایل با کلید دیباگ امضا شده و برای کافه‌بازار قابل قبول نیست؛ فقط برای امضای مجدد با کلید انتشار است.
           files: |
-            Divan-Emtiaz-v${{ env.VERSION }}.apk
+            Divan-Emtiaz-Bazaar-v${{ env.VERSION }}.apk
+            Divan-Emtiaz-Myket-v${{ env.VERSION }}.apk
           overwrite_files: true
 
       - name: Publish GitHub Release
@@ -132,8 +159,10 @@ jobs:
           name: دیوان امتیاز سلطنتی v${{ env.VERSION }}
           body_path: release-notes.md
           files: |
-            Divan-Emtiaz-v${{ env.VERSION }}.apk
+            Divan-Emtiaz-Bazaar-v${{ env.VERSION }}.apk
+            Divan-Emtiaz-Myket-v${{ env.VERSION }}.apk
             Divan-Emtiaz-Web-v${{ env.VERSION }}.html
+            Divan-Emtiaz-Web-Installer.zip
             SHA256SUMS.txt
           overwrite_files: true
           make_latest: true

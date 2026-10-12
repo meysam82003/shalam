@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- Only for the optional Pro subscription, plans and ads; every game works offline. -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <!-- Only for recording the narrator's own voice for a mafia cue; asked when the narrator taps «ضبط». -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
@@ -20,6 +23,17 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- Store and server of this build (filled by the bazaar / myket flavor). -->
+        <meta-data android:name="divan.store" android:value="${divanStore}" />
+        <meta-data android:name="divan.api" android:value="${divanApi}" />
+        <meta-data android:name="divan.licenseKey" android:value="${divanLicenseKey}" />
+        <meta-data android:name="divan.myketKey" android:value="${divanMyketKey}" />
+        <meta-data android:name="divan.tapsellAppId" android:value="${divanTapsell}" />
+        <!-- The ad network must never start by itself: it is started in code, only for free users. -->
+        <provider
+            android:name="ir.tapsell.mediation.core.internal.init.Initializer"
+            android:authorities="${applicationId}.tapsell-init"
+            tools:node="remove" />
         <provider
             android:name=".ShareProvider"
             android:authorities="${applicationId}.share"

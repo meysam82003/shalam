@@ -69,6 +69,15 @@ class SettingsScreen(host: MainActivity, private var tab: Int = TAB_GENERAL) : S
 
     private fun general(parent: LinearLayout) {
         val g = settings.general
+        parent.addView(kit.section("حساب و اشتراک", RoyalIcon.CROWN))
+        val rows = mutableListOf(
+            kit.listRow(kit.iconChip(RoyalIcon.CROWN), "دیوان Pro", if (ProState.isPro) "فعال؛ بدون تبلیغ" else "بدون تبلیغ و با همهٔ قابلیت‌ها") { host.push(ProScreen(host)) },
+            kit.listRow(kit.iconChip(RoyalIcon.USER), "اشتراک من", if (ProState.loggedIn) "حساب ${ProState.username}" else "ورود یا ساخت حساب (اختیاری)") { host.push(SubscriptionScreen(host)) }
+        )
+        if (!ProState.isPro && AdEngine.rewardedAvailable()) rows += kit.listRow(kit.iconChip(RoyalIcon.PLAY), "یک ساعت بدون تبلیغ", "با تماشای یک ویدئوی کوتاه (اختیاری)") {
+            AdEngine.showRewarded(this) { ok -> kit.toast(if (ok) "تا یک ساعت تبلیغی نمایش داده نمی‌شود" else "ویدئو کامل نشد") ; host.refresh() }
+        }
+        parent.addView(kit.listGroup(rows))
         parent.addView(kit.section("ظاهر برنامه", RoyalIcon.STAR))
         parent.addView(themeGrid(this), kit.spaced(8))
         parent.addView(kit.section("تجربهٔ برنامه", RoyalIcon.SETTINGS))
@@ -97,6 +106,7 @@ class SettingsScreen(host: MainActivity, private var tab: Int = TAB_GENERAL) : S
         parent.addView(kit.section("پشتیبان‌گیری", RoyalIcon.SAVE))
         parent.addView(kit.button("پشتیبان‌گیری و بازگردانی همهٔ داده‌ها", ButtonKind.SECONDARY, RoyalIcon.SAVE, 44) { host.push(BackupScreen(host)) })
         resetButton(parent, "عمومی") { it.copy(general = GeneralSettings()) }
+        AdEngine.slot(this, "settings_bottom")?.let { parent.addView(it) }
     }
 
     private fun shalam(parent: LinearLayout) {

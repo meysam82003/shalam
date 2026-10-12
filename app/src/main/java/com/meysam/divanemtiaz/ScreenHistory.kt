@@ -41,7 +41,10 @@ class ResultScreen(host: MainActivity, private val session: GameSession) : Scree
                 addView(kit.horizontal().apply {
                     addView(kit.weight(kit.button(if (menfiDone) "ویرایش دست‌ها" else "ادامهٔ بازی", ButtonKind.SECONDARY, if (menfiDone) RoyalIcon.EDIT else RoyalIcon.UNDO, 48) { reopen() }))
                     addView(kit.hgap(8))
-                    addView(kit.weight(kit.button("خانه", ButtonKind.SECONDARY, RoyalIcon.HOME, 48) { host.resetTo(HomeScreen(host)) }))
+                    addView(kit.weight(kit.button("خانه", ButtonKind.SECONDARY, RoyalIcon.HOME, 48) {
+                        host.resetTo(HomeScreen(host))
+                        if (session.finished) host.current?.let { AdEngine.maybeInterstitial(it) }
+                    }))
                 })
             }
         ) {
@@ -116,6 +119,8 @@ class ResultScreen(host: MainActivity, private val session: GameSession) : Scree
             session.rounds.forEachIndexed { index, round ->
                 addView(roundRow(index, session.sides.indices.map { kit.signed(round.score(it)) }, session.sides.indices.map { scoreColor(round.score(it)) }, describeRound(session, round), null))
             }
+            // Only on a finished game, below everything: the play is over, nothing is waiting for input.
+            if (session.finished) AdEngine.slot(this@ResultScreen, "result_bottom")?.let { addView(kit.gap(8)); addView(it) }
         }
     }
 
@@ -245,7 +250,9 @@ class HistoryScreen(host: MainActivity) : Screen(host) {
             }
             // Grouped by day: today, yesterday, then each date.
             var lastDay = ""
+            var count = 0
             shown.forEach { e ->
+                if (count++ == 3) AdEngine.slot(this@HistoryScreen, "history_inline")?.let { addView(it) }
                 val day = dayLabel(e.time)
                 if (day != lastDay) {
                     lastDay = day

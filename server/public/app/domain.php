@@ -148,6 +148,7 @@ final class Sessions
             'platform' => mb_substr((string)($device['platform'] ?? 'android'), 0, 20),
             'app_version' => mb_substr((string)($device['app_version'] ?? ''), 0, 20) ?: null,
             'store' => in_array($device['store'] ?? '', ['bazaar', 'myket', 'web'], true) ? $device['store'] : null,
+            'device_id' => Devices::clean($device['device_id'] ?? null),
             'ip' => Http::ip(), 'created_at' => Clock::sql($now), 'last_seen_at' => Clock::sql($now),
             'expires_at' => Clock::sql($now + Users::SESSION_DAYS * 86400),
         ]);
@@ -357,9 +358,21 @@ final class Entitlements
      * subscription renews) and to a configurable offline window; lifetime access lasts a long window
      * and is refreshed on every sync, so a refund still reaches the device later.
      */
-    public static function certificate(array $user, ?string $store = null): array
+    public static function certificate(array $user, ?string $store = null, ?array $session = null): array
     {
         $sum = self::summary((int)$user['id'], $store);
+        // One phone per subscription: Pro is signed only for the phone the subscription is bound to.
+        $device = $session['device_id'] ?? null;
+        $conflict = null;
+        if ($sum['pro'] && Devices::enabled()) {
+            $bound = Devices::boundTo($user, $device, $session['device_name'] ?? null);
+            if (!$bound['here']) {
+                $conflict = ['name' => $bound['name'], 'since' => $bound['since']];
+                $sum['pro_elsewhere'] = true;
+            }
+        }
+        $sum['this_device'] = $conflict === null;
+        $sum['device_conflict'] = $conflict;
         $now = Clock::now();
         $offlineDays = (int)Settings::get('offline_days', 21);
         $graceDays = (int)Settings::get('renew_grace_days', 3);
@@ -367,24 +380,80 @@ final class Entitlements
         $grace = $sum['expires_at'] === null ? null : $sum['expires_at'] + ($renewing ? $graceDays * 86400 : 0);
         $offlineUntil = $sum['lifetime'] ? $now + (int)Settings::get('lifetime_offline_days', 365) * 86400
             : ($sum['pro'] ? min((int)$grace, $now + $offlineDays * 86400) : $now + $offlineDays * 86400);
+        // A subscription that can move between phones is checked online more often.
+        if (Devices::enabled() && $sum['pro'] && !$sum['lifetime']) $offlineUntil = min($offlineUntil, $now + min($offlineDays, (int)Settings::get('device_offline_days', 7)) * 86400);
+        if (Devices::enabled() && $sum['lifetime']) $offlineUntil = min($offlineUntil, $now + (int)Settings::get('device_offline_days_lifetime', 30) * 86400);
         $payload = [
             'v' => 1,
             'kid' => Crypto::keyId(),
             'uid' => (int)$user['id'],
             'user' => $user['username'],
-            'pro' => $sum['pro'],
+            'pro' => $sum['pro'] && $conflict === null,
             'lifetime' => $sum['lifetime'],
             'plan' => $sum['plan'],
             'exp' => $sum['expires_at'],
             'grace' => $grace,
             'iat' => $now,
             'offline_until' => $offlineUntil,
-            'features' => Features::forUser((int)$user['id'], $sum['pro']),
+            'features' => Features::forUser((int)$user['id'], $sum['pro'] && $conflict === null),
             'store' => $store,
             'policy' => 1,
+            'device' => $device,
+            'device_conflict' => $conflict,
         ];
         $body = Crypto::b64u(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
         return ['certificate' => $body . '.' . Crypto::b64u(Crypto::sign($body)), 'summary' => $sum, 'server_time' => $now];
+    }
+}
+
+// ================================================================ one phone per subscription
+final class Devices
+{
+    public static function enabled(): bool { return (bool)Settings::get('single_device', true); }
+
+    /** The app sends a SHA-256 of its stable device identifier; nothing else is accepted. */
+    public static function clean($id): ?string
+    {
+        $id = strtolower(trim((string)$id));
+        return preg_match('/^[0-9a-f]{32,64}$/', $id) ? $id : null;
+    }
+
+    /** Binds the subscription to this phone when it is not bound yet; tells whether this phone holds it. */
+    public static function boundTo(array $user, ?string $device, ?string $name): array
+    {
+        $u = Db::one('SELECT pro_device, pro_device_name, pro_device_at FROM {users} WHERE id = ?', [$user['id']]);
+        if ($u === null) return ['here' => false, 'name' => null, 'since' => null];
+        if ($u['pro_device'] === null && $device !== null) {
+            self::bind((int)$user['id'], $device, $name, 'first_use');
+            return ['here' => true, 'name' => $name, 'since' => Clock::now()];
+        }
+        return ['here' => $device !== null && hash_equals((string)$u['pro_device'], $device), 'name' => $u['pro_device_name'], 'since' => Clock::ts($u['pro_device_at'])];
+    }
+
+    public static function bind(int $userId, string $device, ?string $name, string $why): void
+    {
+        Db::update('users', ['pro_device' => $device, 'pro_device_name' => mb_substr((string)$name, 0, 80) ?: null, 'pro_device_at' => Clock::sql()], 'id = ?', [$userId]);
+        Audit::log('system', null, 'device_bound', 'user', $userId, $why, null, ['device' => substr($device, 0, 12), 'name' => $name]);
+    }
+
+    /** «انتقال اشتراک به این گوشی»: needs the password; limited per 30 days. */
+    public static function transfer(array $user, array $session, string $password): void
+    {
+        if (!password_verify($password, $user['password_hash'])) throw new ApiError('bad_credentials', 'رمز عبور درست نیست.', 401);
+        $device = $session['device_id'] ?? null;
+        if ($device === null) throw new ApiError('no_device', 'شناسهٔ این گوشی دریافت نشد؛ برنامه را به‌روز کنید.');
+        $u = Users::byId((int)$user['id']);
+        if ($u['pro_device'] !== null && hash_equals((string)$u['pro_device'], $device)) return;
+        $since = Clock::ts($u['device_moves_since']);
+        $moves = ($since !== null && $since > Clock::now() - 30 * 86400) ? (int)$u['device_moves'] : 0;
+        $limit = (int)Settings::get('device_moves_limit', 3);
+        if ($moves >= $limit) {
+            Audit::security('device_transfer_blocked', (int)$u['id'], $u['username'], "moves=$moves");
+            throw new ApiError('transfer_limit', 'سقف انتقال اشتراک (' . $limit . ' بار در ۳۰ روز) پر شده است. برای انتقال بیشتر با پشتیبانی تماس بگیرید.', 429);
+        }
+        Db::update('users', ['device_moves' => $moves + 1, 'device_moves_since' => $moves === 0 ? Clock::sql() : $u['device_moves_since']], 'id = ?', [$u['id']]);
+        self::bind((int)$u['id'], $device, $session['device_name'] ?? null, 'transfer');
+        Audit::security('device_transfer', (int)$u['id'], $u['username'], 'to ' . ($session['device_name'] ?? '?'));
     }
 }
 
