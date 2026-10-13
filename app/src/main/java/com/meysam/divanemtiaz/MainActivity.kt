@@ -213,6 +213,27 @@ class MainActivity : Activity() {
             stack += SplashScreen(this)
             render(animate = false)
         }
+        Notices.channels(this)
+        if (Notices.offersWanted(this) || Notices.reminders(this)) Notices.schedule(this)
+        // Opened from a notification or a payment page: act once the first page is on screen.
+        if (intent?.data != null || intent?.hasExtra(Notices.EXTRA_TARGET) == true) post(SplashScreen.LOGO_MS + 500) { openFromIntent(intent) }
+    }
+
+    /** «Back to the app» link of the payment page (divan://pay/…): just shows the Pro page, which asks the server. */
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        openFromIntent(intent)
+    }
+
+    private fun openFromIntent(intent: android.content.Intent?) {
+        val data = intent?.data
+        if (data != null && data.scheme == "divan" && data.host == "pay" && ProState.pendingOrder != null) {
+            if (current !is ProScreen) push(ProScreen(this)) else current?.onShow()
+            return
+        }
+        // A tapped notification: opens an allowed in-app page only.
+        Notices.opened(this, intent)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {

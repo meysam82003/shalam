@@ -284,28 +284,31 @@ object AdEngine {
         }
     }
 
+    /** Opens one of the allowed in-app destinations (ads and notifications); anything unknown opens the Pro page. */
+    fun openInApp(host: MainActivity, url: String) {
+        val path = url.removePrefix("divan://").trim('/')
+        when {
+            path == "pro" -> host.push(ProScreen(host))
+            path.startsWith("plan/") -> host.push(ProScreen(host, focusPlan = path.removePrefix("plan/")))
+            path == "subscription" -> host.push(SubscriptionScreen(host))
+            path == "rewarded" -> host.current?.let { screen -> showRewarded(screen) { ok -> screen.kit.toast(if (ok) "تا مدتی تبلیغی نمایش داده نمی‌شود" else "ویدئو کامل نشد") } }
+            path == "screen/mafia" -> host.push(MafiaHomeScreen(host))
+            path == "screen/panto" -> host.push(PantoHomeScreen(host))
+            path == "screen/spy" -> host.push(SpyHomeScreen(host))
+            path == "screen/leagues" -> host.push(LeagueListScreen(host))
+            path == "screen/themes" -> host.push(ThemeScreen(host))
+            path == "screen/settings" -> host.push(SettingsScreen(host))
+            path == "" || path == "home" -> {}
+            else -> host.push(ProScreen(host))
+        }
+    }
+
     private fun open(screen: Screen, ad: DirectAd, key: String) {
         event("click", key, ad.id)
         val url = ad.target ?: return
         val host = screen.host
         // In-app destinations chosen in the panel: divan://pro, divan://plan/m3, divan://subscription, divan://screen/…
-        if (url.startsWith("divan://")) {
-            val path = url.removePrefix("divan://").trim('/')
-            when {
-                path == "pro" -> host.push(ProScreen(host))
-                path.startsWith("plan/") -> host.push(ProScreen(host, focusPlan = path.removePrefix("plan/")))
-                path == "subscription" -> host.push(SubscriptionScreen(host))
-                path == "rewarded" -> showRewarded(screen) { ok -> screen.kit.toast(if (ok) "تا مدتی تبلیغی نمایش داده نمی‌شود" else "ویدئو کامل نشد") }
-                path == "screen/mafia" -> host.push(MafiaHomeScreen(host))
-                path == "screen/panto" -> host.push(PantoHomeScreen(host))
-                path == "screen/spy" -> host.push(SpyHomeScreen(host))
-                path == "screen/leagues" -> host.push(LeagueListScreen(host))
-                path == "screen/themes" -> host.push(ThemeScreen(host))
-                path == "screen/settings" -> host.push(SettingsScreen(host))
-                else -> host.push(ProScreen(host))
-            }
-            return
-        }
+        if (url.startsWith("divan://")) { openInApp(host, url); return }
         runCatching { host.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
     }
 

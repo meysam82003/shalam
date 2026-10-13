@@ -371,6 +371,62 @@ final class Migrations
                 "UPDATE {plans} SET store_price_bazaar = base_price_toman WHERE store_price_bazaar IS NULL OR store_price_bazaar <= 0",
                 "UPDATE {plans} SET store_price_myket = base_price_toman WHERE store_price_myket IS NULL OR store_price_myket <= 0",
             ],
+            // 5.4: promotional notifications in the phone's notification bar (only with the player's consent).
+            6 => [
+                "CREATE TABLE IF NOT EXISTS {notices} (
+                    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                    title VARCHAR(80) NOT NULL,
+                    body VARCHAR(300) NOT NULL,
+                    media_id INT UNSIGNED NULL,
+                    target VARCHAR(300) NULL,
+                    audience VARCHAR(12) NOT NULL DEFAULT 'free',
+                    stores VARCHAR(40) NOT NULL DEFAULT 'bazaar,myket',
+                    send_at DATETIME NULL,
+                    ends_at DATETIME NULL,
+                    active TINYINT NOT NULL DEFAULT 1,
+                    canceled_at DATETIME NULL,
+                    shown INT NOT NULL DEFAULT 0,
+                    opened INT NOT NULL DEFAULT 0,
+                    admin_id INT UNSIGNED NULL,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL,
+                    KEY k_due (active, send_at)
+                ) $e",
+                "CREATE TABLE IF NOT EXISTS {notice_events} (
+                    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                    notice_id INT UNSIGNED NOT NULL,
+                    device_hash CHAR(64) NOT NULL,
+                    shown_at DATETIME NOT NULL,
+                    opened_at DATETIME NULL,
+                    UNIQUE KEY uq_once (notice_id, device_hash),
+                    KEY k_device (device_hash, shown_at)
+                ) $e",
+                // 5.4: web payments (site version only); one row per checkout, settled once.
+                "CREATE TABLE IF NOT EXISTS {pay_orders} (
+                    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                    code CHAR(20) NOT NULL,
+                    user_id BIGINT UNSIGNED NOT NULL,
+                    plan_id INT UNSIGNED NOT NULL,
+                    method VARCHAR(32) NOT NULL,
+                    channel VARCHAR(16) NOT NULL,
+                    amount_toman INT NOT NULL,
+                    amount_rial BIGINT NOT NULL,
+                    status VARCHAR(16) NOT NULL,
+                    gateway_ref VARCHAR(80) NULL,
+                    ref_id VARCHAR(80) NULL,
+                    purchase_id BIGINT UNSIGNED NULL,
+                    attempts INT NOT NULL DEFAULT 0,
+                    last_error VARCHAR(300) NULL,
+                    expires_at DATETIME NULL,
+                    paid_at DATETIME NULL,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL,
+                    UNIQUE KEY uq_code (code),
+                    UNIQUE KEY uq_ref (method, gateway_ref),
+                    KEY k_user (user_id),
+                    KEY k_status (status, created_at)
+                ) $e",
+            ],
         ];
     }
 

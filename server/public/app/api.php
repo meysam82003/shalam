@@ -62,7 +62,7 @@ final class Api
     private static function store(array $in = []): string
     {
         $s = (string)($in['store'] ?? $_GET['store'] ?? '');
-        return in_array($s, Plans::STORES, true) ? $s : 'bazaar';
+        return in_array($s, Plans::STORES, true) || $s === 'direct' ? $s : 'bazaar';
     }
 
     /** Everything the app needs after login or on refresh. */
@@ -103,6 +103,42 @@ final class Api
                     'support_text' => Settings::get('support_text', ''),
                     'privacy_url' => App::baseUrl() . '/index.php?p=privacy',
                 ];
+            }
+
+            case 'v1/pay/methods': {
+                // Only what this app version may show now; never a list of switched-off methods.
+                $store = self::store($in);
+                $plan = isset($in['plan']) ? Plans::byCode((string)$in['plan']) : null;
+                return ['methods' => array_map(fn($m) => array_diff_key($m, ['sort' => 1]), PayRegistry::methodsFor($store, $plan))];
+            }
+
+            case 'v1/pay/order': {
+                self::post($method);
+                $u = self::user();
+                return PayOrders::create($u, (string)($in['method'] ?? ''), (string)($in['plan'] ?? ''), self::store($in));
+            }
+
+            case 'v1/pay/status': {
+                $u = self::user();
+                $o = PayOrders::byCode((string)($in['order'] ?? ''));
+                if ($o === null || (int)$o['user_id'] !== (int)$u['id']) throw new ApiError('not_found', 'سفارش پیدا نشد.', 404);
+                if (in_array($o['status'], ['pending', 'failed'], true) && RateLimit::hit('paystatus:' . $o['id'], 30, 3600)) $o = PayOrders::settle($o);
+                return ['order' => PayOrders::publicView($o)] + ($o['status'] === 'paid' ? self::account(Users::byId((int)$u['id'])) : []);
+            }
+
+            case 'v1/notices': {
+                $u = self::optionalUser();
+                $store = in_array((string)($in['store'] ?? ''), array_keys(Notices::STORES), true) ? (string)$in['store'] : 'bazaar';
+                if (!RateLimit::hit('notices:' . Http::ip(), 120, 3600)) throw new ApiError('rate_limited', 'درخواست زیاد است.', 429);
+                $pro = $u !== null && Entitlements::summary((int)$u['id'], $store === 'direct' ? null : $store)['pro'];
+                return ['notices' => Notices::due((string)($in['device'] ?? ''), $store, $pro, ($in['pro_optin'] ?? '') === '1')];
+            }
+
+            case 'v1/notices/event': {
+                self::post($method);
+                if (!RateLimit::hit('notice_event:' . Http::ip(), 240, 3600)) throw new ApiError('rate_limited', 'درخواست زیاد است.', 429);
+                Notices::event((int)($in['id'] ?? 0), (string)($in['device'] ?? ''), (string)($in['event'] ?? ''));
+                return ['ok' => true];
             }
 
             case 'v1/auth/register': {

@@ -26,8 +26,8 @@ android {
         applicationId 'com.meysam.divanemtiaz'
         minSdk 21
         targetSdk 35
-        versionCode 21
-        versionName '5.3.0'
+        versionCode 22
+        versionName '5.4.0'
         manifestPlaceholders = basePlaceholders
 
         testInstrumentationRunner 'android.test.InstrumentationTestRunner'
@@ -70,6 +70,13 @@ android {
             dimension 'store'
             manifestPlaceholders = basePlaceholders + [divanStore: 'myket', divanMyketKey: divanMyketKey]
         }
+        // Downloaded from the site only (never uploaded to a store): pays through the web gateways of the panel.
+        // A separate package, so it never replaces or updates a store install.
+        direct {
+            dimension 'store'
+            applicationIdSuffix '.site'
+            manifestPlaceholders = basePlaceholders + [divanStore: 'direct']
+        }
     }
 
     // The Tapsell ad network is compiled in only when an app key is given; otherwise no ad SDK is in the APK at all.
@@ -97,9 +104,9 @@ dependencies {
     testImplementation 'org.json:json:20240303'
 }
 
-// `testReleaseUnitTest` (the documented release check) runs the unit tests of both store builds.
+// `testReleaseUnitTest` (the documented release check) runs the unit tests of every build.
 afterEvaluate {
     if (tasks.findByName('testReleaseUnitTest') == null) {
-        tasks.register('testReleaseUnitTest') { dependsOn 'testBazaarReleaseUnitTest', 'testMyketReleaseUnitTest' }
+        tasks.register('testReleaseUnitTest') { dependsOn 'testBazaarReleaseUnitTest', 'testMyketReleaseUnitTest', 'testDirectReleaseUnitTest' }
     }
 }

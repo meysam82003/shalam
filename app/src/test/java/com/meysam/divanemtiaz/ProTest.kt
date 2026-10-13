@@ -51,6 +51,40 @@ class ProTest {
         val lic = License.parse(cert(payload(now, lifetime = true, exp = null, offline = now + 365 * 86400)), der, 7)
         assertTrue(lic.proAt(now + 300 * 86400))
         assertNull(lic.daysLeft(now))
+        // 5.4: lifetime never depends on the offline window, even with a certificate from an older server.
+        assertTrue(lic.proAt(now + 20L * 365 * 86400))
+        assertFalse(lic.needsSync(now + 20L * 365 * 86400))
+        assertFalse(lic.offlineLimitShown())
+        val short = License.parse(cert(payload(now, lifetime = true, exp = null, offline = now + 7 * 86400).put("device", "aa11")), der, 7, "aa11")
+        assertTrue(short.proAt(now + 400 * 86400))
+        // …but only on the phone it was signed for.
+        assertFalse(License.parse(cert(payload(now, lifetime = true, exp = null, offline = 4102444800L).put("device", "aa11")), der, 7, "bb22").proAt(now))
+        // A revoked lifetime (server says pro=false) gives nothing.
+        assertFalse(License.parse(cert(payload(now, pro = false, lifetime = true, exp = null)), der, 7).proAt(now))
+    }
+
+    @Test fun timedPlansEndExactly() {
+        val now = 1_800_000_000L
+        for (days in listOf(1, 30, 90, 180)) {
+            val end = now + days * 86400L
+            // Offline window up to the very end (server: min(end, now + offline days)).
+            val lic = License.parse(cert(payload(now, exp = end, offline = end)), der, 7)
+            assertTrue("$days days: Pro just before the end", lic.proAt(end - 1))
+            assertFalse("$days days: no Pro at the end", lic.proAt(end))
+            assertFalse("$days days: no Pro after the end", lic.proAt(end + 86400))
+            assertFalse(lic.needsSync(end + 1))
+            assertEquals(days, lic.daysLeft(now))
+            assertFalse(lic.offlineLimitShown())
+        }
+        // Shorter offline window: the player must connect once; reconnecting never moves the paid end.
+        val lic = License.parse(cert(payload(now, exp = now + 90 * 86400L, offline = now + 7 * 86400L)), der, 7)
+        assertTrue(lic.offlineLimitShown())
+        assertFalse(lic.proAt(now + 7 * 86400L))
+        assertTrue(lic.needsSync(now + 7 * 86400L))
+        // Grace exists only for self-renewing store subscriptions (server sends grace = exp otherwise).
+        val renewing = License.parse(cert(payload(now, exp = now + 30 * 86400L, offline = now + 33 * 86400L).put("grace", now + 33 * 86400L)), der, 7)
+        assertTrue(renewing.proAt(now + 31 * 86400L))
+        assertFalse(renewing.proAt(now + 33 * 86400L))
     }
 
     @Test fun forgedOrForeignCertificatesAreRejected() {
@@ -92,6 +126,17 @@ class ProTest {
         // The server's time moves the anchor forward.
         clock.anchor(real / 1000 + 5000, 6_000)
         assertTrue(clock.now(real, 6_000) >= real / 1000 + 5000)
+        // Phone off and the clock set back after every boot: time still never goes backwards, and moves on with uptime.
+        val before = clock.now(real, 6_000)
+        val afterBoot = clock.now(real - 90L * 86400_000, 1_000)
+        assertTrue(afterBoot >= before)
+        assertTrue(clock.now(real - 90L * 86400_000, 3_601_000) >= afterBoot + 3600)
+        // An expired 30-day pass stays expired whatever the device clock says.
+        val now = real / 1000
+        val lic = License.parse(cert(payload(now, exp = now + 30 * 86400L, offline = now + 30 * 86400L)), der, 7)
+        val later = clock.now(real + 31L * 86400_000, 10_000_000)
+        assertFalse(lic.proAt(later))
+        assertFalse(lic.proAt(clock.now(real, 10_100_000)))
     }
 
     @Test fun adFrequencyRules() {

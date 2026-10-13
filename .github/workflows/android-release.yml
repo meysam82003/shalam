@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish a GitHub Release and the web page (only with the owner''s approval)'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -136,7 +141,7 @@ jobs:
           done
 
       - name: Publish unsigned build for re-signing
-        if: env.RELEASE_SIGNED != 'true' && github.event_name == 'workflow_dispatch'
+        if: env.RELEASE_SIGNED != 'true' && github.event_name == 'workflow_dispatch' && inputs.publish == true
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-v${{ env.VERSION }}
@@ -151,8 +156,20 @@ jobs:
             Divan-Emtiaz-Myket-v${{ env.VERSION }}.apk
           overwrite_files: true
 
+      - name: Keep the build on the ci-builds branch (no release, nothing published)
+        if: github.event_name == 'workflow_dispatch' && inputs.publish != true
+        run: |
+          mkdir -p "$RUNNER_TEMP/cib"
+          cp Divan-Emtiaz-Bazaar-v$VERSION.apk Divan-Emtiaz-Myket-v$VERSION.apk "$RUNNER_TEMP/cib/"
+          cp app/build/outputs/apk/direct/release/app-direct-release.apk "$RUNNER_TEMP/cib/Divan-Emtiaz-Site-v$VERSION.apk"
+          cd "$RUNNER_TEMP/cib"
+          echo "Build of ${GITHUB_SHA} — debug-signed, NOT a release; re-sign before any distribution." > README.txt
+          git init -q && git checkout -q -b ci-builds && git add . 
+          git -c user.name=ci -c user.email=ci@localhost commit -qm "Build v$VERSION (${GITHUB_SHA}) — not a release"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" ci-builds
+
       - name: Publish GitHub Release
-        if: env.RELEASE_SIGNED == 'true' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+        if: env.RELEASE_SIGNED == 'true' && ((github.event_name == 'workflow_dispatch' && inputs.publish == true) || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.VERSION }}
@@ -170,7 +187,7 @@ jobs:
 
   publish-web:
     needs: build-release
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    if: (github.event_name == 'workflow_dispatch' && inputs.publish == true) || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     continue-on-error: true
     environment:

@@ -40,7 +40,7 @@ object StoreInfo {
     var tapsellAppId: String = ""; private set
     private var loaded = false
 
-    val storeName: String get() = if (storeId == "myket") "مایکت" else "کافه‌بازار"
+    val storeName: String get() = when (storeId) { "myket" -> "مایکت"; "direct" -> "درگاه بانکی"; else -> "کافه‌بازار" }
 
     fun load(context: Context) {
         if (loaded) return
@@ -49,7 +49,7 @@ object StoreInfo {
             @Suppress("DEPRECATION")
             context.packageManager.getApplicationInfo(context.packageName, PackageManager.GET_META_DATA).metaData
         }.getOrNull() ?: return
-        meta.getString("divan.store")?.takeIf { it == "bazaar" || it == "myket" }?.let { storeId = it }
+        meta.getString("divan.store")?.takeIf { it == "bazaar" || it == "myket" || it == "direct" }?.let { storeId = it }
         meta.getString("divan.api")?.takeIf { it.startsWith("https://") }?.let { apiBase = it }
         pinnedKey = meta.getString("divan.licenseKey").orEmpty().trim()
         myketKey = meta.getString("divan.myketKey").orEmpty().trim()
@@ -120,13 +120,19 @@ data class License(
     /** Phone the subscription is active on, when it is not this one. */
     val elsewhere: String? = null
 ) {
-    /** Pro right now: signed, not past its offline window and (unless lifetime) not past the paid end + grace. */
-    fun proAt(now: Long): Boolean = valid && pro && now < offlineUntil && (lifetime || (grace ?: expiresAt ?: 0L) > now)
+    /**
+     * Pro right now. Lifetime: signed for this phone, nothing else (no end, no check-in needed).
+     * Timed: before the paid end (plus grace only for self-renewing store subscriptions) and within the offline window.
+     */
+    fun proAt(now: Long): Boolean = valid && pro && (lifetime || (now < offlineUntil && (grace ?: expiresAt ?: 0L) > now))
 
     fun daysLeft(now: Long): Int? = if (lifetime || expiresAt == null) null else maxOf(0, ((expiresAt - now + 86399) / 86400).toInt())
 
     /** Offline window ran out: the app must reach the server once to continue Pro. */
-    fun needsSync(now: Long): Boolean = valid && pro && now >= offlineUntil && (lifetime || (grace ?: expiresAt ?: 0L) > now)
+    fun needsSync(now: Long): Boolean = valid && pro && !lifetime && now >= offlineUntil && (grace ?: expiresAt ?: 0L) > now
+
+    /** The offline window ends before the paid end: worth telling the player when to connect. */
+    fun offlineLimitShown(): Boolean = !lifetime && expiresAt != null && offlineUntil < (grace ?: expiresAt)
 
     companion object {
         val NONE = License(false, "none")
@@ -213,6 +219,13 @@ object Api {
             val r = runCatching { http(method, route, body, token) }
             main.post { deliver(r.getOrNull(), r.exceptionOrNull(), done) }
         }
+    }
+
+    /** For background jobs only (never on the main thread): the «data» of the answer, or null. */
+    fun blocking(method: String, route: String, body: JSONObject?, token: String?): JSONObject? {
+        val json = runCatching { transport?.invoke(method, route, body, token) ?: http(method, route, body, token) }.getOrNull() ?: return null
+        json.optLong("server_time").takeIf { it > 0 }?.let { ProState.anchorClock(it) }
+        return if (json.optBoolean("ok")) json.optJSONObject("data") ?: JSONObject() else null
     }
 
     private fun deliver(json: JSONObject?, error: Throwable?, done: (JSONObject?, ApiError?) -> Unit) {
@@ -367,6 +380,9 @@ object ProState {
     var certificate: String? get() = getS("cert"); set(v) = putS("cert", v)
     var publicKey: String? get() = getS("pubkey"); set(v) = putS("pubkey", v)
     var configJson: String? get() = getS("config"); set(v) = putS("config", v)
+
+    /** Web payment waiting for the server's answer (site version). */
+    var pendingOrder: String? get() = getS("pending_order")?.takeIf { it.isNotBlank() }; set(v) = putS("pending_order", v ?: "")
 
     /** SKU → price text as Bazaar or Myket shows it. */
     var storePrices: Map<String, String>
@@ -612,6 +628,57 @@ object ProSync {
             if (data != null) { ProState.applyAccount(data); refreshConfig(force = true) }
             done(data?.optJSONObject("promo"), err)
         }
+
+    // ---------------------------------------------------------------- payment methods (panel-controlled)
+    /** A way to pay that the server says is allowed and ready for this app version and plan. */
+    class PayMethod(val id: String, val kind: String, val title: String, val description: String, val hosts: Set<String>)
+
+    /** Hosts a web payment may ever open, whatever the server says (the server can only narrow this). */
+    val WEB_PAY_HOSTS = setOf("payment.zarinpal.com", "sandbox.zarinpal.com", "www.zarinpal.com")
+
+    /**
+     * Methods to show for a plan. An older server without the list keeps the store's own billing (store builds).
+     * null + error only when nothing can be shown.
+     */
+    fun methods(plan: String, done: (List<PayMethod>?, ApiError?) -> Unit) {
+        Api.call("GET", "v1/pay/methods", JSONObject().put("store", StoreInfo.storeId).put("plan", plan), ProState.token) { data, err ->
+            if (data == null) {
+                if (StoreInfo.storeId != "direct" && err?.code == "not_found") done(listOf(PayMethod(StoreInfo.storeId, "store", StoreInfo.storeName, "", emptySet())), null)
+                else done(null, err)
+                return@call
+            }
+            val a = data.optJSONArray("methods") ?: JSONArray()
+            done((0 until a.length()).mapNotNull { i ->
+                val m = a.optJSONObject(i) ?: return@mapNotNull null
+                val hosts = m.optJSONArray("hosts")?.let { h -> (0 until h.length()).map { h.optString(it) }.toSet() }.orEmpty()
+                PayMethod(m.optString("id"), m.optString("kind"), m.optString("title"), m.optString("description"), hosts)
+            }.filter { (it.kind == "store" && it.id == StoreInfo.storeId) || (it.kind == "web" && StoreInfo.storeId == "direct") }, null)
+        }
+    }
+
+    /** Opens a web payment: the order and its price come from the server; only known gateway pages are opened. */
+    fun webPay(activity: Activity, method: PayMethod, plan: PlanOffer, done: (ApiError?) -> Unit) {
+        Api.call("POST", "v1/pay/order", JSONObject().put("method", method.id).put("plan", plan.code).put("store", StoreInfo.storeId), ProState.token) { data, err ->
+            if (data == null) { done(err); return@call }
+            val url = data.optString("url")
+            val host = runCatching { android.net.Uri.parse(url).host?.lowercase() }.getOrNull()
+            if (!url.startsWith("https://") || host == null || host !in WEB_PAY_HOSTS || host !in method.hosts) { done(ApiError("bad_url", "نشانی پرداخت معتبر نیست.")); return@call }
+            ProState.pendingOrder = data.optString("order")
+            val ok = runCatching { activity.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))) }.isSuccess
+            done(if (ok) null else ApiError("browser", "مرورگری برای باز کردن صفحهٔ پرداخت پیدا نشد."))
+        }
+    }
+
+    /** After the buyer comes back: the server asks the gateway again; the browser's return proves nothing. */
+    fun payStatus(order: String, done: (String?, ApiError?) -> Unit) {
+        Api.call("GET", "v1/pay/status", JSONObject().put("order", order).put("store", StoreInfo.storeId), ProState.token) { data, err ->
+            if (data == null) { done(null, err); return@call }
+            val status = data.optJSONObject("order")?.optString("status")
+            if (status == "paid") { ProState.applyAccount(data); ProState.pendingOrder = null }
+            if (status == "failed" || status == "expired") ProState.pendingOrder = null
+            done(status, null)
+        }
+    }
 
     fun buy(activity: Activity, plan: PlanOffer, promo: String? = null, done: (String?, ApiError?) -> Unit) {
         val billing = Billing.get()

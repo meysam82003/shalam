@@ -197,13 +197,15 @@ final class PaymentBridge
 // ---------------------------------------------------------------- Myket
 /**
  * Myket developer API (server to server, header X-Access-Token from the developer panel):
- *   POST https://developer.myket.ir/api/partners/applications/{package}/purchases/products/{sku}/verify  {"tokenId": "..."}
- *   → {"kind","purchaseTime","developerPayload","purchaseState" (0 = paid),"consumptionState"}
+ *   GET https://developer.myket.ir/api/applications/{package}/purchases/products/{sku}/tokens/{token}  (documented; default)
+ *   or the older POST …/api/partners/applications/{package}/purchases/products/{sku}/verify  {"tokenId": "..."}
+ *   → {"kind","purchaseTime","developerPayload","purchaseState" (0 = successful, 1 = unsuccessful),"consumptionState"}
  * Myket has no subscriptions; timed plans are consumable products that the server turns into periods.
  */
 final class MyketVerifier implements StoreVerifier
 {
     private const BASE = 'https://developer.myket.ir/api/partners/applications/';
+    private const DOC = 'https://developer.myket.ir/api/applications/';
 
     private function token(): string { return Settings::secret('myket_access_token'); }
     private function package(): string { return (string)(Settings::get('myket', [])['package'] ?? 'com.meysam.divanemtiaz'); }
@@ -218,8 +220,14 @@ final class MyketVerifier implements StoreVerifier
         if ($this->viaBridge()) {
             $r = PaymentBridge::store('myket.verify', ['package' => $this->package(), 'sku' => $sku, 'token' => $token]);
         } else {
-            $url = self::BASE . rawurlencode($this->package()) . '/purchases/products/' . rawurlencode($sku) . '/verify';
-            $r = Http::request('POST', $url, ['X-Access-Token: ' . $this->token(), 'Content-Type: application/json', 'Accept: application/json'], json_encode(['tokenId' => $token]));
+            if ((Settings::get('myket', [])['verify'] ?? 'tokens') === 'partners') {
+                $url = self::BASE . rawurlencode($this->package()) . '/purchases/products/' . rawurlencode($sku) . '/verify';
+                $r = Http::request('POST', $url, ['X-Access-Token: ' . $this->token(), 'Content-Type: application/json', 'Accept: application/json'], json_encode(['tokenId' => $token]));
+            } else {
+                // Documented: GET https://developer.myket.ir/api/applications/{package}/purchases/products/{sku}/tokens/{token}
+                $url = self::DOC . rawurlencode($this->package()) . '/purchases/products/' . rawurlencode($sku) . '/tokens/' . rawurlencode($token);
+                $r = Http::request('GET', $url, ['X-Access-Token: ' . $this->token(), 'Accept: application/json']);
+            }
         }
         if ($r['status'] === 0 || $r['status'] >= 500 || $r['status'] === 429) return new StoreVerdict(StoreVerdict::UNAVAILABLE, 'پاسخ مایکت دریافت نشد: ' . ($r['error'] ?: 'HTTP ' . $r['status']));
         $j = json_decode($r['body'], true);
@@ -230,8 +238,6 @@ final class MyketVerifier implements StoreVerifier
         $time = isset($j['purchaseTime']) ? intdiv((int)$j['purchaseTime'], 1000) : null;
         $consumed = isset($j['consumptionState']) ? ((int)$j['consumptionState'] === 1) : null;
         if ($state === 0) return new StoreVerdict(StoreVerdict::VALID, '', $time, null, false, $consumed, $j);
-        // purchaseState 1: the payment was returned (refund) — recorded as a refund, not as a fake receipt.
-        if ($state === 1) return new StoreVerdict(StoreVerdict::REFUNDED, 'مایکت خرید را بازپرداخت‌شده اعلام کرده است.', $time, null, false, $consumed, $j);
         return new StoreVerdict(StoreVerdict::INVALID, 'مایکت خرید را پرداخت‌شده نمی‌داند (purchaseState=' . $state . ').', $time, null, false, $consumed, $j);
     }
 

@@ -17,13 +17,14 @@ final class Backup
     public const TABLES = [
         'settings', 'users', 'sessions', 'plans', 'campaigns', 'purchase_intents', 'purchases', 'entitlements', 'features',
         'user_grants', 'placements', 'media', 'ads', 'ad_stats', 'revenue', 'support_requests', 'support_actions', 'admins',
-        'audit_log', 'security_events', 'user_backups', 'promo_codes', 'promo_redemptions',
+        'audit_log', 'security_events', 'user_backups', 'promo_codes', 'promo_redemptions', 'notices', 'notice_events', 'pay_orders',
     ];
     /** Natural keys used to recognise a row that already exists. */
     private const KEYS = [
         'settings' => ['k'], 'users' => ['username_norm'], 'sessions' => ['token_hash'], 'plans' => ['code'], 'purchases' => ['store', 'token_hash'],
         'entitlements' => ['id'], 'features' => ['k'], 'placements' => ['k'], 'admins' => ['username'], 'ad_stats' => ['day', 'ad_id', 'source', 'placement'],
         'purchase_intents' => ['payload'], 'user_backups' => ['user_id'], 'promo_codes' => ['code'], 'promo_redemptions' => ['code_id', 'user_id'],
+        'notices' => ['id'], 'notice_events' => ['notice_id', 'device_hash'], 'pay_orders' => ['code'],
     ];
 
     public static function dir(): string { return App::$root . '/storage/backups'; }
@@ -144,7 +145,7 @@ final class Backup
     /** Daily housekeeping (cron or "poor man's cron" from admin visits). */
     public static function daily(): array
     {
-        $out = ['rechecked' => Purchases::recheck(50)];
+        $out = ['rechecked' => Purchases::recheck(50), 'pay_orders' => PayOrders::sweep(50)];
         RateLimit::prune();
         $last = (int)Settings::get('last_backup_at', 0);
         if ($last < Clock::now() - 20 * 3600) {

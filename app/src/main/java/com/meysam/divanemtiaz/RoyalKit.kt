@@ -186,6 +186,22 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
             setOnClickListener { tap(it); onClick() }
         }
 
+    /** Round button with a short word (e.g. «Pro») instead of an icon, same face and 3D edge as [iconButton]. */
+    fun wordButton(word: String, description: String, kind: ButtonKind = ButtonKind.SECONDARY, size: Int = 44, onClick: () -> Unit): View =
+        FrameLayout(context).apply {
+            background = ButtonDrawable(density, kind, size / 2.2f)
+            setPadding(0, 0, 0, 0)
+            clipToPadding = false
+            layoutParams = LinearLayout.LayoutParams(dp(size), dp(size))
+            isClickable = true
+            contentDescription = description
+            addView(text(word, TextStyle.LABEL_BOLD, ButtonDrawable.textColor(kind), Gravity.CENTER, 1).apply {
+                textDirection = View.TEXT_DIRECTION_LTR
+                includeFontPadding = false
+            }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER).apply { bottomMargin = dpf(2.4f).toInt() })
+            setOnClickListener { tap(it); onClick() }
+        }
+
     fun chip(label: String, selected: Boolean, selectedKind: ButtonKind = ButtonKind.CHIP_SELECTED, onClick: () -> Unit): TextView =
         text(label, TextStyle.LABEL_BOLD, ButtonDrawable.textColor(if (selected) selectedKind else ButtonKind.CHIP), Gravity.CENTER, 2).apply {
             background = ButtonDrawable(density, if (selected) selectedKind else ButtonKind.CHIP, 12f)

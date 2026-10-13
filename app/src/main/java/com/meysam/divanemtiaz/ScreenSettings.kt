@@ -79,6 +79,16 @@ class SettingsScreen(host: MainActivity, private var tab: Int = TAB_GENERAL) : S
             AdEngine.showRewarded(this) { ok -> kit.toast(if (ok) "تا یک ساعت تبلیغی نمایش داده نمی‌شود" else "ویدئو کامل نشد") ; host.refresh() }
         }
         parent.addView(kit.listGroup(rows))
+        parent.addView(kit.section("اعلان‌ها", RoyalIcon.STAR))
+        parent.addView(kit.switchRow("پیشنهادها و تخفیف‌ها", if (ProState.isPro) "با وجود Pro هم پیشنهادها در نوار اعلان بیاید (پیش‌فرض خاموش)" else "حداکثر یکی در روز در نوار اعلان گوشی",
+            if (ProState.isPro) Notices.offersPro(host) else Notices.offers(host)) { v ->
+            Notices.setOffers(host, v)
+            if (v) { Notices.requestPermission(host); Notices.schedule(host) }
+        })
+        parent.addView(kit.switchRow("یادآوری پایان اشتراک", "سه روز پیش از پایان اشتراک زمان‌دار", Notices.reminders(host)) { v ->
+            Notices.setReminders(host, v)
+            if (v) { Notices.requestPermission(host); Notices.schedule(host) }
+        })
         parent.addView(kit.section("ظاهر برنامه", RoyalIcon.STAR))
         parent.addView(themeGrid(this), kit.spaced(8))
         parent.addView(kit.section("تجربهٔ برنامه", RoyalIcon.SETTINGS))

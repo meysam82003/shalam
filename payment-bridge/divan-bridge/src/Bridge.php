@@ -23,9 +23,17 @@ final class Bridge
 
     /** The only places the gateway talks to. */
     private const MYKET = 'https://developer.myket.ir/api/partners/applications/';
+    /** Documented verification address (myket.ir/kb «verification of in-app purchases on the server»). */
+    private const MYKET_DOC = 'https://developer.myket.ir/api/applications/';
     private const BAZAAR = 'https://pardakht.cafebazaar.ir/devapi/v2/';
 
-    public const ACTIONS = ['ping', 'myket.verify', 'myket.products', 'myket.set_price', 'myket.test', 'bazaar.verify', 'bazaar.test'];
+    /** ZarinPal payment gateway v4 (live and sandbox). */
+    private const ZARINPAL = 'https://payment.zarinpal.com/pg/v4/payment/';
+    private const ZARINPAL_SANDBOX = 'https://sandbox.zarinpal.com/pg/v4/payment/';
+
+    private const DESTINATIONS = [self::MYKET, self::MYKET_DOC, self::BAZAAR, self::ZARINPAL, self::ZARINPAL_SANDBOX];
+
+    public const ACTIONS = ['ping', 'myket.verify', 'myket.products', 'myket.set_price', 'myket.test', 'bazaar.verify', 'bazaar.test', 'zarinpal.request', 'zarinpal.verify'];
 
     /**
      * Replaced only by the automated tests: fn(method, url, headers, body, timeout) → [status, body, error].
@@ -133,7 +141,9 @@ final class Bridge
                     'packages' => array_values((array)($this->cfg['packages'] ?? [])), 'skus' => array_values(array_filter((array)($this->cfg['skus'] ?? [])))];
             case 'myket.verify':
                 [$pkg, $sku, $token] = [$this->package($p), $this->sku($p), $this->token($p)];
-                return $this->myket('POST', $pkg . '/purchases/products/' . rawurlencode($sku) . '/verify', json_encode(['tokenId' => $token]));
+                // Default: the documented GET …/purchases/products/{sku}/tokens/{token}; the older «partners» form stays selectable.
+                if (($this->cfg['myket_verify'] ?? 'tokens') === 'partners') return $this->myket('POST', $pkg . '/purchases/products/' . rawurlencode($sku) . '/verify', json_encode(['tokenId' => $token]));
+                return $this->myket('GET', $pkg . '/purchases/products/' . rawurlencode($sku) . '/tokens/' . rawurlencode($token), null, self::MYKET_DOC);
             case 'myket.products':
             case 'myket.test':
                 $r = $this->myket('GET', $this->package($p) . '/products?limit=200&offset=0', null);
@@ -148,6 +158,9 @@ final class Bridge
                 $type = (string)($p['type'] ?? 'inapp');
                 if (!in_array($type, ['inapp', 'subscription'], true)) throw new BadRequest('type');
                 return $this->bazaar($this->package($p), $this->sku($p), $this->token($p), $type);
+            case 'zarinpal.request':
+            case 'zarinpal.verify':
+                return $this->zarinpal($action === 'zarinpal.request' ? 'request' : 'verify', $p);
             case 'bazaar.test':
                 // A made-up receipt: 404 means the key was accepted, 401/403 that it was not.
                 return $this->bazaar($this->package($p), 'divan_connectivity_probe', 'probe' . bin2hex(random_bytes(6)), 'inapp');
@@ -179,13 +192,43 @@ final class Bridge
         return $t;
     }
 
-    private function myket(string $method, string $path, ?string $body): array
+    private function myket(string $method, string $path, ?string $body, string $base = self::MYKET): array
     {
         $token = $this->secret('myket_access_token');
         if ($token === '') return ['ok' => false, 'kind' => 'not_configured', 'error' => 'myket token missing'];
         $h = ['X-Access-Token: ' . $token, 'Accept: application/json'];
         if ($body !== null) $h[] = 'Content-Type: application/json';
-        return $this->storeResult($this->http($method, self::MYKET . $path, $h, $body));
+        return $this->storeResult($this->http($method, $base . $path, $h, $body));
+    }
+
+    /** ZarinPal: fixed address, every field checked; the buyer may only be sent back to the Divan site. */
+    private function zarinpal(string $what, array $p): array
+    {
+        $merchant = (string)($p['merchant_id'] ?? '');
+        if (!preg_match('/^[0-9a-fA-F-]{36}$/', $merchant)) throw new BadRequest('merchant_id');
+        $list = array_filter((array)($this->cfg['zarinpal_merchants'] ?? []));
+        if ($list && !in_array($merchant, $list, true)) throw new BadRequest('merchant_id');
+        $amount = $p['amount'] ?? null;
+        if (!is_int($amount) || $amount < 10000 || $amount > 2000000000) throw new BadRequest('amount');
+        $body = ['merchant_id' => $merchant, 'amount' => $amount];
+        if ($what === 'request') {
+            $cb = (string)($p['callback_url'] ?? '');
+            $host = strtolower((string)parse_url($cb, PHP_URL_HOST));
+            $hosts = (array)($this->cfg['callback_hosts'] ?? ['httpuser87890.ir']);
+            if (stripos($cb, 'https://') !== 0 || strlen($cb) > 300 || !in_array($host, $hosts, true) || preg_match('/[\s"<>]/', $cb)) throw new BadRequest('callback_url');
+            $order = (string)($p['metadata']['order_id'] ?? '');
+            if (!preg_match('/^[a-z0-9]{20}$/', $order)) throw new BadRequest('order_id');
+            $body += ['currency' => 'IRR', 'callback_url' => $cb, 'description' => mb_substr(strip_tags((string)($p['description'] ?? '')), 0, 200), 'metadata' => ['order_id' => $order]];
+        } else {
+            $authority = (string)($p['authority'] ?? '');
+            if (!preg_match('/^[A-Za-z0-9]{10,64}$/', $authority)) throw new BadRequest('authority');
+            $body['authority'] = $authority;
+        }
+        $base = !empty($p['sandbox']) ? self::ZARINPAL_SANDBOX : self::ZARINPAL;
+        $r = $this->http('POST', $base . $what . '.json', ['Content-Type: application/json', 'Accept: application/json'], json_encode($body, JSON_UNESCAPED_UNICODE));
+        if ((int)$r['status'] === 0) return ['ok' => false, 'kind' => 'store_unreachable', 'status' => 0, 'error' => self::netError((string)$r['error'])];
+        $j = json_decode((string)$r['body'], true);
+        return ['ok' => true, 'kind' => 'store', 'status' => (int)$r['status'], 'body' => is_array($j) ? $j : null];
     }
 
     private function bazaarConfigured(): bool
@@ -253,7 +296,9 @@ final class Bridge
     /** HTTPS only, certificate checked, no redirects, fixed destinations only. */
     private function http(string $method, string $url, array $headers, ?string $body): array
     {
-        if (strpos($url, self::MYKET) !== 0 && strpos($url, self::BAZAAR) !== 0) return ['status' => 0, 'body' => '', 'error' => 'destination not allowed'];
+        $allowed = false;
+        foreach (self::DESTINATIONS as $d) if (strpos($url, $d) === 0) $allowed = true;
+        if (!$allowed) return ['status' => 0, 'body' => '', 'error' => 'destination not allowed'];
         $timeout = max(5, min(40, (int)($this->cfg['timeout'] ?? 20)));
         if (self::$transport !== null) return (self::$transport)($method, $url, $headers, $body, $timeout);
         if (!function_exists('curl_init')) return ['status' => 0, 'body' => '', 'error' => 'curl extension missing'];

@@ -69,7 +69,7 @@ class ProScreen(host: MainActivity, private val reason: String? = null, private 
     private var promo: Triple<String, Int, String?>? = null
     private val listener = watchPro()
 
-    override fun onShow() { ProState.listeners += listener; ProSync.refreshConfig { ProSync.refreshStorePrices(host) } }
+    override fun onShow() { ProState.listeners += listener; ProSync.refreshConfig { ProSync.refreshStorePrices(host) }; checkPending() }
     override fun onHide() { ProState.listeners -= listener }
 
     override fun build(): View = scaffold("دیوان Pro", "بدون تبلیغ، با همهٔ قابلیت‌ها") {
@@ -88,7 +88,7 @@ class ProScreen(host: MainActivity, private val reason: String? = null, private 
         val now = ProState.now()
         if (ProState.isPro) {
             addView(kit.panel(PanelStyle.SUCCESS).apply {
-                addView(kit.text(if (lic.lifetime) "Pro مادام‌العمر شما فعال است" else "Pro شما تا ${date(lic.expiresAt)} فعال است", TextStyle.BODY_BOLD, Royal.ivory))
+                addView(kit.text(if (lic.lifetime) "اشتراک Pro مادام‌العمر — فعال" else "Pro شما تا ${date(lic.expiresAt)} فعال است", TextStyle.BODY_BOLD, Royal.ivory))
                 if (!lic.lifetime) addView(kit.text("${kit.n(lic.daysLeft(now) ?: 0)} روز باقی‌مانده؛ خرید تازه به انتهای همین دوره اضافه می‌شود.", TextStyle.LABEL, Royal.muted))
                 addView(kit.gap(8))
                 addView(kit.button("اشتراک من", ButtonKind.SECONDARY, RoyalIcon.CROWN, 44) { host.push(SubscriptionScreen(host)) })
@@ -192,6 +192,46 @@ class ProScreen(host: MainActivity, private val reason: String? = null, private 
             )).show()
             return
         }
+        busy = true
+        ProSync.methods(p.code) { list, err ->
+            busy = false
+            when {
+                list == null -> kit.dialog("خرید انجام نشد", err?.message ?: "ارتباط با سرور برقرار نشد.", null, listOf(DialogAction("باشه", ButtonKind.PRIMARY))).show()
+                // Never a list of switched-off gateways: one polite sentence.
+                list.isEmpty() -> kit.dialog("خرید", "امکان خرید موقتاً در دسترس نیست. کمی بعد دوباره امتحان کنید.", null, listOf(DialogAction("باشه", ButtonKind.PRIMARY))).show()
+                list.size == 1 -> pay(p, list[0])
+                else -> kit.dialog("روش پرداخت", "${p.title} — ${toman(p.finalPrice)}", null,
+                    list.map { m -> DialogAction(m.title, ButtonKind.PRIMARY) { pay(p, m) } } + DialogAction("انصراف")).show()
+            }
+        }
+    }
+
+    private fun pay(p: PlanOffer, m: ProSync.PayMethod) {
+        if (m.kind == "web") {
+            busy = true
+            kit.toast("در حال باز کردن صفحهٔ امن پرداخت…")
+            ProSync.webPay(host, m, p) { e ->
+                busy = false
+                if (e != null) kit.dialog("خرید انجام نشد", e.message, null, listOf(DialogAction("باشه", ButtonKind.PRIMARY))).show()
+            }
+            return
+        }
+        storeBuy(p)
+    }
+
+    /** Back from the browser: the server asks the gateway; a few quiet retries while it settles. */
+    private fun checkPending(tries: Int = 0) {
+        val order = ProState.pendingOrder ?: return
+        ProSync.payStatus(order) { status, _ ->
+            when (status) {
+                "paid" -> { kit.toast("Pro فعال شد؛ سپاس از حمایت شما"); host.replace(SubscriptionScreen(host)) }
+                "failed", "expired" -> kit.dialog("پرداخت انجام نشد", "اگر مبلغی کم شده، بانک طبق قانون ظرف ۷۲ ساعت آن را برمی‌گرداند.", null, listOf(DialogAction("باشه", ButtonKind.PRIMARY))).show()
+                else -> if (tries < 4 && host.current === this) host.post(3000) { checkPending(tries + 1) }
+            }
+        }
+    }
+
+    private fun storeBuy(p: PlanOffer) {
         busy = true
         kit.toast("در حال آماده‌سازی خرید…")
         val code = promo?.takeIf { it.third == null || it.third == p.code }?.first
@@ -431,7 +471,7 @@ class SubscriptionScreen(host: MainActivity) : Screen(host) {
         elsewherePanel()?.let { addView(it, kit.spaced(12)) }
         addView(kit.panel(if (pro) PanelStyle.SUCCESS else PanelStyle.RAISED).apply {
             addView(kit.horizontal().apply {
-                addView(kit.text(if (pro) (if (lic.lifetime) "Pro مادام‌العمر" else "Pro فعال") else "نسخهٔ رایگان", TextStyle.TITLE, Royal.title), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                addView(kit.text(if (pro) (if (lic.lifetime) "اشتراک Pro مادام‌العمر — فعال" else "Pro فعال") else "نسخهٔ رایگان", TextStyle.TITLE, Royal.title), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
                 addView(kit.badge(if (pro) "بدون تبلیغ" else "رایگان", if (pro) Royal.turquoise else Royal.dim, filled = pro))
             })
             if (pro && !lic.lifetime) {
@@ -441,7 +481,7 @@ class SubscriptionScreen(host: MainActivity) : Screen(host) {
                 addView(kit.progress(((lic.daysLeft(now) ?: 0) / total).toFloat().coerceIn(0.03f, 1f), Royal.turquoise))
             }
             if (lic.needsSync(now)) addView(kit.text("برای ادامهٔ Pro یک بار به اینترنت وصل شوید.", TextStyle.LABEL, Royal.alert))
-            else if (pro) addView(kit.text("بدون اینترنت تا ${date(lic.offlineUntil)} معتبر است.", TextStyle.CAPTION, Royal.muted))
+            else if (pro && lic.offlineLimitShown()) addView(kit.text("بدون اینترنت تا ${date(lic.offlineUntil)} معتبر است؛ پیش از آن یک بار به اینترنت وصل شوید.", TextStyle.CAPTION, Royal.muted))
             if (ProState.clock.tampered()) addView(kit.text("ساعت گوشی عقب‌تر از زمان واقعی است؛ تاریخ‌ها با زمان درست حساب می‌شوند.", TextStyle.CAPTION, Royal.crimsonLight))
             if (!pro && ProState.adFreeUntil > now) addView(kit.text("بدون تبلیغ تا ${JalaliDate.format(ProState.adFreeUntil * 1000, settings.general.persianDigits)}", TextStyle.CAPTION, Royal.turquoise))
             addView(kit.gap(10))

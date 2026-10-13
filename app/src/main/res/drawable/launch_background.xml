@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- First picture after tapping the icon: the same dark emerald as the logo screen, so no navy flash. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient android:type="linear" android:angle="270"
+        android:startColor="#FF0A2019" android:centerColor="#FF0B241D" android:endColor="#FF061511" />
+</shape>

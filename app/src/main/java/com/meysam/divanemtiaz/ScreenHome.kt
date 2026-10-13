@@ -7,8 +7,8 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 
-const val APP_VERSION_NAME = "5.3.0"
-const val APP_VERSION_LABEL = "نسخهٔ ۵.۳.۰"
+const val APP_VERSION_NAME = "5.4.0"
+const val APP_VERSION_LABEL = "نسخهٔ ۵.۴.۰"
 
 class SplashScreen(host: MainActivity) : Screen(host) {
     override fun build(): View = FrameLayout(host).apply {
@@ -25,8 +25,9 @@ class SplashScreen(host: MainActivity) : Screen(host) {
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply { bottomMargin = kit.dp(28) })
         isClickable = true
         setOnClickListener { goHome() }
+        // The window already shows the same emerald, so the logo only needs a short fade.
         alpha = 0f
-        animate().alpha(1f).setDuration(450).start()
+        animate().alpha(1f).setDuration(180).start()
     }
 
     private var done = false
@@ -44,8 +45,14 @@ class SplashScreen(host: MainActivity) : Screen(host) {
         host.resetTo(if (Themes.isChosen(settings.general.theme)) HomeScreen(host) else ThemeWelcomeScreen(host))
     }
 
+    /** Home follows as soon as the logo has been drawn and briefly seen; no long fixed wait. */
     override fun onShow() {
-        host.post(1400) { goHome() }
+        host.post(LOGO_MS) { goHome() }
+    }
+
+    companion object {
+        const val LOGO_MS = 650L
+        @Volatile var askedThisRun = false
     }
 
     override fun onHide() {
@@ -54,6 +61,26 @@ class SplashScreen(host: MainActivity) : Screen(host) {
 }
 
 class HomeScreen(host: MainActivity) : Screen(host) {
+    /** First run: one clear question about offers in the notification bar (Pro players are not asked). */
+    private fun askAboutOffers() {
+        if (Notices.asked(host) || ProState.isPro || SplashScreen.askedThisRun) return
+        SplashScreen.askedThisRun = true
+        host.post(900) {
+            if (host.current !== this) return@post
+            kit.dialog("اعلان پیشنهادها",
+                "دیوان می‌تواند پیشنهادها و تخفیف‌های خودش را (حداکثر یکی در روز) در نوار اعلان گوشی نشان دهد. هر وقت خواستید از «تنظیمات ← اعلان‌ها» خاموشش کنید.",
+                null, listOf(
+                    DialogAction("بله، اعلان بده", ButtonKind.PRIMARY) { Notices.setOffers(host, true); Notices.requestPermission(host); Notices.schedule(host) },
+                    DialogAction("نه، ممنون") { Notices.setOffers(host, false) }
+                )).show()
+        }
+    }
+
+    override fun onShow() {
+        super.onShow()
+        askAboutOffers()
+    }
+
     override val adZone: String? get() = "home"
     override fun build(): View {
         val column = kit.vertical().apply {
@@ -117,7 +144,7 @@ class HomeScreen(host: MainActivity) : Screen(host) {
             addView(kit.text(greeting(), TextStyle.LABEL, Royal.muted, maxLines = 1))
             addView(kit.text("دیوان امتیاز", TextStyle.TITLE, Royal.title, maxLines = 1))
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        addView(kit.iconButton(RoyalIcon.CROWN, "دیوان Pro", if (ProState.isPro) ButtonKind.SUCCESS else ButtonKind.PRIMARY, 42) {
+        addView(kit.wordButton("Pro", "دیوان Pro", if (ProState.isPro) ButtonKind.SUCCESS else ButtonKind.PRIMARY, 42) {
             host.push(if (ProState.loggedIn) SubscriptionScreen(host) else ProScreen(host))
         })
         addView(kit.hgap(8))

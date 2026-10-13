@@ -688,7 +688,7 @@ final class ConfigPages
             $pkg = fn($k) => preg_match('/^[a-zA-Z][a-zA-Z0-9_.]{2,100}$/', self::post($k)) ? self::post($k) : 'com.meysam.divanemtiaz';
             $key = fn($k) => preg_replace('/[^A-Za-z0-9+\/=]/', '', self::post($k));
             Settings::set('bazaar', ['enabled' => isset($_POST['bazaar_enabled']), 'package' => $pkg('bazaar_package'), 'public_key' => $key('bazaar_public_key'), 'client_id' => self::post('bazaar_client_id')]);
-            Settings::set('myket', ['enabled' => isset($_POST['myket_enabled']), 'package' => $pkg('myket_package'), 'public_key' => $key('myket_public_key')]);
+            Settings::set('myket', ['enabled' => isset($_POST['myket_enabled']), 'package' => $pkg('myket_package'), 'public_key' => $key('myket_public_key'), 'verify' => self::post('myket_verify') === 'partners' ? 'partners' : 'tokens']);
             // Secrets: an empty field keeps the stored value; "-" clears it.
             foreach (['bazaar_api_secret', 'bazaar_client_secret', 'bazaar_refresh_token', 'bazaar_discount_key', 'myket_access_token'] as $s) {
                 $v = self::post($s);
@@ -698,11 +698,9 @@ final class ConfigPages
             Settings::set('cross_store', isset($_POST['cross_store']));
             Settings::set('offline_days', max(1, min(90, (int)self::post('offline_days', '21'))));
             Settings::set('renew_grace_days', max(0, min(14, (int)self::post('renew_grace_days', '3'))));
-            Settings::set('lifetime_offline_days', max(30, min(3650, (int)self::post('lifetime_offline_days', '365'))));
             Settings::set('single_device', isset($_POST['single_device']));
             Settings::set('device_moves_limit', max(0, min(50, (int)self::post('device_moves_limit', '3'))));
             Settings::set('device_offline_days', max(1, min(90, (int)self::post('device_offline_days', '7'))));
-            Settings::set('device_offline_days_lifetime', max(1, min(365, (int)self::post('device_offline_days_lifetime', '30'))));
             Settings::set('support_text', mb_substr(self::post('support_text'), 0, 500));
             Admin::audit('store_settings', 'settings', 'stores', $reason, $before, ['bazaar' => Settings::get('bazaar'), 'myket' => Settings::get('myket'), 'cross_store' => Settings::get('cross_store'), 'offline_days' => Settings::get('offline_days'), 'secrets_changed' => array_values(array_filter(['bazaar_api_secret', 'bazaar_client_secret', 'bazaar_refresh_token', 'bazaar_discount_key', 'myket_access_token'], fn($s) => self::post($s) !== ''))]);
             Admin::flash('تنظیمات فروشگاه‌ها ذخیره شد.');
@@ -738,6 +736,7 @@ final class ConfigPages
               <label>کلید عمومی RSA</label><textarea name="myket_public_key" class="ltr" style="min-height:70px"><?= e($m['public_key'] ?? '') ?></textarea>
               <div class="hint">پنل توسعه‌دهندگان مایکت ← برنامه ← پرداخت درون‌برنامه‌ای</div>
               <?php if (PaymentBridge::route('myket') === 'bridge'): ?><div class="alert ok">مایکت از راه <a href="index.php?p=bridge">واسط پرداخت ایران</a> بررسی می‌شود؛ توکن API فقط در config.php سرور ایران لازم است و این فیلد را می‌توانید خالی بگذارید (با «-» پاک کنید).</div><?php endif; ?>
+              <label>روش صحت‌سنجی مستقیم مایکت</label><select name="myket_verify"><option value="tokens">مستند: GET …/purchases/products/{sku}/tokens/{token}</option><option value="partners"<?= ($m['verify'] ?? 'tokens') === 'partners' ? ' selected' : '' ?>>قدیمی: POST …/partners/…/verify</option></select>
               <label>توکن دسترسی API (X-Access-Token) <?= $has('myket_access_token') ?></label><input type="password" name="myket_access_token" class="ltr" autocomplete="new-password" placeholder="خالی = بدون تغییر، - = پاک کردن">
               <p class="row" style="gap:6px"><button class="btn ghost sm" name="action" value="test_myket" formnovalidate>آزمایش ارتباط با مایکت</button><button class="btn ghost sm" name="action" value="myket_products" formnovalidate>دریافت فهرست محصولات و قیمت‌ها</button></p>
               <p class="hint">مایکت اشتراک دوره‌ای ندارد؛ پلن‌های زمان‌دار به‌صورت محصول مصرفی فروخته می‌شوند و سرور دوره را حساب می‌کند. مادام‌العمر محصول مصرف‌نشدنی است.</p>
@@ -748,22 +747,220 @@ final class ConfigPages
               <div class="row">
                 <div><label>اعتبار آفلاین گواهی (روز)</label><input type="number" name="offline_days" value="<?= (int)Settings::get('offline_days', 21) ?>" min="1" max="90"></div>
                 <div><label>مهلت تمدید اشتراک فروشگاه (روز)</label><input type="number" name="renew_grace_days" value="<?= (int)Settings::get('renew_grace_days', 3) ?>" min="0" max="14"></div>
-                <div><label>اعتبار آفلاین مادام‌العمر (روز)</label><input type="number" name="lifetime_offline_days" value="<?= (int)Settings::get('lifetime_offline_days', 365) ?>" min="30"></div>
               </div>
               <label class="check"><input type="checkbox" name="single_device" <?= Settings::get('single_device', true) ? 'checked' : '' ?>> هر اشتراک فقط روی یک گوشی فعال باشد</label>
               <div class="row">
                 <div><label>سقف انتقال به گوشی دیگر (در ۳۰ روز)</label><input type="number" name="device_moves_limit" value="<?= (int)Settings::get('device_moves_limit', 3) ?>" min="0" max="50"></div>
                 <div><label>اعتبار آفلاین با قانون تک‌گوشی (روز)</label><input type="number" name="device_offline_days" value="<?= (int)Settings::get('device_offline_days', 7) ?>" min="1" max="90"></div>
-                <div><label>اعتبار آفلاین مادام‌العمر با قانون تک‌گوشی (روز)</label><input type="number" name="device_offline_days_lifetime" value="<?= (int)Settings::get('device_offline_days_lifetime', 30) ?>" min="1" max="365"></div>
               </div>
               <p class="hint">اشتراک روی گوشی خرید (یا اولین گوشی‌ای که Pro را می‌گیرد) فعال می‌شود. روی گوشی دیگر کاربر می‌تواند با رمز عبور، اشتراک را منتقل کند؛ گوشی قبلی در اولین اتصال یا حداکثر پس از پایان اعتبار آفلاین، Pro را از دست می‌دهد. هرچه اعتبار آفلاین کوتاه‌تر باشد، استفادهٔ هم‌زمان کمتر ممکن است.</p>
-              <p class="hint">اگر کاربر تا این مدت اینترنت نداشته باشد هم Pro او کار می‌کند؛ پس از اتصال، گواهی تازه می‌گیرد. اشتراک زمان‌دار هیچ‌وقت بعد از تاریخ پایانش آفلاین تمدید نمی‌شود.</p>
+              <p class="hint">اگر کاربر تا این مدت اینترنت نداشته باشد هم Pro او کار می‌کند؛ پس از اتصال، گواهی تازه می‌گیرد. اشتراک زمان‌دار هیچ‌وقت بعد از تاریخ پایانش آفلاین تمدید نمی‌شود و مهلت تمدید فقط برای اشتراک‌های «تمدید خودکار» بازار است.</p>
+              <p class="hint"><b>مادام‌العمر:</b> بدون تاریخ پایان و بدون نیاز به اینترنت روی همان گوشی کار می‌کند. بازپرداخت یا انتقال آن در اولین اتصال گوشی به اینترنت اعمال می‌شود؛ گوشی‌ای که هرگز آنلاین نشود از ابطال خبردار نمی‌شود.</p>
               <label>متن راهنمای پشتیبانی در اپ</label><input type="text" name="support_text" value="<?= e(Settings::get('support_text', '')) ?>">
             </div>
             <div class="row"><div style="flex:3"><input type="text" name="reason" placeholder="یادداشت (اختیاری)"></div><div style="flex:0"><button class="btn gold" name="action" value="save">ذخیره</button></div></div>
             </form>
             <?php
         }, 'stores');
+    }
+
+    // ================================================================ payment methods
+    public static function paymethods(): void
+    {
+        $adapters = PayRegistry::adapters();
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            self::managerOnly();
+            $reason = Admin::requireReason();
+            $id = (string)($_POST['id'] ?? '');
+            $a = $adapters[$id] ?? null;
+            if ($a === null) throw new ApiError('method', 'روش پرداخت پیدا نشد.');
+            $action = (string)($_POST['action'] ?? 'save');
+            $cfg = PayRegistry::cfg($id);
+            if ($action === 'test') {
+                $_SESSION['pay_result'] = [$id, $a->test()];
+                PayRegistry::note($id, $_SESSION['pay_result'][1][0] === 'ok', $_SESSION['pay_result'][1][1]);
+                Admin::redirect('p=paymethods#m-' . $id);
+            }
+            if ($action === 'kill' || $action === 'unkill') {
+                Settings::set('pay_' . $id, ['kill' => $action === 'kill'] + $cfg);
+                Admin::audit('pay_' . $action, 'pay_method', $id, $reason);
+                Admin::flash($action === 'kill' ? 'روش پرداخت فوراً از برنامه برداشته شد.' : 'قطع اضطراری برداشته شد.');
+                Admin::redirect('p=paymethods#m-' . $id);
+            }
+            $num = fn($k) => self::post($k) === '' ? null : max(0, (int)self::post($k));
+            $new = ['enabled' => isset($_POST['enabled']), 'sort' => (int)self::post('sort', '0'), 'min' => $num('min'), 'max' => $num('max'),
+                'sandbox' => isset($_POST['sandbox']), 'route' => self::post('route') === 'direct' ? 'direct' : 'bridge'] + $cfg;
+            Settings::set('pay_' . $id, $new);
+            foreach ($a->fields() as $k => [$label, $secret]) {
+                $v = self::post('f_' . $k);
+                if ($v === '-') Settings::setSecret('pay_' . $id . '_' . $k, '');
+                elseif ($v !== '') Settings::setSecret('pay_' . $id . '_' . $k, $v);
+            }
+            Admin::audit('pay_method_save', 'pay_method', $id, $reason, array_intersect_key($cfg, $new), $new);
+            $st = PayRegistry::status($id);
+            Admin::flash($new['enabled'] && $st !== 'ready' ? 'ذخیره شد، ولی این روش هنوز آماده نیست و در برنامه نمایش داده نمی‌شود: ' . strip_tags(self::payBadge($st)) : 'ذخیره شد.', $new['enabled'] && $st !== 'ready' ? 'warn' : 'ok');
+            Admin::redirect('p=paymethods#m-' . $id);
+        }
+        $result = $_SESSION['pay_result'] ?? null; unset($_SESSION['pay_result']);
+        $orders = Db::all('SELECT o.*, u.username, p.title plan_title FROM {pay_orders} o JOIN {users} u ON u.id = o.user_id JOIN {plans} p ON p.id = o.plan_id ORDER BY o.id DESC LIMIT 40');
+        Admin::layout('روش‌های پرداخت', function () use ($adapters, $result, $orders) {
+            ?>
+            <div class="alert info">
+              هر نسخهٔ برنامه فقط روش‌هایی را می‌بیند که <b>هم</b> مجاز باشند <b>هم</b> آماده. طبق قوانین کافه‌بازار و مایکت، فروش اشتراک و قابلیت دیجیتال در نسخه‌های این دو فروشگاه فقط با پرداخت درون‌برنامه‌ای همان فروشگاه است؛
+              درگاه‌های وب (مثل زرین‌پال) فقط در <b>نسخهٔ سایت</b> (APK مستقیم که در هیچ فروشگاهی منتشر نمی‌شود) نمایش داده می‌شوند و این قانون از پنل قابل تغییر نیست.
+              <br>روشن کردن یک روش بدون تنظیمات درست، آن را در برنامه نشان نمی‌دهد؛ وضعیتش «نیازمند تنظیمات» می‌ماند. همهٔ تغییرها بدون APK تازه در برنامه اعمال می‌شوند.
+            </div>
+            <?php foreach ($adapters as $id => $a): $c = PayRegistry::cfg($id); $st = (array)Settings::get('pay_status_' . $id, []); ?>
+            <div class="card" id="m-<?= e($id) ?>">
+              <h3><?= e($a->title()) ?> <?= self::payBadge(PayRegistry::status($id)) ?> <?= $c['kill'] ? '<span class="badge bad">قطع اضطراری</span>' : '' ?></h3>
+              <p class="muted"><?= e($a->description()) ?> — نوع: <?= $a->kind() === 'store' ? 'پرداخت فروشگاه' : 'درگاه وب' ?> — نسخه‌های مجاز: <b><?= e(implode('، ', array_map(fn($ch) => Notices::STORES[$ch] ?? $ch, $a->channels()))) ?></b> — بازپرداخت از API: <?= $a->supportsRefund() ? 'دارد' : 'ندارد (دستی از پنل درگاه)' ?></p>
+              <?php if ($result && $result[0] === $id) echo '<div class="alert ' . e($result[1][0]) . '">' . e($result[1][1]) . '</div>'; ?>
+              <p class="hint">آخرین موفقیت: <?= !empty($st['last_ok_at']) ? e(jdate(Clock::sql((int)$st['last_ok_at']))) : '—' ?> — آخرین خطا: <?= !empty($st['last_error_at']) ? e(jdate(Clock::sql((int)$st['last_error_at']))) . ' <small>' . e($st['last_error'] ?? '') . '</small>' : '—' ?></p>
+              <form method="post"><?= Admin::csrfField() ?><input type="hidden" name="id" value="<?= e($id) ?>">
+                <div class="row">
+                  <label class="check" style="flex:0;white-space:nowrap"><input type="checkbox" name="enabled" <?= $c['enabled'] ? 'checked' : '' ?>> فعال</label>
+                  <div><label>اولویت نمایش</label><input type="number" name="sort" value="<?= (int)$c['sort'] ?>"></div>
+                  <div><label>حداقل مبلغ (تومان)</label><input type="number" name="min" value="<?= e($c['min']) ?>" placeholder="بدون حد"></div>
+                  <div><label>حداکثر مبلغ (تومان)</label><input type="number" name="max" value="<?= e($c['max']) ?>" placeholder="بدون حد"></div>
+                </div>
+                <?php foreach ($a->fields() as $k => [$label, $secret]): $has = Settings::secret('pay_' . $id . '_' . $k) !== ''; ?>
+                  <label><?= e($label) ?> <?= $has ? '<span class="badge ok">ثبت شده</span>' : '<span class="badge warn">ثبت نشده</span>' ?></label>
+                  <input type="password" name="f_<?= e($k) ?>" class="ltr" autocomplete="new-password" placeholder="خالی = بدون تغییر، - = پاک کردن">
+                <?php endforeach; ?>
+                <?php if ($a->kind() === 'web'): ?>
+                  <div class="row">
+                    <label class="check" style="flex:0;white-space:nowrap"><input type="checkbox" name="sandbox" <?= $c['sandbox'] ? 'checked' : '' ?>> حالت آزمایشی (Sandbox)</label>
+                    <div><label>مسیر ارتباط</label><select name="route"><option value="bridge">از راه واسط ایران (پیشنهادی)</option><option value="direct"<?= $c['route'] === 'direct' ? ' selected' : '' ?>>مستقیم از هلند</option></select></div>
+                  </div>
+                <?php endif; ?>
+                <div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap">
+                  <div style="flex:3"><input type="text" name="reason" placeholder="یادداشت (اختیاری)"></div>
+                  <button class="btn gold" name="action" value="save">ذخیره</button>
+                  <button class="btn ghost" name="action" value="test">آزمایش اتصال</button>
+                  <?= $c['kill'] ? '<button class="btn teal" name="action" value="unkill">برداشتن قطع اضطراری</button>' : '<button class="btn red" name="action" value="kill" data-confirm="این روش فوراً از برنامه برداشته شود؟">قطع اضطراری</button>' ?>
+                </div>
+              </form>
+            </div>
+            <?php endforeach; ?>
+            <div class="card"><h3>آخرین سفارش‌های پرداخت وب</h3>
+              <div class="table-wrap"><table><thead><tr><th>سفارش</th><th>حساب</th><th>پلن</th><th>روش</th><th>مبلغ</th><th>وضعیت</th><th>کد پیگیری</th><th>زمان</th></tr></thead><tbody>
+              <?php foreach ($orders as $o): ?>
+                <tr><td class="ltr"><?= e($o['code']) ?></td><td class="ltr"><?= e($o['username']) ?></td><td><?= e($o['plan_title']) ?></td><td><?= e($o['method']) ?></td><td><?= money((int)$o['amount_toman']) ?></td>
+                  <td><?= Admin::statusBadge(['paid' => 'verified', 'pending' => 'pending', 'failed' => 'rejected', 'expired' => 'inactive', 'created' => 'pending'][$o['status']] ?? $o['status']) ?><?= $o['last_error'] && $o['status'] !== 'paid' ? '<br><small class="muted">' . e($o['last_error']) . '</small>' : '' ?></td>
+                  <td class="ltr"><?= e($o['ref_id'] ?? '—') ?></td><td><?= e(jdate($o['created_at'])) ?></td></tr>
+              <?php endforeach; if (!$orders) echo '<tr><td colspan="8" class="muted">سفارشی نیست.</td></tr>'; ?>
+              </tbody></table></div>
+            </div>
+            <?php
+        }, 'paymethods');
+    }
+
+    private static function payBadge(string $st): string
+    {
+        $m = ['ready' => ['ok', 'آماده و در برنامه نمایش داده می‌شود'], 'disabled' => ['', 'خاموش'], 'killed' => ['bad', 'قطع اضطراری'], 'needs_config' => ['warn', 'نیازمند تنظیمات'], 'not_allowed' => ['bad', 'غیرمجاز']];
+        [$k, $l] = $m[$st] ?? ['', $st];
+        return '<span class="badge ' . $k . '">' . e($l) . '</span>';
+    }
+
+    // ================================================================ promotional notifications
+    public static function notices(): void
+    {
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            self::managerOnly();
+            $reason = Admin::requireReason();
+            $action = (string)($_POST['action'] ?? 'save');
+            $id = (int)($_POST['id'] ?? 0);
+            if ($action === 'settings') {
+                Settings::set('notices_enabled', isset($_POST['notices_enabled']));
+                Settings::set('notices_daily_cap', max(1, min(5, (int)self::post('notices_daily_cap', '1'))));
+                Admin::audit('notices_settings', 'settings', null, $reason);
+                Admin::flash('ذخیره شد.');
+                Admin::redirect('p=notices');
+            }
+            if ($action === 'cancel' || $action === 'toggle') {
+                $n = Db::one('SELECT * FROM {notices} WHERE id = ?', [$id]);
+                if ($n === null) throw new ApiError('notice', 'اعلان پیدا نشد.');
+                $row = $action === 'cancel' ? ['canceled_at' => Clock::sql(), 'active' => 0] : ['active' => $n['active'] ? 0 : 1];
+                Db::update('notices', $row + ['updated_at' => Clock::sql()], 'id = ?', [$id]);
+                Admin::audit('notice_' . $action, 'notice', $id, $reason, null, $row);
+                Admin::redirect('p=notices');
+            }
+            $title = mb_substr(self::post('title'), 0, 80);
+            $body = mb_substr(self::post('body'), 0, 300);
+            if ($title === '' || $body === '') throw new ApiError('text', 'عنوان و متن اعلان لازم است.');
+            $target = self::post('target_app') !== '' ? self::post('target_app') : self::post('target_url');
+            if (!Notices::validTarget($target)) throw new ApiError('target', 'مقصد باید یکی از صفحه‌های برنامه یا یک نشانی https باشد.');
+            $stores = array_values(array_intersect(array_keys(Notices::STORES), (array)($_POST['stores'] ?? [])));
+            if (!$stores) throw new ApiError('stores', 'دست‌کم یک نسخه را انتخاب کنید.');
+            $media = (int)self::post('media_id', '0');
+            $sendAt = isset($_POST['send_now']) ? null : Admin::dtParse(self::post('send_at'));
+            $endsAt = Admin::dtParse(self::post('ends_at'));
+            $row = [
+                'title' => $title, 'body' => $body, 'target' => $target ?: null,
+                'media_id' => $media > 0 && Db::value("SELECT id FROM {media} WHERE id = ? AND kind = 'image'", [$media]) !== null ? $media : null,
+                'audience' => isset(Notices::AUDIENCES[self::post('audience')]) ? self::post('audience') : 'free',
+                'stores' => implode(',', $stores), 'send_at' => $sendAt, 'ends_at' => $endsAt, 'active' => 1, 'updated_at' => Clock::sql(),
+            ];
+            $nid = Db::insert('notices', $row + ['admin_id' => (int)Admin::$me['id'], 'created_at' => Clock::sql()]);
+            Admin::audit('notice_create', 'notice', $nid, $reason, null, ['title' => $title]);
+            Admin::flash('اعلان ثبت شد. گوشی‌ها در نخستین همگام‌سازی (معمولاً ظرف چند ساعت) آن را نشان می‌دهند.');
+            Admin::redirect('p=notices');
+        }
+        $rows = Db::all('SELECT * FROM {notices} ORDER BY id DESC LIMIT 100');
+        $media = Db::all("SELECT id, original_name FROM {media} WHERE kind = 'image' ORDER BY id DESC LIMIT 100");
+        Admin::layout('اعلان‌های تبلیغاتی', function () use ($rows, $media) {
+            ?>
+            <div class="alert info">
+              این اعلان‌ها در <b>نوار اعلان گوشی</b> نشان داده می‌شوند، فقط برای کسانی که هنگام نخستین اجرا یا از تنظیمات برنامه «اعلان پیشنهادها» را پذیرفته‌اند.
+              کاربران Pro فقط وقتی اعلان می‌گیرند که خودشان آن را روشن کرده باشند.
+              <br><b>زمان رسیدن:</b> برنامه چند بار در روز (وقتی گوشی اینترنت دارد و Android اجازه می‌دهد) اعلان‌ها را می‌گیرد؛ ارسال لحظه‌ای (Push) نیست و ممکن است تا چند ساعت طول بکشد.
+              هر گوشی هر اعلان را فقط یک بار می‌بیند و در هر ۲۴ ساعت حداکثر به تعداد سقف روزانه.
+            </div>
+            <div class="grid g2">
+            <div class="card"><h3>اعلان تازه</h3>
+              <form method="post"><?= Admin::csrfField() ?>
+                <label>عنوان</label><input type="text" name="title" maxlength="80" required placeholder="مثلاً: ۳۰٪ تخفیف دیوان Pro">
+                <label>متن</label><textarea name="body" maxlength="300" required></textarea>
+                <label>تصویر (اختیاری، از رسانه‌ها)</label><select name="media_id"><option value="0">بدون تصویر</option><?php foreach ($media as $m) echo '<option value="' . (int)$m['id'] . '">' . e($m['original_name']) . '</option>'; ?></select>
+                <div class="row">
+                  <div><label>مقصد در برنامه</label><select name="target_app"><option value="">صفحهٔ اصلی</option><?php foreach (Ads::APP_TARGETS as $k => $l) echo '<option value="' . e($k) . '">' . e($l) . '</option>'; ?></select></div>
+                  <div><label>یا نشانی وب (https)</label><input type="text" name="target_url" class="ltr" placeholder="https://..."></div>
+                </div>
+                <div class="row">
+                  <div><label>مخاطب</label><select name="audience"><?php foreach (Notices::AUDIENCES as $k => $l) echo '<option value="' . $k . '">' . e($l) . '</option>'; ?></select></div>
+                  <div><label>نسخه‌ها</label><?php foreach (Notices::STORES as $k => $l) echo '<label class="check"><input type="checkbox" name="stores[]" value="' . $k . '"' . ($k !== 'direct' ? ' checked' : '') . '> ' . e($l) . '</label>'; ?></div>
+                </div>
+                <label class="check"><input type="checkbox" name="send_now" checked onchange="document.getElementById('nt-when').style.display=this.checked?'none':''"> ارسال از همین حالا</label>
+                <div class="row" id="nt-when" style="display:none"><div><label>شروع ارسال (به وقت تهران)</label><input type="datetime-local" name="send_at"></div></div>
+                <div class="row"><div><label>پایان (اختیاری)</label><input type="datetime-local" name="ends_at"></div></div>
+                <div class="row"><div style="flex:3"><input type="text" name="reason" placeholder="یادداشت (اختیاری)"></div><div style="flex:0"><button class="btn gold">ثبت اعلان</button></div></div>
+              </form>
+            </div>
+            <div class="card"><h3>تنظیمات</h3>
+              <form method="post"><?= Admin::csrfField() ?><input type="hidden" name="action" value="settings">
+                <label class="check"><input type="checkbox" name="notices_enabled" <?= Notices::enabled() ? 'checked' : '' ?>> ارسال اعلان‌های تبلیغاتی روشن است (خاموش = توقف فوری همه)</label>
+                <label>سقف اعلان برای هر گوشی در ۲۴ ساعت</label><input type="number" name="notices_daily_cap" min="1" max="5" value="<?= Notices::dailyCap() ?>">
+                <p><button class="btn ghost">ذخیره</button></p>
+              </form>
+              <p class="hint">اعلان‌های حساب و تراکنش و یادآوری پایان اشتراک کانال جدا دارند و با خاموش کردن تبلیغات قطع نمی‌شوند.</p>
+            </div>
+            </div>
+            <div class="table-wrap"><table><thead><tr><th>عنوان</th><th>مخاطب</th><th>نسخه‌ها</th><th>زمان</th><th>نمایش</th><th>باز شده</th><th>وضعیت</th><th></th></tr></thead><tbody>
+            <?php foreach ($rows as $n):
+                $state = $n['canceled_at'] ? '<span class="badge bad">لغوشده</span>' : (!$n['active'] ? '<span class="badge">متوقف</span>' : ($n['ends_at'] && Clock::ts($n['ends_at']) <= Clock::now() ? '<span class="badge">پایان‌یافته</span>' : ($n['send_at'] && Clock::ts($n['send_at']) > Clock::now() ? '<span class="badge info">زمان‌بندی‌شده</span>' : '<span class="badge ok">در حال ارسال</span>'))); ?>
+              <tr><td><b><?= e($n['title']) ?></b><br><small class="muted"><?= e(mb_substr($n['body'], 0, 80)) ?></small></td>
+                <td><?= e(Notices::AUDIENCES[$n['audience']] ?? $n['audience']) ?></td>
+                <td><?= e(implode('، ', array_map(fn($s) => Notices::STORES[$s] ?? $s, explode(',', $n['stores'])))) ?></td>
+                <td><?= $n['send_at'] ? e(jdate($n['send_at'])) : 'فوری' ?><?= $n['ends_at'] ? '<br><small>تا ' . e(jdate($n['ends_at'])) . '</small>' : '' ?></td>
+                <td><?= fa_digits((int)$n['shown']) ?></td><td><?= fa_digits((int)$n['opened']) ?></td><td><?= $state ?></td>
+                <td><?php if (!$n['canceled_at']): ?>
+                  <form method="post" style="display:inline"><?= Admin::csrfField() ?><input type="hidden" name="id" value="<?= (int)$n['id'] ?>"><button class="btn sm ghost" name="action" value="toggle"><?= $n['active'] ? 'توقف' : 'ادامه' ?></button>
+                  <button class="btn sm red" name="action" value="cancel" data-confirm="این اعلان برای همیشه لغو شود؟">لغو</button></form>
+                <?php endif; ?></td></tr>
+            <?php endforeach; if (!$rows) echo '<tr><td colspan="8" class="muted">هنوز اعلانی ثبت نشده.</td></tr>'; ?>
+            </tbody></table></div>
+            <?php
+        }, 'notices');
     }
 
     // ================================================================ payment gateway in Iran

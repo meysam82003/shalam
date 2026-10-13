@@ -20,6 +20,9 @@ return [
 
     // Myket developer panel → API → X-Access-Token
     'myket_access_token' => '',
+    // 'tokens' = documented GET …/applications/{pkg}/purchases/products/{sku}/tokens/{token} (default);
+    // 'partners' = older POST …/partners/applications/{pkg}/purchases/products/{sku}/verify
+    'myket_verify' => 'tokens',
 
     // Cafe Bazaar developer panel → API key (CAFEBAZAAR-PISHKHAN-API-SECRET)
     'bazaar_api_secret' => '',
@@ -27,6 +30,10 @@ return [
     'bazaar_client_id' => '',
     'bazaar_client_secret' => '',
     'bazaar_refresh_token' => '',
+
+    // ZarinPal (site version only): the buyer may only be returned to these hosts; optional merchant id allowlist.
+    'callback_hosts' => ['httpuser87890.ir'],
+    'zarinpal_merchants' => [],
 
     // Changing Myket prices from the Divan panel (consumable products only). Off unless you need it.
     'allow_set_price' => false,

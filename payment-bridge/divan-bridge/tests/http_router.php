@@ -12,6 +12,23 @@ $cfgFile = (string)getenv('DIVAN_BRIDGE_TEST_CFG');
 $cfg = json_decode((string)file_get_contents($cfgFile), true);
 \DivanBridge\Bridge::$transport = function (string $m, string $url, array $h, ?string $b, int $t) use ($cfgFile) {
     file_put_contents($cfgFile . '.calls', json_encode([$m, $url]) . "\n", FILE_APPEND | LOCK_EX);
+    if (strpos($url, 'zarinpal.com/pg/v4/payment/') !== false) {
+        $j = json_decode((string)$b, true);
+        if (substr($url, -12) === 'request.json') {
+            if (($j['currency'] ?? '') !== 'IRR') return ['status' => 200, 'body' => '{"data":[],"errors":{"code":-9}}', 'error' => ''];
+            $auth = 'A' . str_pad(substr(preg_replace('/\D/', '', md5($j['metadata']['order_id'])), 0, 20), 35, '0', STR_PAD_LEFT);
+            file_put_contents($cfgFile . '.zp', json_encode([$auth => $j['amount']]) . "\n", FILE_APPEND | LOCK_EX);
+            return ['status' => 200, 'body' => json_encode(['data' => ['code' => 100, 'authority' => $auth, 'fee' => 0], 'errors' => []]), 'error' => ''];
+        }
+        // verify: paid only if this authority was created with exactly this amount and is not marked unpaid.
+        $known = [];
+        foreach (is_file($cfgFile . '.zp') ? file($cfgFile . '.zp') : [] as $l) $known += (array)json_decode($l, true);
+        if (is_file($cfgFile . '.zpdown')) return ['status' => 0, 'body' => '', 'error' => 'Operation timed out'];
+        if (is_file($cfgFile . '.zpunpaid')) return ['status' => 200, 'body' => '{"data":[],"errors":{"code":-51}}', 'error' => ''];
+        if (!isset($known[$j['authority']])) return ['status' => 200, 'body' => '{"data":[],"errors":{"code":-54}}', 'error' => ''];
+        if ((int)$known[$j['authority']] !== (int)$j['amount']) return ['status' => 200, 'body' => '{"data":[],"errors":{"code":-50}}', 'error' => ''];
+        return ['status' => 200, 'body' => json_encode(['data' => ['code' => 100, 'ref_id' => 777000 + strlen($j['authority']), 'card_pan' => '6037****1234'], 'errors' => []]), 'error' => ''];
+    }
     $tok = (string)(json_decode((string)$b, true)['tokenId'] ?? basename(rtrim(explode('?', $url)[0], '/')));
     $ms = 1800000000000;
     if (strpos($url, '/products?') !== false) return ['status' => 200, 'body' => '{"skus":[{"sku":"divan_pro_1m","price":190000}]}', 'error' => ''];

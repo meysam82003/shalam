@@ -106,8 +106,12 @@ check(req(['action' => 'myket.set_price', 'params' => ['package' => 'com.meysam.
 $r = req($verify('valid-token-0001'));
 $c = end($calls);
 check($r['json']['kind'] === 'store' && $r['json']['status'] === 200 && $r['json']['body']['purchaseState'] === 0, 'Myket valid purchase passes through');
-check($c[0] === 'POST' && $c[1] === 'https://developer.myket.ir/api/partners/applications/com.meysam.divanemtiaz/purchases/products/divan_pro_1m/verify' && in_array('X-Access-Token: ' . $TOKEN_MYKET, $c[2], true) && json_decode($c[3], true) === ['tokenId' => 'valid-token-0001'], 'Myket official verify endpoint, token in header');
-check(req($verify('refund-token-01'))['json']['body']['purchaseState'] === 1, 'Myket refunded purchase passed on');
+check($c[0] === 'GET' && $c[1] === 'https://developer.myket.ir/api/applications/com.meysam.divanemtiaz/purchases/products/divan_pro_1m/tokens/valid-token-0001' && in_array('X-Access-Token: ' . $TOKEN_MYKET, $c[2], true) && $c[3] === null, 'Myket documented verify endpoint (GET …/tokens/{token}), key in header');
+$legacy = $cfg; $legacy['myket_verify'] = 'partners';
+req($verify('valid-token-0011'), ['cfg' => $legacy]);
+$c = end($calls);
+check($c[0] === 'POST' && $c[1] === 'https://developer.myket.ir/api/partners/applications/com.meysam.divanemtiaz/purchases/products/divan_pro_1m/verify' && json_decode($c[3], true) === ['tokenId' => 'valid-token-0011'], 'older «partners» verify form still selectable');
+check(req($verify('refund-token-01'))['json']['body']['purchaseState'] === 1, 'Myket unsuccessful purchase (purchaseState=1) passed on');
 check(req($verify('unknown-token-01'))['json']['status'] === 404, 'unknown receipt → 404 from the store');
 $r = req($verify('denied-token-01'));
 check($r['json']['kind'] === 'store_auth' && $r['json']['status'] === 401, 'store 401 reported as store_auth (not as invalid purchase)');
@@ -123,6 +127,27 @@ check(req(['action' => 'bazaar.test', 'params' => ['package' => 'com.meysam.diva
 check(req(['action' => 'myket.test', 'params' => ['package' => 'com.meysam.divanemtiaz']])['json']['body'] === ['count' => 1], 'Myket connectivity test returns only a count');
 $noTok = $cfg; $noTok['myket_access_token'] = '';
 check(req($verify('valid-token-0003'), ['cfg' => $noTok])['json']['kind'] === 'not_configured', 'missing store token reported as not_configured');
+
+// ---------------------------------------------------------------- ZarinPal (site version)
+$M = '11111111-2222-3333-4444-555555555555';
+$zr = fn(array $over = []) => ['action' => 'zarinpal.request', 'params' => $over + ['merchant_id' => $M, 'amount' => 190000, 'callback_url' => 'https://httpuser87890.ir/divan/pay/return.php?o=abcdefghij0123456789', 'description' => 'x', 'metadata' => ['order_id' => 'abcdefghij0123456789']]];
+$n0 = count($calls);
+$r = req($zr());
+$c = end($calls);
+check($r['json']['kind'] === 'store' && $c[1] === 'https://payment.zarinpal.com/pg/v4/payment/request.json' && json_decode($c[3], true)['currency'] === 'IRR' && json_decode($c[3], true)['amount'] === 190000, 'ZarinPal request: official endpoint, amount in rials with currency IRR');
+$r = req($zr(['sandbox' => true]));
+check(end($calls)[1] === 'https://sandbox.zarinpal.com/pg/v4/payment/request.json', 'sandbox address when asked');
+$n1 = count($calls);
+check(req($zr(['callback_url' => 'https://evil.example/steal']))['status'] === 400, 'buyer can only be returned to the Divan site');
+check(req($zr(['callback_url' => 'http://httpuser87890.ir/x']))['status'] === 400, 'plain http return refused');
+check(req($zr(['amount' => '190000']))['status'] === 400 && req($zr(['amount' => 5]))['status'] === 400, 'amount must be a whole number of rials in range');
+check(req($zr(['merchant_id' => '../../x']))['status'] === 400, 'bad merchant id refused');
+$only = $cfg; $only['zarinpal_merchants'] = ['99999999-2222-3333-4444-555555555555'];
+check(req($zr(), ['cfg' => $only])['status'] === 400, 'merchant id outside the allowlist refused');
+check(count($calls) === $n1, 'nothing sent for refused requests');
+$r = req(['action' => 'zarinpal.verify', 'params' => ['merchant_id' => $M, 'amount' => 190000, 'authority' => 'A0000000000000000000000000000000012345']]);
+check(end($calls)[1] === 'https://payment.zarinpal.com/pg/v4/payment/verify.json' && json_decode(end($calls)[3], true)['authority'] === 'A0000000000000000000000000000000012345', 'ZarinPal verify with the given authority and amount');
+check(req(['action' => 'zarinpal.verify', 'params' => ['merchant_id' => $M, 'amount' => 190000, 'authority' => 'A00/../../x']])['status'] === 400, 'bad authority refused');
 
 // ---------------------------------------------------------------- rate limit
 $lim = $cfg; $lim['rate_per_minute'] = 10; $lim['allowed_ips'] = [];

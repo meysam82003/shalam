@@ -7,10 +7,10 @@
         <item name="android:colorAccent">@color/divan_turquoise</item>
         <item name="android:colorPrimary">@color/divan_lapis</item>
         <item name="android:colorPrimaryDark">@color/divan_night</item>
-        <item name="android:navigationBarColor">@color/divan_night</item>
-        <item name="android:statusBarColor">@color/divan_night</item>
+        <item name="android:navigationBarColor">@color/divan_launch_bar</item>
+        <item name="android:statusBarColor">@color/divan_launch_bar</item>
         <item name="android:windowLightStatusBar">false</item>
-        <item name="android:windowBackground">@color/divan_night</item>
+        <item name="android:windowBackground">@drawable/launch_background</item>
         <item name="android:textColorHighlight">#552ED3C6</item>
     </style>
     <style name="DivanDialogAnimation">

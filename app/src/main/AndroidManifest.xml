@@ -6,6 +6,10 @@
     <!-- Only for recording the narrator's own voice for a mafia cue; asked when the narrator taps «ضبط». -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <!-- Notifications: subscription reminders, and offers only for players who said yes (Android 13+ asks). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Keeps the few-times-a-day notification check scheduled after the phone restarts. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <application
         android:allowBackup="true"
         android:fullBackupContent="true"
@@ -17,12 +21,24 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:screenOrientation="portrait">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- «Back to the app» after a web payment: only opens the app and asks the server; never proof of payment. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="divan" android:host="pay" />
+            </intent-filter>
         </activity>
+        <service
+            android:name=".NoticeJob"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
         <!-- Store and server of this build (filled by the bazaar / myket flavor). -->
         <meta-data android:name="divan.store" android:value="${divanStore}" />
         <meta-data android:name="divan.api" android:value="${divanApi}" />

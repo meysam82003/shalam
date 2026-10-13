@@ -17,6 +17,7 @@ require $src . '/app/migrations.php';
 require $src . '/app/catalog.php';
 require $src . '/app/domain.php';
 require $src . '/app/markets.php';
+require $src . '/app/payments.php';
 require $src . '/app/backup.php';
 require $src . '/app/installer.php';
 require $src . '/app/api.php';
@@ -304,10 +305,30 @@ scenario('offline certificate', function () use ($storeKey) {
     check(openssl_verify($tampered, Crypto::b64uDecode($sig), $pub, OPENSSL_ALGO_SHA256) !== 1, 'edited certificate fails verification');
     buy($u, 'life', 'myket', 'tok-c2', $storeKey);
     $p = json_decode(Crypto::b64uDecode(explode('.', Entitlements::certificate(Users::byId((int)$u['id']), 'myket')['certificate'])[0]), true);
-    check($p['lifetime'] && $p['offline_until'] >= Clock::now() + 364 * 86400, 'lifetime works offline for a year');
+    check($p['lifetime'] && $p['offline_until'] === Entitlements::LIFETIME_OFFLINE && $p['exp'] === null, 'lifetime: no end date and no offline limit');
+    Settings::set('single_device', true);
+    $p = json_decode(Crypto::b64uDecode(explode('.', Entitlements::certificate(Users::byId((int)$u['id']), 'myket', ['device_id' => 'phone-a'])['certificate'])[0]), true);
+    check($p['lifetime'] && $p['offline_until'] === Entitlements::LIFETIME_OFFLINE && $p['device'] === 'phone-a', 'lifetime with one-phone rule: still no offline limit, bound to its phone');
+    Settings::set('single_device', false);
     [$f] = Users::register('free_user', 'secret123');
     $p = json_decode(Crypto::b64uDecode(explode('.', Entitlements::certificate($f)['certificate'])[0]), true);
     check($p['pro'] === false, 'free user certificate says not Pro');
+    // Timed passes end exactly at their end; grace only for a store subscription that renews itself.
+    foreach (['m1' => 30, 'm3' => 90, 'm6' => 180] as $code => $days) {
+        [$t] = Users::register('cert_' . $code, 'secret123');
+        buy($t, $code, 'bazaar', 'tok-ce-' . $code, $storeKey);
+        $p = json_decode(Crypto::b64uDecode(explode('.', Entitlements::certificate(Users::byId((int)$t['id']), 'bazaar')['certificate'])[0]), true);
+        check($p['exp'] === Clock::now() + $days * 86400 && $p['grace'] === $p['exp'] && $p['offline_until'] <= $p['exp'], "$days-day pass: exact end, no grace, offline never past the end");
+    }
+    $last = Users::byId((int)$t['id']);
+    $saved = Clock::$fixed;
+    Clock::$fixed += 181 * 86400;
+    $p = json_decode(Crypto::b64uDecode(explode('.', Entitlements::certificate($last, 'bazaar')['certificate'])[0]), true);
+    check($p['pro'] === false, 'after the end, going online does not extend anything');
+    Clock::$fixed = $saved;
+    Db::run('UPDATE {purchases} SET auto_renewing = 1 WHERE user_id = ?', [$last['id']]);
+    $p = json_decode(Crypto::b64uDecode(explode('.', Entitlements::certificate($last, 'bazaar')['certificate'])[0]), true);
+    check($p['grace'] === $p['exp'] + 3 * 86400, 'self-renewing store subscription: 3 days grace for the renewal');
     Settings::set('single_device', true);
 });
 
@@ -577,7 +598,7 @@ scenario('payment gateway in Iran: real HTTP, signed both ways, fake stores', fu
     $r = $buy($u, 'm1', 'myket', 'valid-mk-0001');
     $last = json_decode((string)array_slice(file("$cfgFile.calls"), -1)[0], true);
     check($r['purchase']['status'] === 'verified' && $r['purchase']['verify_method'] === 'store_api' && $r['consume'] === true, 'Myket purchase verified by the store through the gateway; consumable consumed after recording');
-    check($last === ['POST', 'https://developer.myket.ir/api/partners/applications/com.meysam.divanemtiaz/purchases/products/divan_pro_1m/verify'], 'gateway called the official Myket verify endpoint');
+    check($last === ['GET', 'https://developer.myket.ir/api/applications/com.meysam.divanemtiaz/purchases/products/divan_pro_1m/tokens/valid-mk-0001'], 'gateway called the documented Myket verify endpoint');
     check(Entitlements::summary((int)$u['id'])['expires_at'] === Clock::now() + 30 * 86400, 'one month of Pro');
     $buy($u, 'm3', 'myket', 'valid-mk-0002');
     check(Entitlements::summary((int)$u['id'])['expires_at'] === Clock::now() + 120 * 86400, 'renewal: three months added after the current month');
@@ -588,7 +609,7 @@ scenario('payment gateway in Iran: real HTTP, signed both ways, fake stores', fu
     check($rest['purchase']['status'] === 'verified' && (int)Db::value('SELECT COUNT(*) FROM {entitlements} WHERE user_id = ?', [$u['id']]) === $ents, 'restore after reinstall keeps the purchase, adds nothing');
     [$u2] = $reg('bridge_other');
     throws(fn() => Purchases::verify($u2, receipt('myket', 'divan_pro_1m', 'valid-mk-0001', '', $storeKey)), 'owned_by_other', 'a receipt cannot serve a second account');
-    throws(fn() => $buy($u2, 'm1', 'myket', 'refund-mk-0003'), 'refunded', 'Myket refund (purchaseState=1) recorded as refunded');
+    throws(fn() => $buy($u2, 'm1', 'myket', 'refund-mk-0003'), 'rejected', 'Myket purchaseState=1 (unsuccessful, per Myket docs) rejected');
     throws(fn() => $buy($u2, 'm1', 'myket', 'cancel-mk-0004'), 'rejected', 'canceled payment (purchaseState=2) rejected');
     throws(fn() => $buy($u2, 'm1', 'myket', 'unknown-mk-0005'), 'rejected', 'fake receipt unknown to the store rejected');
     $n = $calls();
@@ -670,6 +691,130 @@ scenario('payment gateway in Iran: real HTTP, signed both ways, fake stores', fu
     check(strpos($st, $key) === false && strpos($st, 'SECRET') === false, 'panel status holds no secret');
     $stop();
     Stores::$override = $savedStores;
+    Http::$allowLocalHttpForTests = false;
+});
+
+scenario('promotional notifications: consent, Pro, once per phone, daily cap', function () use ($storeKey) {
+    freshIp();
+    $dev = str_repeat('ab', 32); $dev2 = str_repeat('cd', 32);
+    $mk = function (array $o = []) {
+        return Db::insert('notices', $o + ['title' => 'تخفیف', 'body' => 'متن', 'audience' => 'free', 'stores' => 'bazaar,myket', 'active' => 1, 'created_at' => Clock::sql(), 'updated_at' => Clock::sql()]);
+    };
+    $a = $mk();
+    $due = Notices::due($dev, 'bazaar', false, false);
+    check(count($due) === 1 && $due[0]['id'] === $a && $due[0]['image'] === null, 'a free player gets the campaign');
+    check(Notices::due($dev, 'bazaar', true, false) === [], 'a Pro player gets nothing without opting in');
+    check(Notices::due($dev, 'bazaar', true, true) === [], '…and with opt-in only campaigns meant for everyone');
+    check(Notices::due($dev, 'direct', false, false) === [], 'only the chosen app versions');
+    check(Notices::due('../../etc', 'bazaar', false, false) === [], 'bad device id ignored');
+    Notices::event($a, $dev, 'shown'); Notices::event($a, $dev, 'shown');
+    check(Notices::due($dev, 'bazaar', false, false) === [], 'shown once per phone; a second report changes nothing');
+    check((int)Db::value('SELECT shown FROM {notices} WHERE id = ?', [$a]) === 1, 'counted once');
+    Notices::event($a, $dev, 'opened'); Notices::event($a, $dev, 'opened');
+    check((int)Db::value('SELECT opened FROM {notices} WHERE id = ?', [$a]) === 1, 'opened counted once');
+    $b = $mk(['audience' => 'all']);
+    check(Notices::due($dev, 'bazaar', false, false) === [], 'daily cap (1 per 24 h by default)');
+    check(Notices::due($dev, 'bazaar', true, true) === [], 'cap applies to Pro opt-in too');
+    Settings::set('notices_daily_cap', 2);
+    check(Notices::due($dev, 'bazaar', true, true)[0]['id'] === $b, 'Pro player who opted in gets a campaign for everyone');
+    Settings::set('notices_daily_cap', 1);
+    $c = $mk(['send_at' => Clock::sql(Clock::now() + 3600)]);
+    $d = $mk(['ends_at' => Clock::sql(Clock::now() - 1)]);
+    $e = $mk(); Db::update('notices', ['canceled_at' => Clock::sql(), 'active' => 0], 'id = ?', [$e]);
+    $ids = array_column(Notices::due($dev2, 'bazaar', false, false), 'id');
+    check($ids === [$a], 'scheduled, ended and canceled campaigns are not sent');
+    Settings::set('notices_enabled', false);
+    check(Notices::due($dev2, 'bazaar', false, false) === [], 'master switch stops everything');
+    Settings::set('notices_enabled', true);
+    check(Notices::validTarget('divan://pro') && Notices::validTarget('https://httpuser87890.ir/x') && !Notices::validTarget('javascript:alert(1)') && !Notices::validTarget('http://x.ir') && !Notices::validTarget('divan://evil'), 'only in-app targets or https links');
+    throws(fn() => Notices::event($a, $dev, 'hack'), 'bad_event', 'unknown event refused');
+    $w = $mk(['target' => 'https://example.org/offer', 'stores' => 'bazaar,myket,direct']);
+    $dev3 = str_repeat('ef', 32);
+    check(Notices::due($dev3, 'bazaar', false, false)[0]['id'] === $a && !in_array($w, array_column(Notices::due($dev3, 'myket', false, false), 'id'), true), 'store versions never get a web link (store ad rules)');
+    Db::update('notices', ['active' => 0], 'id = ?', [$a]);
+    check(Notices::due($dev3, 'direct', false, false)[0]['id'] === $w, 'web link only in the site version');
+    Db::update('notices', ['active' => 1], 'id = ?', [$a]);
+    Db::update('notices', ['active' => 0], 'id = ?', [$w]);
+    $r = apiGet('v1/notices', ['device' => $dev2, 'store' => 'myket']);
+    check(count($r['notices']) === 1 && $r['notices'][0]['id'] === $a, 'API returns the due campaign');
+    Db::run('UPDATE {notices} SET active = 0');
+});
+
+scenario('payment methods: store rules, panel control, ZarinPal through the Iran gateway', function () use ($root) {
+    freshIp();
+    Http::$allowLocalHttpForTests = true;
+    $port = 19000 + random_int(0, 999);
+    $key = bin2hex(random_bytes(32));
+    $bdata = "$root/bridge-data2"; @mkdir($bdata, 0700, true);
+    $cfgFile = "$root/bridge-cfg2.json";
+    file_put_contents($cfgFile, json_encode(['keys' => ['k1' => $key], 'allowed_ips' => ['127.0.0.1'], 'packages' => ['com.meysam.divanemtiaz'], 'skus' => [],
+        'callback_hosts' => ['example.test'], 'rate_per_minute' => 1000, '__data' => $bdata]));
+    $router = dirname(__DIR__, 2) . '/payment-bridge/divan-bridge/tests/http_router.php';
+    $proc = proc_open([PHP_BINARY, '-S', "127.0.0.1:$port", $router], [0 => ['pipe', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $pipes, null, ['DIVAN_BRIDGE_TEST_CFG' => $cfgFile] + getenv());
+    for ($i = 0; $i < 50; $i++) { $s = @fsockopen('127.0.0.1', $port, $en, $es, 0.2); if ($s) { fclose($s); break; } usleep(100000); }
+    Settings::set('payment_bridge', ['url' => "http://127.0.0.1:$port/", 'key_id' => 'k1', 'route_myket' => 'direct', 'route_bazaar' => 'direct']);
+    Settings::setSecret('bridge_key', $key);
+
+    $ids = fn(string $ch, ?array $plan = null) => array_column(PayRegistry::methodsFor($ch, $plan), 'id');
+    check($ids('bazaar') === ['bazaar'] && $ids('myket') === ['myket'] && $ids('direct') === [], 'each store version shows only its own store billing; the site version nothing yet');
+    Settings::set('pay_zarinpal', ['enabled' => true]);
+    check(PayRegistry::status('zarinpal', 'direct') === 'needs_config' && $ids('direct') === [], 'switched on without a merchant id: «needs settings», not shown');
+    Settings::setSecret('pay_zarinpal_merchant_id', '11111111-2222-3333-4444-555555555555');
+    check($ids('direct') === ['zarinpal'], 'configured and on: shown in the site version');
+    check(PayRegistry::status('zarinpal', 'bazaar') === 'not_allowed' && PayRegistry::status('zarinpal', 'myket') === 'not_allowed' && $ids('bazaar') === ['bazaar'] && $ids('myket') === ['myket'], 'never in the Bazaar or Myket versions (store rules), whatever the panel says');
+    $api = apiGet('v1/pay/methods', ['store' => 'bazaar']);
+    check(array_column($api['methods'], 'id') === ['bazaar'] && strpos(json_encode($api), 'zarinpal') === false, 'API for the Bazaar version does not even mention other gateways');
+    Settings::set('pay_zarinpal', ['enabled' => true, 'kill' => true]);
+    check($ids('direct') === [], 'emergency stop removes it at once');
+    Settings::set('pay_zarinpal', ['enabled' => true, 'min' => 50000]);
+    $m1 = Plans::byCode('m1'); $life = Plans::byCode('life');
+    check($ids('direct', $m1) === [] && $ids('direct', $life) === ['zarinpal'], 'minimum amount hides it for cheaper plans');
+    Settings::set('pay_zarinpal', ['enabled' => true]);
+    check(PayRegistry::get('zarinpal')->test()[0] === 'ok', 'panel connection test through the gateway');
+
+    $base = App::$config['base_url'];
+    App::$config['base_url'] = 'https://example.test/divan';
+    [$u] = Users::register('web_buyer', 'secret123');
+    throws(fn() => PayOrders::create($u, 'zarinpal', 'm1', 'bazaar'), 'method_unavailable', 'the Bazaar version cannot open a web payment');
+    $o = PayOrders::create($u, 'zarinpal', 'm1', 'direct');
+    $row = PayOrders::byCode($o['order']);
+    check(strpos($o['url'], 'https://payment.zarinpal.com/pg/StartPay/A') === 0 && $row['status'] === 'pending' && (int)$row['amount_rial'] === (int)$row['amount_toman'] * 10 && (int)$row['amount_toman'] === (int)$m1['base_price_toman'], 'order: price from the server, rials = toman × 10, StartPay page');
+    touch("$cfgFile.zpunpaid");
+    $row = PayOrders::settle($row);
+    check($row['status'] === 'failed' && !Entitlements::summary((int)$u['id'])['pro'], 'unpaid (ZarinPal -51): failed, nothing granted');
+    unlink("$cfgFile.zpunpaid");
+    touch("$cfgFile.zpdown");
+    $row = PayOrders::settle($row);
+    check($row['status'] === 'failed' && !Entitlements::summary((int)$u['id'])['pro'], 'gateway unreachable: no change, nothing granted');
+    unlink("$cfgFile.zpdown");
+    $row = PayOrders::settle($row);
+    check($row['status'] === 'paid' && $row['ref_id'] !== null && Entitlements::summary((int)$u['id'])['expires_at'] === Clock::now() + 30 * 86400, 'paid after all (late return): one month granted');
+    $again = PayOrders::settle(Db::one('SELECT * FROM {pay_orders} WHERE id = ?', [$row['id']]));
+    $again = PayOrders::settle(array_merge($again, ['status' => 'pending']));
+    check((int)Db::value("SELECT COUNT(*) FROM {purchases} WHERE store = 'direct' AND user_id = ?", [$u['id']]) === 1 && (int)Db::value('SELECT COUNT(*) FROM {entitlements} WHERE user_id = ?', [$u['id']]) === 1, 'settled again (repeat callback): no second period');
+    $o2 = PayOrders::create($u, 'zarinpal', 'm3', 'direct');
+    $r2 = PayOrders::byCode($o2['order']);
+    Db::update('pay_orders', ['amount_rial' => 10000], 'id = ?', [$r2['id']]);
+    $r2 = PayOrders::settle(PayOrders::byCode($o2['order']));
+    check($r2['status'] === 'failed' && Entitlements::summary((int)$u['id'])['expires_at'] === Clock::now() + 30 * 86400, 'amount changed on our side: ZarinPal refuses (-50), nothing granted');
+    $o3 = PayOrders::create($u, 'zarinpal', 'm3', 'direct');
+    $procs = [];
+    for ($k = 0; $k < 4; $k++) { $pp = []; $procs[] = [proc_open([PHP_BINARY, __DIR__ . '/race_child.php', $root, $o3['order'], '0', (string)Clock::now(), 'settle'], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pp, null, null), $pp]; }
+    $outs = [];
+    foreach ($procs as [$pr, $pp]) { $outs[] = json_decode((string)stream_get_contents($pp[1]), true); stream_get_contents($pp[2]); fclose($pp[1]); fclose($pp[2]); proc_close($pr); }
+    $paid = PayOrders::byCode($o3['order']);
+    check($paid['status'] === 'paid' && (int)Db::value('SELECT COUNT(*) FROM {entitlements} WHERE purchase_id = ?', [$paid['purchase_id']]) === 1
+        && Entitlements::summary((int)$u['id'])['expires_at'] === Clock::now() + 120 * 86400, '4 settles at once: one purchase, three months added after the current month');
+    $o4 = PayOrders::create($u, 'zarinpal', 'life', 'direct');
+    PayOrders::settle(PayOrders::byCode($o4['order']));
+    check(Entitlements::summary((int)$u['id'])['lifetime'], 'lifetime by web payment');
+    throws(fn() => PayOrders::create($u, 'zarinpal', 'm1', 'direct'), 'already_lifetime', 'nothing more to sell after lifetime');
+    $offers = array_column(Plans::offers('direct'), null, 'code');
+    check($offers['m1']['purchasable'] && $offers['m1']['final_price'] === (int)$m1['base_price_toman'], 'site version plans: purchasable when a web method is ready');
+    Settings::set('pay_zarinpal', ['enabled' => false]);
+    check(!array_column(Plans::offers('direct'), null, 'code')['m1']['purchasable'], 'switched off in the panel: not purchasable, no APK needed');
+    App::$config['base_url'] = $base;
+    proc_terminate($proc); proc_close($proc);
     Http::$allowLocalHttpForTests = false;
 });
 

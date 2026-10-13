@@ -216,11 +216,11 @@ final class Plans
     /** The price the store charges for this plan (set in the panel to match the Bazaar or Myket developer panel). */
     public static function storePrice(array $plan, string $store): int
     {
-        $p = (int)($plan["store_price_$store"] ?? 0);
+        $p = $store === 'direct' ? 0 : (int)($plan["store_price_$store"] ?? 0);
         return $p > 0 ? $p : (int)$plan['base_price_toman'];
     }
 
-    public static function onStore(array $plan, string $store): bool { return (int)($plan["on_$store"] ?? 1) === 1; }
+    public static function onStore(array $plan, string $store): bool { return $store === 'direct' || (int)($plan["on_$store"] ?? 1) === 1; }
 
     /**
      * What the app shows and the store charges. Each store has its own price; an optional list price is shown
@@ -230,9 +230,11 @@ final class Plans
     {
         $price = self::storePrice($plan, $store);
         $list = (int)($plan["list_price_$store"] ?? 0);
-        $sku = (string)($plan["sku_$store"] ?? '');
-        $type = (string)($plan["type_$store"] ?? 'consumable');
-        $storeOn = (bool)(Settings::get($store, [])['enabled'] ?? true);
+        $direct = $store === 'direct';
+        // The site version has no store product: it sells through the web methods of the payment registry.
+        $sku = $direct ? 'web' : (string)($plan["sku_$store"] ?? '');
+        $type = $direct ? ($plan['duration_days'] === null ? 'permanent' : 'consumable') : (string)($plan["type_$store"] ?? 'consumable');
+        $storeOn = $direct ? PayRegistry::methodsFor('direct') !== [] : (bool)(Settings::get($store, [])['enabled'] ?? true);
         $camp = self::campaign($plan, $store);
         $final = $price;
         $dynamic = false;
@@ -372,6 +374,9 @@ final class Entitlements
      * subscription renews) and to a configurable offline window; lifetime access lasts a long window
      * and is refreshed on every sync, so a refund still reaches the device later.
      */
+    /** «Offline until» of a lifetime certificate: never in practice (1 Jan 2100); older apps read it as a date. */
+    public const LIFETIME_OFFLINE = 4102444800;
+
     public static function certificate(array $user, ?string $store = null, ?array $session = null): array
     {
         $sum = self::summary((int)$user['id'], $store);
@@ -390,13 +395,22 @@ final class Entitlements
         $now = Clock::now();
         $offlineDays = (int)Settings::get('offline_days', 21);
         $graceDays = (int)Settings::get('renew_grace_days', 3);
-        $renewing = (int)Db::value("SELECT COUNT(*) FROM {purchases} WHERE user_id = ? AND auto_renewing = 1 AND status IN ('verified','signature_verified')", [$user['id']]) > 0;
+        // Grace only when the period that ends last belongs to a store subscription that renews itself;
+        // a pass that was bought once ends exactly at its end date.
+        $renewing = false;
+        if ($sum['expires_at'] !== null) {
+            $last = Db::one("SELECT p.auto_renewing FROM {entitlements} e JOIN {purchases} p ON p.id = e.purchase_id WHERE e.user_id = ? AND e.status = 'active' AND e.expires_at IS NOT NULL ORDER BY e.expires_at DESC LIMIT 1", [$user['id']]);
+            $renewing = $last !== null && (int)$last['auto_renewing'] === 1;
+        }
         $grace = $sum['expires_at'] === null ? null : $sum['expires_at'] + ($renewing ? $graceDays * 86400 : 0);
-        $offlineUntil = $sum['lifetime'] ? $now + (int)Settings::get('lifetime_offline_days', 365) * 86400
-            : ($sum['pro'] ? min((int)$grace, $now + $offlineDays * 86400) : $now + $offlineDays * 86400);
-        // A subscription that can move between phones is checked online more often.
-        if (Devices::enabled() && $sum['pro'] && !$sum['lifetime']) $offlineUntil = min($offlineUntil, $now + min($offlineDays, (int)Settings::get('device_offline_days', 7)) * 86400);
-        if (Devices::enabled() && $sum['lifetime']) $offlineUntil = min($offlineUntil, $now + (int)Settings::get('device_offline_days_lifetime', 30) * 86400);
+        if ($sum['lifetime'] && $sum['pro']) {
+            // Lifetime ownership has no end and needs no periodic check-in; the certificate stays bound to its phone.
+            $offlineUntil = self::LIFETIME_OFFLINE;
+        } else {
+            $offlineUntil = $sum['pro'] ? min((int)$grace, $now + $offlineDays * 86400) : $now + $offlineDays * 86400;
+            // A subscription that can move between phones is checked online more often.
+            if (Devices::enabled() && $sum['pro']) $offlineUntil = min($offlineUntil, $now + min($offlineDays, (int)Settings::get('device_offline_days', 7)) * 86400);
+        }
         $payload = [
             'v' => 1,
             'kid' => Crypto::keyId(),
@@ -873,5 +887,74 @@ final class UserData
         if ($r === null) return null;
         $raw = Crypto::decrypt($r['data_enc']);
         return $raw === null ? null : ['data' => gzuncompress($raw), 'updated_at' => Clock::ts($r['updated_at']), 'size' => (int)$r['size']];
+    }
+}
+
+// ================================================================ promotional notifications
+/**
+ * Campaigns shown in the phone's notification bar. Delivery is by the app asking now and then (a few
+ * times a day, when the phone allows it): not instant push. Only players who said yes get them; Pro
+ * players never get them unless they turned them on themselves.
+ */
+final class Notices
+{
+    public const AUDIENCES = ['free' => 'فقط کاربران رایگان', 'all' => 'همه (کاربران Pro فقط اگر خودشان روشن کرده باشند)'];
+    public const STORES = ['bazaar' => 'کافه‌بازار', 'myket' => 'مایکت', 'direct' => 'نسخهٔ سایت'];
+
+    public static function enabled(): bool { return (bool)Settings::get('notices_enabled', true); }
+    public static function dailyCap(): int { return max(1, min(5, (int)Settings::get('notices_daily_cap', 1))); }
+
+    /** Device ids are stored only as a keyed hash. */
+    public static function deviceHash(string $device): string { return Crypto::hash('notice|' . $device); }
+
+    /** What one phone should show now (at most one, never twice, within the daily cap). */
+    public static function due(string $device, string $store, bool $pro, bool $proOptIn): array
+    {
+        if (!self::enabled() || !preg_match('/^[a-f0-9]{16,64}$/', $device) || !isset(self::STORES[$store])) return [];
+        if ($pro && !$proOptIn) return [];
+        $h = self::deviceHash($device);
+        $today = (int)Db::value('SELECT COUNT(*) FROM {notice_events} WHERE device_hash = ? AND shown_at >= ?', [$h, Clock::sql(Clock::now() - 86400)]);
+        if ($today >= self::dailyCap()) return [];
+        $now = Clock::sql();
+        foreach (Db::all("SELECT * FROM {notices} WHERE active = 1 AND canceled_at IS NULL AND (send_at IS NULL OR send_at <= ?) AND (ends_at IS NULL OR ends_at > ?)
+                ORDER BY COALESCE(send_at, created_at), id", [$now, $now]) as $n) {
+            if (!in_array($store, explode(',', (string)$n['stores']), true)) continue;
+            if ($pro && $n['audience'] !== 'all') continue;
+            // Store versions: only in-app pages (store rules on ads); web links only in the site version.
+            if ($store !== 'direct' && stripos((string)$n['target'], 'https://') === 0) continue;
+            if (Db::value('SELECT id FROM {notice_events} WHERE notice_id = ? AND device_hash = ?', [$n['id'], $h]) !== null) continue;
+            $media = Ads::mediaUrl($n['media_id'] === null ? null : (int)$n['media_id']);
+            return [[
+                'id' => (int)$n['id'], 'title' => $n['title'], 'body' => $n['body'],
+                'image' => $media !== null && $media['kind'] === 'image' ? $media['url'] : null,
+                'target' => (string)($n['target'] ?? ''),
+            ]];
+        }
+        return [];
+    }
+
+    /** The app reports «shown» and «opened»; each counts once per phone. */
+    public static function event(int $id, string $device, string $kind): void
+    {
+        if (!preg_match('/^[a-f0-9]{16,64}$/', $device) || !in_array($kind, ['shown', 'opened'], true)) throw new ApiError('bad_event', 'رویداد نامعتبر است.');
+        if (Db::value('SELECT id FROM {notices} WHERE id = ?', [$id]) === null) return;
+        $h = self::deviceHash($device);
+        $row = Db::one('SELECT * FROM {notice_events} WHERE notice_id = ? AND device_hash = ?', [$id, $h]);
+        if ($row === null) {
+            try {
+                Db::insert('notice_events', ['notice_id' => $id, 'device_hash' => $h, 'shown_at' => Clock::sql(), 'opened_at' => $kind === 'opened' ? Clock::sql() : null]);
+                Db::run('UPDATE {notices} SET shown = shown + 1' . ($kind === 'opened' ? ', opened = opened + 1' : '') . ' WHERE id = ?', [$id]);
+            } catch (PDOException $e) { /* the same report arrived twice at once */ }
+        } elseif ($kind === 'opened' && $row['opened_at'] === null) {
+            Db::update('notice_events', ['opened_at' => Clock::sql()], 'id = ?', [$row['id']]);
+            Db::run('UPDATE {notices} SET opened = opened + 1 WHERE id = ?', [$id]);
+        }
+    }
+
+    public static function validTarget(string $t): bool
+    {
+        if ($t === '') return true;
+        if (strpos($t, 'divan://') === 0) return safe_target_url($t);
+        return stripos($t, 'https://') === 0 && safe_target_url($t);
     }
 }
