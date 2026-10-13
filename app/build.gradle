@@ -9,7 +9,8 @@ def releaseKeystore = System.getenv('DIVAN_KEYSTORE_FILE')
 def setting = { String name, String env -> ((project.findProperty(name) ?: System.getenv(env) ?: '') as String).trim() }
 def divanApi = setting('divan.api', 'DIVAN_API') ?: 'https://httpuser87890.ir/divan/api/index.php'
 def divanLicenseKey = setting('divan.licenseKey', 'DIVAN_LICENSE_KEY')
-def divanMyketKey = setting('divan.myketKey', 'DIVAN_MYKET_RSA_KEY')
+// Myket's public RSA key (safe to commit); per-build property or environment variable takes precedence.
+def divanMyketKey = setting('divan.myketKey', 'DIVAN_MYKET_RSA_KEY') ?: 'MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCADyNgGC9nxkQGOJhwp/8wyI7aaftQ9v7E2PBaktHfIss9ZcD01MD0i1H2EVyaEPJRXgMiTaQMvdF7u1BP8V4IlcxR9HF17x0Il22eBL+q7nTTDFr5vkNJDi2wUzmMIRQzJAFkQHIeUKSkcY8i68GYCSS5lVtDMzi72F7uB3F3XQIDAQAB'
 def divanTapsell = setting('divan.tapsellAppId', 'DIVAN_TAPSELL_APP_ID')
 def basePlaceholders = [
     divanStore: 'bazaar', divanApi: divanApi, divanLicenseKey: divanLicenseKey, divanMyketKey: '', divanTapsell: divanTapsell,
