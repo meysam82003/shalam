@@ -1,6 +1,6 @@
 /* Divan Emtiaz — royal site. Emerald, gold and ivory; Vazirmatn; right to left. */
-@font-face { font-family: Vazir; src: url(../fonts/Vazirmatn-Regular.ttf) format('truetype'); font-weight: 400; font-display: swap; }
-@font-face { font-family: Vazir; src: url(../fonts/Vazirmatn-Bold.ttf) format('truetype'); font-weight: 700; font-display: swap; }
+@font-face { font-family: Vazir; src: url(../fonts/Vazirmatn-Regular.woff2) format('woff2'), url(../fonts/Vazirmatn-Regular.ttf) format('truetype'); font-weight: 400; font-display: swap; }
+@font-face { font-family: Vazir; src: url(../fonts/Vazirmatn-Bold.woff2) format('woff2'), url(../fonts/Vazirmatn-Bold.ttf) format('truetype'); font-weight: 700; font-display: swap; }
 
 :root {
   --bg: #071712; --bg2: #0B241D; --panel: #10302A; --panel2: #143A31; --line: rgba(227, 194, 122, .28);
@@ -204,3 +204,36 @@ footer a:hover { color: var(--gold2); }
   .plan.best { transform: none; }
   footer .cols { grid-template-columns: 1fr; }
 }
+
+/* download page */
+.dl-hero { padding-top: 56px; }
+.dl-hero h1 { font-size: clamp(2.1rem, 5vw, 3.4rem); margin: 14px 0 8px; }
+.dl { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.dl .dl-ico { width: 58px; height: 58px; border-radius: 18px; display: grid; place-items: center; font-size: 28px; margin-bottom: 6px;
+  background: radial-gradient(circle at 35% 30%, rgba(251, 227, 166, .35), rgba(177, 131, 47, .18) 70%); border: 1px solid var(--line); }
+.dl p { flex: 1; }
+.dl .btn { margin-top: 10px; }
+.btn.off { opacity: .5; cursor: default; pointer-events: none; filter: grayscale(.4); }
+.dl-meta { color: var(--dim); font-size: .82rem; min-height: 1.3em; }
+.sha { font-size: .74rem; color: var(--dim); word-break: break-all; }
+.sha code { font-size: .72rem; color: var(--muted); }
+.det { padding: 0 22px 18px; color: var(--muted); }
+.det ol, .det ul { padding-inline-start: 22px; margin-bottom: 10px; }
+.det li { margin-bottom: 6px; }
+.det h3 { color: var(--gold2); font-size: 1.05rem; margin: 14px 0 6px; }
+.det p { padding: 0; margin-bottom: 10px; }
+
+/* tables and contact rows */
+.table-wrap { overflow-x: auto; border-radius: 18px; border: 1px solid var(--line); margin: 10px 0 14px; }
+.tbl { width: 100%; border-collapse: collapse; min-width: 520px; font-size: .95rem; }
+.tbl th, .tbl td { padding: 12px 14px; text-align: right; border-bottom: 1px solid rgba(227, 194, 122, .14); }
+.tbl th { color: var(--gold2); background: rgba(227, 194, 122, .08); font-weight: 700; }
+.tbl td { color: var(--muted); }
+.tbl tr:last-child td { border-bottom: 0; }
+.contact-list { list-style: none; padding: 0 !important; display: grid; gap: 8px; margin: 10px 0 16px; }
+.contact-list li { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 12px 16px; border-radius: 16px; background: rgba(16, 48, 42, .7); border: 1px solid var(--line); margin: 0 !important; }
+.contact-list b { color: var(--gold2); min-width: 9em; }
+.contact-list a, .contact-list span { color: var(--ivory); }
+.doc .updated { color: var(--dim); font-size: .85rem; margin-top: 26px; }
+[hidden] { display: none !important; }
+@media (max-width: 720px) { .contact-list b { min-width: 0; width: 100%; } }

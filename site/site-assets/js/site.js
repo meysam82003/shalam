@@ -9,4 +9,71 @@
   if (y) {
     try { y.textContent = new Intl.DateTimeFormat('fa-IR-u-ca-persian', { year: 'numeric' }).format(new Date()).replace(/[^۰-۹]/g, ''); } catch (e) {}
   }
+
+  // Business details and downloads from site-config.js: an empty value keeps its row hidden, never a placeholder.
+  var cfg = window.DIVAN_SITE || {};
+  function get(path) {
+    return path.split('.').reduce(function (o, k) { return o && o[k] != null ? o[k] : ''; }, cfg);
+  }
+  function fa(s) { return String(s).replace(/[0-9]/g, function (d) { return '۰۱۲۳۴۵۶۷۸۹'[d]; }); }
+  function digits(s) { return String(s).replace(/[۰-۹]/g, function (d) { return '۰۱۲۳۴۵۶۷۸۹'.indexOf(d); }).replace(/[^0-9+]/g, ''); }
+
+  document.querySelectorAll('[data-show]').forEach(function (row) {
+    var v = get(row.getAttribute('data-show'));
+    if (!v) { row.hidden = true; return; }
+    row.hidden = false;
+    row.querySelectorAll('[data-val]').forEach(function (el) {
+      var kind = el.getAttribute('data-val');
+      if (kind === 'tel') { el.textContent = v; el.setAttribute('href', 'tel:' + digits(v)); }
+      else if (kind === 'mail') { el.textContent = v; el.setAttribute('href', 'mailto:' + v); }
+      else if (kind === 'tg') { el.textContent = '@' + v; el.setAttribute('href', 'https://t.me/' + encodeURIComponent(v)); }
+      else if (kind === 'eitaa') { el.textContent = '@' + v; el.setAttribute('href', 'https://eitaa.com/' + encodeURIComponent(v)); }
+      else if (kind === 'bale') { el.textContent = '@' + v; el.setAttribute('href', 'https://ble.ir/' + encodeURIComponent(v)); }
+      else el.textContent = kind === 'fa' ? fa(v) : v;
+    });
+  });
+
+  // A seal block without the pasted official code stays out of sight (no empty heading).
+  document.querySelectorAll('[data-trust]').forEach(function (w) { w.hidden = !w.querySelector('.trust > *'); });
+
+  // Download cards: a platform without a published file says «به‌زودی» and has no link.
+  var dl = cfg.downloads || {};
+  document.querySelectorAll('[data-dl]').forEach(function (card) {
+    var key = card.getAttribute('data-dl');
+    var item = dl[key] || {};
+    var btn = card.querySelector('[data-dl-btn]');
+    var meta = card.querySelector('[data-dl-meta]');
+    if (item.url) {
+      if (btn) { btn.setAttribute('href', item.url); btn.removeAttribute('aria-disabled'); btn.classList.remove('off'); }
+    } else if (btn) {
+      btn.removeAttribute('href');
+      btn.setAttribute('aria-disabled', 'true');
+      btn.classList.add('off');
+      btn.textContent = 'به‌زودی';
+    }
+    if (meta) {
+      var parts = [];
+      if (item.url && dl.version && key !== 'bazaar' && key !== 'myket' && key !== 'web') parts.push('نسخهٔ ' + fa(dl.version));
+      if (item.url && item.size) parts.push(fa(item.size));
+      meta.textContent = parts.join(' · ');
+    }
+    var sum = card.querySelector('[data-dl-sha]');
+    if (sum) { if (item.url && item.sha256) { sum.hidden = false; sum.querySelector('code').textContent = item.sha256; } else sum.hidden = true; }
+  });
+  document.querySelectorAll('[data-dl-github]').forEach(function (a) { if (dl.github) a.setAttribute('href', dl.github); else a.hidden = true; });
+
+  // Organization data for search engines, from the same real details (nothing is added when they are empty).
+  var c = cfg.contact || {}, b = cfg.business || {};
+  var org = { '@context': 'https://schema.org', '@type': 'Organization', name: b.brand || 'دیوان امتیاز', url: location.origin + '/',
+    logo: location.origin + '/favicon.svg' };
+  if (b.owner) org.legalName = b.owner;
+  var point = { '@type': 'ContactPoint', contactType: 'customer support', availableLanguage: ['fa'] };
+  if (c.email) point.email = c.email;
+  if (c.phone) point.telephone = c.phone;
+  org.contactPoint = [point];
+  if (c.address) org.address = { '@type': 'PostalAddress', streetAddress: c.address, postalCode: c.postalCode || undefined, addressCountry: 'IR' };
+  var s = document.createElement('script');
+  s.type = 'application/ld+json';
+  s.textContent = JSON.stringify(org);
+  document.head.appendChild(s);
 })();

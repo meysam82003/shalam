@@ -10,6 +10,25 @@ Header always set Referrer-Policy "strict-origin-when-cross-origin"
 Header always set X-Frame-Options "SAMEORIGIN"
 </IfModule>
 
+# Correct types for the download files (the iPhone profile must be served as a profile to install).
+<IfModule mod_mime.c>
+AddType application/x-apple-aspen-config .mobileconfig
+AddType application/vnd.android.package-archive .apk
+AddType application/manifest+json .webmanifest
+AddType font/woff2 .woff2
+</IfModule>
+
+# Fonts, images and styles are cached for a month; pages are always revalidated.
+<IfModule mod_expires.c>
+ExpiresActive On
+ExpiresByType font/woff2 "access plus 1 month"
+ExpiresByType image/webp "access plus 1 month"
+ExpiresByType image/svg+xml "access plus 1 month"
+ExpiresByType text/css "access plus 1 week"
+ExpiresByType application/javascript "access plus 1 day"
+ExpiresByType text/html "access plus 0 seconds"
+</IfModule>
+
 <FilesMatch "(?i)^(\.env|composer\.(json|lock)|.*\.(sql|dvbk|pem|log|md|bak|old))$">
 <IfModule mod_authz_core.c>
 Require all denied
