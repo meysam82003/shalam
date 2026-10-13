@@ -1,0 +1,36 @@
+# Divan Emtiaz — root of httpuser87890.ir
+# Root opens the introduction site (index.html) directly.
+# Subfolders such as /divan/ keep their own .htaccess and are not affected.
+Options -Indexes
+DirectoryIndex index.html index.php
+
+<IfModule mod_headers.c>
+Header always set X-Content-Type-Options "nosniff"
+Header always set Referrer-Policy "strict-origin-when-cross-origin"
+Header always set X-Frame-Options "SAMEORIGIN"
+</IfModule>
+
+<FilesMatch "(?i)^(\.env|composer\.(json|lock)|.*\.(sql|dvbk|pem|log|md|bak|old))$">
+<IfModule mod_authz_core.c>
+Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+Order allow,deny
+Deny from all
+</IfModule>
+</FilesMatch>
+
+<IfModule mod_rewrite.c>
+RewriteEngine On
+# HTTPS only
+RewriteCond %{HTTPS} off
+RewriteCond %{HTTP:X-Forwarded-Proto} !https
+RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+# www -> bare domain
+RewriteCond %{HTTP_HOST} ^www\.(.+)$ [NC]
+RewriteRule ^ https://%1%{REQUEST_URI} [L,R=301]
+# The unused installer in the root must never be reachable: send it to the home page.
+RewriteRule ^install(/.*)?$ / [L,R=302]
+# Old root entry point also goes to the home page.
+RewriteRule ^index\.php$ / [L,R=302]
+</IfModule>

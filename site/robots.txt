@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+Disallow: /install/
+Sitemap: https://httpuser87890.ir/sitemap.xml
