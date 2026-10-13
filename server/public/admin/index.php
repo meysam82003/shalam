@@ -51,6 +51,7 @@ $pages = [
     'media' => [ConfigPages::class, 'media'],
     'adnetwork' => [ConfigPages::class, 'adnetwork'],
     'stores' => [ConfigPages::class, 'stores'],
+    'bridge' => [ConfigPages::class, 'bridge'],
     'backups' => [ConfigPages::class, 'backups'],
     'audit' => [ConfigPages::class, 'audit'],
     'admins' => [ConfigPages::class, 'admins'],

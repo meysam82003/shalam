@@ -59,7 +59,8 @@ jobs:
         run: |
           sudo systemctl start mysql
           mysql -uroot -proot -e "CREATE DATABASE divan_test2 CHARACTER SET utf8mb4; CREATE USER 'divan'@'localhost' IDENTIFIED BY 'ci-only'; GRANT ALL ON divan_test2.* TO 'divan'@'localhost';"
-          for f in $(find server -name '*.php'); do php -l "$f" > /dev/null; done
+          for f in $(find server payment-bridge -name '*.php'); do php -l "$f" > /dev/null; done
+          php payment-bridge/divan-bridge/tests/run.php
           DIVAN_TEST_DSN="host=localhost;dbname=divan_test2" DIVAN_TEST_PASS=ci-only php server/tests/run.php
 
       - name: Prepare release files

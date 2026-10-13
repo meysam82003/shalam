@@ -18,7 +18,7 @@ final class Admin
     ];
     private const ACCESS = [
         'owner' => ['*'],
-        'manager' => ['dashboard', 'promos', 'users', 'user', 'plans', 'subscriptions', 'transactions', 'transaction', 'features', 'campaigns', 'ads', 'ad', 'placements', 'media', 'reports', 'stores', 'adnetwork', 'gifts', 'support', 'ticket', 'audit', 'account', 'backups'],
+        'manager' => ['dashboard', 'promos', 'users', 'user', 'plans', 'subscriptions', 'transactions', 'transaction', 'features', 'campaigns', 'ads', 'ad', 'placements', 'media', 'reports', 'stores', 'bridge', 'adnetwork', 'gifts', 'support', 'ticket', 'audit', 'account', 'backups'],
         'support' => ['dashboard', 'users', 'user', 'subscriptions', 'transactions', 'transaction', 'gifts', 'support', 'ticket', 'account'],
         'analyst' => ['dashboard', 'reports', 'subscriptions', 'transactions', 'ads', 'placements', 'account'],
     ];
@@ -195,6 +195,7 @@ final class Admin
         ['adnetwork', 'شبکهٔ تبلیغاتی'],
         ['', 'تنظیمات'],
         ['stores', 'بازار و مایکت'],
+        ['bridge', 'واسط پرداخت ایران'],
         ['backups', 'پشتیبان‌گیری'],
         ['audit', 'امنیت و گزارش تغییرات'],
         ['admins', 'مدیران'],

@@ -539,6 +539,140 @@ scenario('API end to end', function () use ($storeKey, $myket) {
     throws(fn() => apiGet('v1/nothing'), 'not_found', 'unknown route');
 });
 
+scenario('payment gateway in Iran: real HTTP, signed both ways, fake stores', function () use ($storeKey, $root) {
+    freshIp();
+    Http::$allowLocalHttpForTests = true;
+    $savedStores = Stores::$override; Stores::$override = [];   // the real verifiers, routed through the gateway
+    $port = 18000 + random_int(0, 999);
+    $key = bin2hex(random_bytes(32));
+    $bdata = "$root/bridge-data"; @mkdir($bdata, 0700, true);
+    $cfgFile = "$root/bridge-cfg.json";
+    file_put_contents($cfgFile, json_encode(['keys' => ['k1' => $key], 'allowed_ips' => ['127.0.0.1'], 'packages' => ['com.meysam.divanemtiaz'],
+        'skus' => ['divan_pro_1m', 'divan_pro_3m', 'divan_pro_6m', 'divan_pro_lifetime'], 'myket_access_token' => 'MYKET-SECRET-123',
+        'bazaar_api_secret' => 'BAZAAR-SECRET-456', 'rate_per_minute' => 1000, '__data' => $bdata]));
+    $router = dirname(__DIR__, 2) . '/payment-bridge/divan-bridge/tests/http_router.php';
+    $proc = null;
+    $start = function () use (&$proc, $port, $router, $cfgFile) {
+        $proc = proc_open([PHP_BINARY, '-S', "127.0.0.1:$port", $router], [0 => ['pipe', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $pipes, null, ['DIVAN_BRIDGE_TEST_CFG' => $cfgFile] + getenv());
+        for ($i = 0; $i < 50; $i++) { $s = @fsockopen('127.0.0.1', $port, $en, $es, 0.2); if ($s) { fclose($s); return; } usleep(100000); }
+    };
+    $stop = function () use (&$proc) { if ($proc) { proc_terminate($proc); proc_close($proc); $proc = null; usleep(200000); } };
+    $calls = function () use ($cfgFile) { return is_file("$cfgFile.calls") ? count(file("$cfgFile.calls")) : 0; };
+    $start();
+    Settings::set('payment_bridge', ['url' => "http://127.0.0.1:$port/", 'key_id' => 'k1', 'route_myket' => 'bridge', 'route_bazaar' => 'bridge']);
+    Settings::setSecret('bridge_key', $key);
+    Settings::setSecret('myket_access_token', ''); Settings::setSecret('bazaar_api_secret', '');   // the Netherlands holds no store secret
+
+    $p = PaymentBridge::call('ping');
+    check($p['kind'] === 'pong' && $p['stores'] === ['myket' => true, 'bazaar' => true], 'Netherlands → gateway: signed ping, signed answer verified');
+    check(strpos(json_encode($p), 'MYKET-SECRET') === false && strpos(json_encode($p), 'BAZAAR-SECRET') === false, 'no store secret travels back');
+    check(PaymentBridge::testStore('myket')[0] === 'ok' && PaymentBridge::testStore('bazaar')[0] === 'ok', 'panel connection tests of both stores pass through the gateway');
+
+    $reg = function (string $name) { freshIp(); return Users::register($name, 'secret123'); };
+    $buy = function (array $u, string $plan, string $store, string $token) use ($storeKey) {
+        $i = Purchases::intent($u, $plan, $store);
+        return Purchases::verify($u, receipt($store, $i['sku'], $token, $i['payload'], $storeKey));
+    };
+    [$u] = $reg('bridge_buyer');
+    $r = $buy($u, 'm1', 'myket', 'valid-mk-0001');
+    $last = json_decode((string)array_slice(file("$cfgFile.calls"), -1)[0], true);
+    check($r['purchase']['status'] === 'verified' && $r['purchase']['verify_method'] === 'store_api' && $r['consume'] === true, 'Myket purchase verified by the store through the gateway; consumable consumed after recording');
+    check($last === ['POST', 'https://developer.myket.ir/api/partners/applications/com.meysam.divanemtiaz/purchases/products/divan_pro_1m/verify'], 'gateway called the official Myket verify endpoint');
+    check(Entitlements::summary((int)$u['id'])['expires_at'] === Clock::now() + 30 * 86400, 'one month of Pro');
+    $buy($u, 'm3', 'myket', 'valid-mk-0002');
+    check(Entitlements::summary((int)$u['id'])['expires_at'] === Clock::now() + 120 * 86400, 'renewal: three months added after the current month');
+    $ents = (int)Db::value('SELECT COUNT(*) FROM {entitlements} WHERE user_id = ?', [$u['id']]);
+    $again = Purchases::verify($u, receipt('myket', 'divan_pro_1m', 'valid-mk-0001', '', $storeKey));
+    check((int)$again['purchase']['id'] === (int)$r['purchase']['id'] && (int)Db::value('SELECT COUNT(*) FROM {entitlements} WHERE user_id = ?', [$u['id']]) === $ents, 'same receipt again (retry): same purchase, no extra period');
+    $rest = Purchases::verify($u, receipt('myket', 'divan_pro_3m', 'valid-mk-0002', '', $storeKey), true);
+    check($rest['purchase']['status'] === 'verified' && (int)Db::value('SELECT COUNT(*) FROM {entitlements} WHERE user_id = ?', [$u['id']]) === $ents, 'restore after reinstall keeps the purchase, adds nothing');
+    [$u2] = $reg('bridge_other');
+    throws(fn() => Purchases::verify($u2, receipt('myket', 'divan_pro_1m', 'valid-mk-0001', '', $storeKey)), 'owned_by_other', 'a receipt cannot serve a second account');
+    throws(fn() => $buy($u2, 'm1', 'myket', 'refund-mk-0003'), 'refunded', 'Myket refund (purchaseState=1) recorded as refunded');
+    throws(fn() => $buy($u2, 'm1', 'myket', 'cancel-mk-0004'), 'rejected', 'canceled payment (purchaseState=2) rejected');
+    throws(fn() => $buy($u2, 'm1', 'myket', 'unknown-mk-0005'), 'rejected', 'fake receipt unknown to the store rejected');
+    $n = $calls();
+    $i = Purchases::intent($u2, 'm1', 'myket');
+    throws(fn() => Purchases::verify($u2, receipt('myket', 'divan_pro_1m', 'valid-mk-0006', $i['payload'], $storeKey, true)), 'bad_signature', 'forged receipt signature refused');
+    check($calls() === $n, '…before anything is sent to the gateway');
+    check(!Entitlements::summary((int)$u2['id'])['pro'], 'no Pro from refused receipts');
+    foreach (['denied-mk-0007' => 'store 401', 'forbid-mk-0008' => 'store 403', 'slow-mk-0009' => 'store timeout', 'down-mk-0010' => 'store 503'] as $tok => $what) {
+        [$ux] = Users::register('bx' . substr(md5($tok), 0, 8), 'secret123');
+        $rx = $buy($ux, 'm1', 'myket', $tok);
+        check($rx['purchase']['status'] === 'signature_verified' && $rx['purchase']['verify_method'] === 'store_signature' && $rx['purchase']['next_check_at'] !== null, "$what: never «verified»; kept for recheck under the current signature policy");
+    }
+    // Bazaar through the gateway: lifetime and an official Bazaar subscription.
+    [$u3] = $reg('bridge_bazaar');
+    $r = $buy($u3, 'life', 'bazaar', 'valid-bz-0011');
+    check($r['purchase']['status'] === 'verified' && $r['consume'] === false && Entitlements::summary((int)$u3['id'])['lifetime'], 'Bazaar lifetime: verified, never consumed, Pro for good');
+    throws(fn() => $buy($u3, 'life', 'bazaar', 'valid-bz-0012'), 'already_lifetime', 'lifetime not sold twice');
+    [$u4] = $reg('bridge_sub');
+    $m1 = Plans::byCode('m1');
+    Db::update('plans', ['type_bazaar' => 'subscription'], 'id = ?', [$m1['id']]);
+    $r = $buy($u4, 'm1', 'bazaar', 'sub-bz-0013');
+    $last = json_decode((string)array_slice(file("$cfgFile.calls"), -1)[0], true);
+    check($r['purchase']['status'] === 'verified' && $r['purchase']['auto_renewing'] == 1 && Entitlements::summary((int)$u4['id'])['expires_at'] === 1800000000 + 30 * 86400, 'Bazaar subscription: end date from the store');
+    check($last[1] === 'https://pardakht.cafebazaar.ir/devapi/v2/api/applications/com.meysam.divanemtiaz/subscriptions/divan_pro_1m/purchases/sub-bz-0013', 'official Bazaar subscription endpoint');
+    Db::update('plans', ['type_bazaar' => 'consumable'], 'id = ?', [$m1['id']]);
+
+    // The gateway is down: nothing is approved; once it is back, the recheck confirms the purchase.
+    $stop();
+    [$u5] = $reg('bridge_down');
+    $r = $buy($u5, 'm1', 'myket', 'valid-mk-0020');
+    $st = (array)Settings::get('bridge_status', []);
+    check($r['purchase']['status'] === 'signature_verified' && $st['last_kind'] === 'bridge_unreachable', 'gateway down: purchase kept (signature only), error shown in the panel');
+    $start();
+    Clock::$fixed += 400;
+    Purchases::recheck(50);
+    check(Db::value('SELECT status FROM {purchases} WHERE id = ?', [$r['purchase']['id']]) === 'verified', 'gateway back: recheck confirms with the store');
+    Clock::$fixed -= 400;
+
+    // Wrong key, unknown key id, a forged answer.
+    Settings::setSecret('bridge_key', bin2hex(random_bytes(32)));
+    $w = PaymentBridge::call('ping');
+    check($w['kind'] === 'bridge_auth', 'wrong shared key: refused by the gateway, reported as bridge_auth');
+    Settings::setSecret('bridge_key', $key);
+    check(PaymentBridge::call('ping', [], 'k9')['kind'] === 'bridge_auth', 'unknown key id refused');
+    touch("$cfgFile.tamper");
+    [$u6] = $reg('bridge_mitm');
+    $r = $buy($u6, 'm1', 'myket', 'refund-mk-0021');
+    check($r['purchase']['status'] !== 'verified' && ((array)Settings::get('bridge_status', []))['last_kind'] === 'bridge_bad_response', 'answer changed in transit (refund → paid): signature check rejects it');
+    unlink("$cfgFile.tamper");
+    // Only fixed actions: nothing like a URL can be passed through.
+    check(PaymentBridge::call('fetch', ['url' => 'https://example.com/'])['kind'] === 'bad_request', 'unknown action refused by the gateway (no open proxy)');
+    check(PaymentBridge::call('myket.verify', ['package' => 'com.evil.app', 'sku' => 'divan_pro_1m', 'token' => 'valid-x-0001'])['kind'] === 'bad_request', 'foreign package refused');
+
+    // Several requests at the same time for one purchase: one row, one period.
+    [$u7] = $reg('bridge_race');
+    $i = Purchases::intent($u7, 'm1', 'myket');
+    $rf = "$root/race.json";
+    file_put_contents($rf, json_encode(receipt('myket', $i['sku'], 'slowvalid-race-0001', $i['payload'], $storeKey)));
+    $procs = [];
+    for ($k = 0; $k < 4; $k++) {
+        $pipes = [];
+        $pr = proc_open([PHP_BINARY, __DIR__ . '/race_child.php', $root, $rf, (string)$u7['id'], (string)Clock::now()], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+        $procs[] = [$pr, $pipes];
+    }
+    $outs = [];
+    foreach ($procs as [$pr, $pipes]) { $outs[] = json_decode((string)stream_get_contents($pipes[1]), true); stream_get_contents($pipes[2]); fclose($pipes[1]); fclose($pipes[2]); proc_close($pr); }
+    $ids = array_unique(array_map(fn($o) => is_array($o) ? ($o['id'] ?? null) : null, $outs));
+    $pid = (int)Db::value('SELECT id FROM {purchases} WHERE store = ? AND token_hash = ?', ['myket', Crypto::hash('myket|slowvalid-race-0001')]);
+    check(count(array_filter($outs, fn($o) => is_array($o) && $o['ok'] && $o['status'] === 'verified')) === 4 && count($ids) === 1, '4 simultaneous requests for one purchase: all answered with the same purchase');
+    check((int)Db::value('SELECT COUNT(*) FROM {purchases} WHERE store = ? AND token_hash = ?', ['myket', Crypto::hash('myket|slowvalid-race-0001')]) === 1
+        && (int)Db::value('SELECT COUNT(*) FROM {entitlements} WHERE purchase_id = ?', [$pid]) === 1
+        && Entitlements::summary((int)$u7['id'])['expires_at'] === Clock::now() + 30 * 86400, '…one purchase row, one 30-day period');
+
+    // Nothing secret in the gateway log or the panel status.
+    $log = '';
+    foreach (glob("$bdata/logs/*.log") ?: [] as $f) $log .= file_get_contents($f);
+    check($log !== '' && strpos($log, 'MYKET-SECRET') === false && strpos($log, 'BAZAAR-SECRET') === false && strpos($log, $key) === false && strpos($log, 'valid-mk-0001') === false, 'gateway log: no key, store secret or purchase token');
+    $st = json_encode(Settings::get('bridge_status', []));
+    check(strpos($st, $key) === false && strpos($st, 'SECRET') === false, 'panel status holds no secret');
+    $stop();
+    Stores::$override = $savedStores;
+    Http::$allowLocalHttpForTests = false;
+});
+
 // ---------------------------------------------------------------- report
 echo "\n" . ($failed ? "FAILED " . count($failed) . " of " . ($passed + count($failed)) . " checks\n" . implode("\n", $failed) . "\n" : "ALL $passed CHECKS PASSED\n");
 foreach ($pdo->query("SHOW TABLES LIKE 'dvt\\_%'")->fetchAll(PDO::FETCH_COLUMN) as $t) $pdo->exec("DROP TABLE `$t`");

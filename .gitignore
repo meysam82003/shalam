@@ -7,3 +7,10 @@ captures/
 .DS_Store
 work/
 signing/
+
+# Payment gateway (Iran host): secrets and runtime data never go to GitHub.
+payment-bridge/divan-bridge/config.php
+payment-bridge/divan-bridge/data/*
+!payment-bridge/divan-bridge/data/.htaccess
+!payment-bridge/divan-bridge/data/index.html
+payment-bridge/public/bridge-path.php

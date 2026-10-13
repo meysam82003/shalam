@@ -673,10 +673,8 @@ final class ConfigPages
             $action = (string)($_POST['action'] ?? 'save');
             if ($action === 'test_bazaar' || $action === 'test_myket') {
                 $store = $action === 'test_bazaar' ? 'bazaar' : 'myket';
-                $v = Stores::get($store)->verify('divan_connectivity_probe', 'probe-' . bin2hex(random_bytes(6)), 'consumable');
-                $_SESSION['store_result'] = [$store, $v->state === StoreVerdict::INVALID
-                    ? ['ok', 'ارتباط با ' . Admin::storeName($store) . ' برقرار است و کلید پذیرفته شد (رسید آزمایشی را نشناخت که درست است).']
-                    : ['bad', 'نتیجه: ' . $v->state . ' — ' . $v->message]];
+                // Along the route in use now: directly, or through the gateway in Iran.
+                $_SESSION['store_result'] = [$store, PaymentBridge::testStore($store)];
                 Admin::redirect('p=stores');
             }
             if ($action === 'myket_products') {
@@ -723,6 +721,7 @@ final class ConfigPages
               <label>نام بستهٔ برنامه</label><input type="text" name="bazaar_package" value="<?= e($b['package'] ?? 'com.meysam.divanemtiaz') ?>" class="ltr">
               <label>کلید عمومی RSA پرداخت درون‌برنامه‌ای</label><textarea name="bazaar_public_key" class="ltr" style="min-height:70px" placeholder="MIHNMA0GCSqGSIb3DQEBAQUAA..."><?= e($b['public_key'] ?? '') ?></textarea>
               <div class="hint">پنل توسعه‌دهندگان بازار ← برنامه ← پرداخت درون‌برنامه‌ای ← کلید RSA</div>
+              <?php if (PaymentBridge::route('bazaar') === 'bridge'): ?><div class="alert ok">بازار از راه <a href="index.php?p=bridge">واسط پرداخت ایران</a> بررسی می‌شود؛ کلید API فقط در config.php سرور ایران لازم است.</div><?php endif; ?>
               <label>کلید API پیشخوان (CAFEBAZAAR-PISHKHAN-API-SECRET) <?= $has('bazaar_api_secret') ?></label><input type="password" name="bazaar_api_secret" class="ltr" autocomplete="new-password" placeholder="خالی = بدون تغییر، - = پاک کردن">
               <details><summary class="muted">روش قدیمی OAuth (فقط اگر کلید API ندارید)</summary>
                 <label>Client ID</label><input type="text" name="bazaar_client_id" value="<?= e($b['client_id'] ?? '') ?>" class="ltr">
@@ -738,6 +737,7 @@ final class ConfigPages
               <label>نام بستهٔ برنامه</label><input type="text" name="myket_package" value="<?= e($m['package'] ?? 'com.meysam.divanemtiaz') ?>" class="ltr">
               <label>کلید عمومی RSA</label><textarea name="myket_public_key" class="ltr" style="min-height:70px"><?= e($m['public_key'] ?? '') ?></textarea>
               <div class="hint">پنل توسعه‌دهندگان مایکت ← برنامه ← پرداخت درون‌برنامه‌ای</div>
+              <?php if (PaymentBridge::route('myket') === 'bridge'): ?><div class="alert ok">مایکت از راه <a href="index.php?p=bridge">واسط پرداخت ایران</a> بررسی می‌شود؛ توکن API فقط در config.php سرور ایران لازم است و این فیلد را می‌توانید خالی بگذارید (با «-» پاک کنید).</div><?php endif; ?>
               <label>توکن دسترسی API (X-Access-Token) <?= $has('myket_access_token') ?></label><input type="password" name="myket_access_token" class="ltr" autocomplete="new-password" placeholder="خالی = بدون تغییر، - = پاک کردن">
               <p class="row" style="gap:6px"><button class="btn ghost sm" name="action" value="test_myket" formnovalidate>آزمایش ارتباط با مایکت</button><button class="btn ghost sm" name="action" value="myket_products" formnovalidate>دریافت فهرست محصولات و قیمت‌ها</button></p>
               <p class="hint">مایکت اشتراک دوره‌ای ندارد؛ پلن‌های زمان‌دار به‌صورت محصول مصرفی فروخته می‌شوند و سرور دوره را حساب می‌کند. مادام‌العمر محصول مصرف‌نشدنی است.</p>
@@ -764,6 +764,157 @@ final class ConfigPages
             </form>
             <?php
         }, 'stores');
+    }
+
+    // ================================================================ payment gateway in Iran
+    public static function bridge(): void
+    {
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            self::managerOnly();
+            $reason = Admin::requireReason();
+            $action = (string)($_POST['action'] ?? 'save');
+            $cfg = PaymentBridge::cfg();
+            if (in_array($action, ['gen_key', 'set_key', 'activate_next', 'clear_next'], true)) self::ownerOnly();
+
+            if ($action === 'ping' || $action === 'test_myket' || $action === 'test_bazaar') {
+                $_SESSION['bridge_result'] = $action === 'ping' ? self::bridgePing() : PaymentBridge::testStore($action === 'test_myket' ? 'myket' : 'bazaar', true);
+                Admin::audit('bridge_' . $action, 'settings', null, $reason, null, ['result' => $_SESSION['bridge_result'][0]]);
+                Admin::redirect('p=bridge');
+            }
+            if ($action === 'gen_key' || $action === 'set_key') {
+                $key = $action === 'gen_key' ? bin2hex(random_bytes(32)) : strtolower(preg_replace('/\s+/', '', self::post('new_key')));
+                if (!preg_match('/^[0-9a-f]{64}$/', $key)) throw new ApiError('key', 'کلید باید ۶۴ نویسهٔ هگز (0-9 و a-f) باشد.');
+                preg_match('/(\d+)$/', (string)$cfg['key_id'], $m);
+                $nextId = $action === 'set_key' && preg_match('/^[a-z0-9_-]{1,32}$/', self::post('new_key_id')) ? self::post('new_key_id') : 'k' . (((int)($m[1] ?? 0)) + 1);
+                Settings::setSecret('bridge_key_next', $key);
+                Settings::set('payment_bridge', ['next_key_id' => $nextId] + $cfg);
+                Admin::audit('bridge_key_next', 'settings', null, $reason, null, ['key_id' => $nextId]);
+                if ($action === 'gen_key') $_SESSION['bridge_new_key'] = [$nextId, $key];
+                Admin::flash('کلید تازه با شناسهٔ «' . $nextId . '» آماده است. آن را در config.php واسط ایران اضافه کنید و بعد «فعال کردن کلید تازه» را بزنید.');
+                Admin::redirect('p=bridge');
+            }
+            if ($action === 'activate_next') {
+                $next = Settings::secret('bridge_key_next'); $nextId = (string)($cfg['next_key_id'] ?? '');
+                if ($next === '' || $nextId === '') throw new ApiError('key', 'کلید تازه‌ای در انتظار نیست.');
+                $r = PaymentBridge::call('ping', [], $nextId, $next);
+                if ($r['kind'] !== 'pong') throw new ApiError('key', 'واسط ایران کلید تازه را نپذیرفت؛ کلید فعلی دست نخورد. ' . ($r['error'] ?? $r['kind']));
+                Settings::setSecret('bridge_key', $next);
+                Settings::setSecret('bridge_key_next', '');
+                $cfg['key_id'] = $nextId; unset($cfg['next_key_id']);
+                Settings::set('payment_bridge', $cfg);
+                Admin::audit('bridge_key_activated', 'settings', null, $reason, null, ['key_id' => $nextId]);
+                Admin::flash('کلید «' . $nextId . '» فعال شد. حالا کلید قبلی را از config.php واسط ایران پاک کنید.');
+                Admin::redirect('p=bridge');
+            }
+            if ($action === 'clear_next') {
+                Settings::setSecret('bridge_key_next', ''); unset($cfg['next_key_id']); Settings::set('payment_bridge', $cfg);
+                Admin::redirect('p=bridge');
+            }
+            // save: address and the route of each store
+            $url = self::post('url', PaymentBridge::DEFAULT_URL);
+            if (substr($url, -1) !== '/') $url .= '/';
+            if (!PaymentBridge::validUrl($url)) throw new ApiError('url', 'نشانی واسط باید با https:// شروع شود، مثل https://pay.httpuser87890.ir/');
+            $new = ['url' => $url] + $cfg;
+            $msgs = [];
+            foreach (['myket', 'bazaar'] as $s) {
+                $want = self::post('route_' . $s) === 'bridge' ? 'bridge' : 'direct';
+                $new['route_' . $s] = $want;
+            }
+            Settings::set('payment_bridge', $new);
+            // A store goes through the gateway only if the gateway answers with the current key right now.
+            if ($new['route_myket'] === 'bridge' || $new['route_bazaar'] === 'bridge') {
+                $r = PaymentBridge::call('ping');
+                if ($r['kind'] !== 'pong') {
+                    foreach (['myket', 'bazaar'] as $s) if ($new['route_' . $s] === 'bridge' && ($cfg['route_' . $s] ?? 'direct') !== 'bridge') $new['route_' . $s] = 'direct';
+                    Settings::set('payment_bridge', $new);
+                    $msgs[] = 'واسط پاسخ نداد، پس فروشگاهی به مسیر واسط نرفت: ' . ($r['error'] ?? $r['kind']);
+                }
+            }
+            Admin::audit('bridge_settings', 'settings', null, $reason, ['url' => $cfg['url'], 'route_myket' => $cfg['route_myket'], 'route_bazaar' => $cfg['route_bazaar']], ['url' => $new['url'], 'route_myket' => $new['route_myket'], 'route_bazaar' => $new['route_bazaar']]);
+            Admin::flash($msgs ? implode(' ', $msgs) : 'ذخیره شد.', $msgs ? 'bad' : 'ok');
+            Admin::redirect('p=bridge');
+        }
+        $cfg = PaymentBridge::cfg();
+        $status = (array)Settings::get('bridge_status', []);
+        $result = $_SESSION['bridge_result'] ?? null; unset($_SESSION['bridge_result']);
+        $newKey = $_SESSION['bridge_new_key'] ?? null; unset($_SESSION['bridge_new_key']);
+        Admin::layout('واسط پرداخت ایران', function () use ($cfg, $status, $result, $newKey) {
+            $t = fn($ts) => $ts ? e(jdate(Clock::sql((int)$ts))) : '—';
+            $hasKey = Settings::secret('bridge_key') !== '';
+            $hasNext = Settings::secret('bridge_key_next') !== '' && !empty($cfg['next_key_id']);
+            if ($result) echo '<div class="alert ' . e($result[0]) . '">' . $result[1] . '</div>';
+            if ($newKey): ?>
+              <div class="alert warn"><b>کلید تازه (فقط همین یک بار نمایش داده می‌شود):</b><br>
+                شناسه: <code class="ltr"><?= e($newKey[0]) ?></code><br>
+                <input type="text" class="ltr" readonly value="<?= e($newKey[1]) ?>" onclick="this.select()" style="font-family:monospace">
+                <br>در config.php واسط ایران، داخل 'keys' این خط را اضافه کنید: <code class="ltr">'<?= e($newKey[0]) ?>' => '…همین کلید…',</code> سپس «فعال کردن کلید تازه» را بزنید. این کلید را در پیام‌رسان یا GitHub نگذارید.</div>
+            <?php endif; ?>
+            <div class="alert info">
+              مایکت از سرور هلند در دسترس نیست؛ با این بخش، سرور اصلی رسیدها را از راه سرور ایران (<span class="ltr">pay.httpuser87890.ir</span>) به مایکت و بازار می‌فرستد.
+              واسط فقط پاسخ فروشگاه را برمی‌گرداند؛ تصمیم دربارهٔ خرید، حساب‌ها و اشتراک‌ها همین‌جا گرفته می‌شود. ارتباط با کلید مشترک امضا می‌شود و هر درخواست فقط یک بار پذیرفته می‌شود.
+            </div>
+            <div class="grid g2">
+              <div class="card"><h3>وضعیت</h3>
+                <p>مسیر مایکت: <?= PaymentBridge::route('myket') === 'bridge' ? '<span class="badge ok">از راه واسط ایران</span>' : '<span class="badge">مستقیم</span>' ?>
+                  — مسیر بازار: <?= PaymentBridge::route('bazaar') === 'bridge' ? '<span class="badge ok">از راه واسط ایران</span>' : '<span class="badge">مستقیم</span>' ?></p>
+                <p>کلید مشترک: <?= $hasKey ? '<span class="badge ok">ثبت شده</span> شناسهٔ <code class="ltr">' . e($cfg['key_id']) . '</code>' : '<span class="badge warn">ثبت نشده</span>' ?>
+                  <?= $hasNext ? ' — کلید تازهٔ در انتظار: <code class="ltr">' . e($cfg['next_key_id']) . '</code>' : '' ?></p>
+                <p>آخرین ارتباط موفق: <?= $t($status['last_ok_at'] ?? null) ?></p>
+                <p>آخرین خطای واسط: <?= $t($status['last_error_at'] ?? null) ?> <?= !empty($status['last_error']) ? '<br><small class="muted">' . e($status['last_error']) . '</small>' : '' ?></p>
+                <?php if (!empty($status['store_error'])): ?><p>آخرین خطای فروشگاه از راه واسط: <?= $t($status['store_error_at'] ?? null) ?><br><small class="muted"><?= e($status['store_error']) ?></small></p><?php endif; ?>
+                <form method="post" class="row" style="gap:6px;flex-wrap:wrap"><?= Admin::csrfField() ?>
+                  <button class="btn ghost sm" name="action" value="ping">آزمایش واسط</button>
+                  <button class="btn ghost sm" name="action" value="test_myket">آزمایش مایکت از راه واسط</button>
+                  <button class="btn ghost sm" name="action" value="test_bazaar">آزمایش بازار از راه واسط</button>
+                </form>
+              </div>
+              <div class="card"><h3>تنظیمات</h3>
+                <form method="post"><?= Admin::csrfField() ?><input type="hidden" name="action" value="save">
+                  <label>نشانی واسط</label><input type="text" name="url" class="ltr" value="<?= e($cfg['url']) ?>">
+                  <div class="row">
+                    <div><label>مسیر مایکت</label><select name="route_myket"><option value="direct">مستقیم از هلند</option><option value="bridge"<?= PaymentBridge::route('myket') === 'bridge' ? ' selected' : '' ?>>از راه واسط ایران</option></select></div>
+                    <div><label>مسیر بازار</label><select name="route_bazaar"><option value="direct">مستقیم از هلند</option><option value="bridge"<?= PaymentBridge::route('bazaar') === 'bridge' ? ' selected' : '' ?>>از راه واسط ایران</option></select></div>
+                  </div>
+                  <p class="hint">مسیر واسط فقط وقتی پذیرفته می‌شود که واسط همان لحظه با کلید فعلی پاسخ درست بدهد. در مسیر واسط، توکن مایکت و کلید بازار فقط در config.php سرور ایران لازم است.</p>
+                  <div class="row"><div style="flex:3"><input type="text" name="reason" placeholder="یادداشت (اختیاری)"></div><div style="flex:0"><button class="btn gold">ذخیره</button></div></div>
+                </form>
+              </div>
+            </div>
+            <?php if (Admin::owner()): ?>
+            <div class="card"><h3>کلید مشترک (فقط مدیر اصلی)</h3>
+              <p class="hint">کلید فعلی هیچ‌وقت نمایش داده نمی‌شود. برای تعویض: «ساخت کلید تازه» → افزودن آن به config.php واسط (کنار کلید فعلی) → «فعال کردن کلید تازه» → پاک کردن کلید قبلی از config.php.</p>
+              <form method="post" class="row" style="gap:6px;flex-wrap:wrap"><?= Admin::csrfField() ?>
+                <button class="btn teal sm" name="action" value="gen_key" data-confirm="کلید تازه ساخته شود؟ کلید فعلی تا فعال‌سازی کلید تازه کار می‌کند.">ساخت کلید تازه</button>
+                <?php if ($hasNext): ?><button class="btn gold sm" name="action" value="activate_next">فعال کردن کلید تازه</button><button class="btn ghost sm" name="action" value="clear_next">لغو کلید تازه</button><?php endif; ?>
+              </form>
+              <details style="margin-top:8px"><summary class="muted">کلیدی را که خودتان ساخته‌اید وارد کنید</summary>
+                <form method="post"><?= Admin::csrfField() ?><input type="hidden" name="action" value="set_key">
+                  <div class="row"><div style="flex:0;min-width:110px"><label>شناسه</label><input type="text" name="new_key_id" class="ltr" placeholder="k2"></div>
+                  <div style="flex:3"><label>کلید (۶۴ نویسهٔ هگز)</label><input type="password" name="new_key" class="ltr" autocomplete="new-password"></div></div>
+                  <p><button class="btn ghost sm">ثبت به‌عنوان کلید تازه</button></p>
+                </form>
+              </details>
+            </div>
+            <?php endif;
+        }, 'bridge');
+    }
+
+    /** Ping with the current key: version, clock difference, store keys present, product ids allowed. */
+    private static function bridgePing(): array
+    {
+        $r = PaymentBridge::call('ping');
+        if ($r['kind'] !== 'pong') return ['bad', e($r['error'] ?? $r['kind'])];
+        $skew = abs(time() - (int)($r['time'] ?? 0));
+        $parts = ['واسط پاسخ داد و امضای پاسخ معتبر بود. نسخهٔ واسط: <code class="ltr">' . e($r['version'] ?? '?') . '</code>',
+            'اختلاف ساعت دو سرور: ' . fa_digits($skew) . ' ثانیه' . ($skew > 120 ? ' <b>(زیاد است؛ باید زیر ۵ دقیقه بماند)</b>' : ''),
+            'کلید مایکت روی واسط: ' . (!empty($r['stores']['myket']) ? 'ثبت شده' : '<b>ثبت نشده</b>') . ' — کلید بازار روی واسط: ' . (!empty($r['stores']['bazaar']) ? 'ثبت شده' : '<b>ثبت نشده</b>')];
+        $allowed = (array)($r['skus'] ?? []);
+        if ($allowed) {
+            $missing = [];
+            foreach (Plans::all() as $p) foreach (['myket', 'bazaar'] as $s) if ($p['active'] && !empty($p["sku_$s"]) && PaymentBridge::route($s) === 'bridge' && !in_array($p["sku_$s"], $allowed, true)) $missing[] = $p["sku_$s"];
+            if ($missing) $parts[] = '<b>این شناسه‌ها در فهرست skus واسط نیستند و خریدشان بررسی نمی‌شود:</b> <code class="ltr">' . e(implode(', ', array_unique($missing))) . '</code>';
+        }
+        return [$skew > 120 || !empty($missing) ? 'warn' : 'ok', implode('<br>', $parts)];
     }
 
     private static function ownerOrManagerSecrets(): void

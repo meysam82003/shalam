@@ -81,6 +81,12 @@ final class SalesPages
                 $o = Plans::offer($p, $s);
                 if ($o['state'] === 'no_sku') { $w[] = ['warn', 'برای «' . e($p['title']) . '» در ' . Admin::storeName($s) . ' شناسهٔ محصول ثبت نشده؛ در اپ قابل خرید نیست. <a href="index.php?p=plans">پلن‌ها</a>']; }
             }
+            if (PaymentBridge::route($s) === 'bridge') {
+                $bs = (array)Settings::get('bridge_status', []);
+                if (!PaymentBridge::ready()) $w[] = ['bad', Admin::storeName($s) . ' از راه واسط ایران بررسی می‌شود ولی نشانی یا کلید واسط ثبت نشده. <a href="index.php?p=bridge">واسط پرداخت</a>'];
+                elseif (($bs['last_error_at'] ?? 0) > ($bs['last_ok_at'] ?? 0)) $w[] = ['bad', 'آخرین تماس با واسط پرداخت ایران ناموفق بود: ' . e($bs['last_error'] ?? '') . ' <a href="index.php?p=bridge">بررسی</a>'];
+                continue;
+            }
             $verify = $s === 'myket' ? Settings::secret('myket_access_token') : (Settings::secret('bazaar_api_secret') ?: Settings::secret('bazaar_refresh_token'));
             if ($verify === '') $w[] = ['warn', 'دسترسی صحت‌سنجی ' . Admin::storeName($s) . ' ثبت نشده؛ خریدها فقط با امضا تأیید موقت می‌شوند. <a href="index.php?p=stores">تنظیم</a>'];
         }

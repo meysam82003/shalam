@@ -450,12 +450,17 @@ final class Http
         return '';
     }
 
-    /** Outbound HTTPS request (market verification). Never follows redirects. */
+    /** Only the automated tests may talk plain HTTP to a local fake gateway (127.0.0.1). */
+    public static bool $allowLocalHttpForTests = false;
+
+    /** Outbound HTTPS request (market verification). Never follows redirects. Response headers come back lower-cased. */
     public static function request(string $method, string $url, array $headers = [], ?string $body = null, int $timeout = 15): array
     {
-        if (!preg_match('#^https://#i', $url)) return ['status' => 0, 'body' => '', 'error' => 'https only'];
-        if (!function_exists('curl_init')) return ['status' => 0, 'body' => '', 'error' => 'curl extension missing'];
+        $local = self::$allowLocalHttpForTests && preg_match('#^http://127\.0\.0\.1:\d+/#', $url);
+        if (!$local && !preg_match('#^https://#i', $url)) return ['status' => 0, 'body' => '', 'error' => 'https only', 'headers' => []];
+        if (!function_exists('curl_init')) return ['status' => 0, 'body' => '', 'error' => 'curl extension missing', 'headers' => []];
         $ch = curl_init($url);
+        $respHeaders = [];
         curl_setopt_array($ch, [
             CURLOPT_CUSTOMREQUEST => $method,
             CURLOPT_RETURNTRANSFER => true,
@@ -465,14 +470,19 @@ final class Http
             CURLOPT_HTTPHEADER => $headers,
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_SSL_VERIFYHOST => 2,
-            CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
+            CURLOPT_PROTOCOLS => $local ? CURLPROTO_HTTP : CURLPROTO_HTTPS,
+            CURLOPT_HEADERFUNCTION => function ($c, string $line) use (&$respHeaders) {
+                $p = strpos($line, ':');
+                if ($p !== false) $respHeaders[strtolower(trim(substr($line, 0, $p)))] = trim(substr($line, $p + 1));
+                return strlen($line);
+            },
         ]);
         if ($body !== null) curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
         $resp = curl_exec($ch);
         $err = $resp === false ? curl_error($ch) : '';
         $status = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
         curl_close($ch);
-        return ['status' => $status, 'body' => $resp === false ? '' : (string)$resp, 'error' => $err];
+        return ['status' => $resp === false ? 0 : $status, 'body' => $resp === false ? '' : (string)$resp, 'error' => $err, 'headers' => $respHeaders];
     }
 }
 

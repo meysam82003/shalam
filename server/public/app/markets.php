@@ -68,6 +68,132 @@ final class Stores
     }
 }
 
+// ---------------------------------------------------------------- payment gateway in Iran
+/**
+ * Myket (and optionally Cafe Bazaar) are reached through the gateway on the Iranian host when the panel
+ * says so: the Netherlands server cannot reach Myket directly. Requests are signed with a shared key
+ * (HMAC-SHA256, timestamp, one-time nonce); answers are signed too and bound to the request's nonce.
+ * Only the store's answer travels back; the decision about the purchase stays here.
+ */
+final class PaymentBridge
+{
+    public const DEFAULT_URL = 'https://pay.httpuser87890.ir/';
+    private const TAG = 'DIVAN-BRIDGE-V1';
+
+    public static function cfg(): array
+    {
+        return (array)Settings::get('payment_bridge', []) + ['url' => self::DEFAULT_URL, 'key_id' => 'k1', 'route_myket' => 'direct', 'route_bazaar' => 'direct'];
+    }
+
+    public static function url(): string { return (string)self::cfg()['url']; }
+
+    public static function validUrl(string $u): bool
+    {
+        if (Http::$allowLocalHttpForTests && preg_match('#^http://127\.0\.0\.1:\d+/$#', $u)) return true;
+        return (bool)preg_match('#^https://[a-z0-9.-]+\.[a-z]{2,}(:\d+)?/([a-z0-9_./-]*)$#i', $u) && strpos($u, '..') === false;
+    }
+
+    /** «bridge» or «direct» for one store. */
+    public static function route(string $store): string { return (self::cfg()['route_' . $store] ?? 'direct') === 'bridge' ? 'bridge' : 'direct'; }
+
+    public static function ready(): bool { return self::validUrl(self::url()) && Settings::secret('bridge_key') !== ''; }
+
+    public static function sign(string $key, string $ts, string $nonce, string $body): string
+    {
+        return hash_hmac('sha256', self::TAG . "\n" . $ts . "\n" . $nonce . "\n" . hash('sha256', $body), $key);
+    }
+
+    /**
+     * One signed call. Returns the gateway's answer with «kind»: pong, store, store_auth, store_unreachable,
+     * not_configured, not_allowed, bad_request — or, when the gateway itself failed: bridge_not_configured,
+     * bridge_unreachable, bridge_auth, bridge_busy, bridge_bad_response.
+     */
+    public static function call(string $action, array $params = [], ?string $keyId = null, ?string $key = null): array
+    {
+        $kid = $keyId ?? (string)self::cfg()['key_id'];
+        $key = $key ?? Settings::secret('bridge_key');
+        if (!self::validUrl(self::url()) || $key === '' || !preg_match('/^[a-z0-9_-]{1,32}$/', $kid)) return self::note(['kind' => 'bridge_not_configured', 'error' => 'نشانی یا کلید واسط ثبت نشده است.']);
+        $body = json_encode(['action' => $action, 'params' => $params], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        // Real time, not the (test-fixable) Clock: the gateway checks it against its own clock.
+        $ts = (string)time();
+        $nonce = Crypto::token(18);
+        $r = Http::request('POST', self::url(), [
+            'Content-Type: application/json', 'Accept: application/json',
+            'X-Divan-Key: ' . $kid, 'X-Divan-Time: ' . $ts, 'X-Divan-Nonce: ' . $nonce, 'X-Divan-Signature: ' . self::sign($key, $ts, $nonce, $body),
+        ], $body, 30);
+        if ($r['status'] === 0) return self::note(['kind' => 'bridge_unreachable', 'error' => 'به واسط ایران وصل نشد: ' . ($r['error'] ?: 'بدون پاسخ')]);
+        $given = (string)($r['headers']['x-divan-signature'] ?? '');
+        $j = json_decode($r['body'], true);
+        if ($given === '') {
+            $err = is_array($j) ? (string)($j['error'] ?? '') : '';
+            if ($r['status'] === 429) return self::note(['kind' => 'bridge_busy', 'error' => 'واسط ایران درخواست زیاد گرفته؛ کمی بعد.']);
+            if (in_array($r['status'], [401, 403], true)) return self::note(['kind' => 'bridge_auth', 'error' => self::authText($err)]);
+            return self::note(['kind' => 'bridge_bad_response', 'error' => 'پاسخ واسط امضا نداشت (HTTP ' . $r['status'] . ($err !== '' ? ' ' . $err : '') . ').']);
+        }
+        $expected = hash_hmac('sha256', self::TAG . "-RESPONSE\n" . $nonce . "\n" . hash('sha256', $r['body']), $key);
+        if (!hash_equals($expected, strtolower($given)) || !is_array($j)) {
+            Audit::security('bridge_bad_signature', null, '', 'action=' . $action);
+            return self::note(['kind' => 'bridge_bad_response', 'error' => 'امضای پاسخ واسط معتبر نیست؛ پاسخ کنار گذاشته شد.']);
+        }
+        $j['kind'] = (string)($j['kind'] ?? 'bad_request');
+        return self::note($j);
+    }
+
+    private static function authText(string $err): string
+    {
+        $t = ['unauthorized' => 'کلید یا شناسهٔ کلید با واسط یکی نیست.', 'expired' => 'ساعت دو سرور بیش از ۵ دقیقه اختلاف دارد.', 'replay' => 'درخواست تکراری رد شد.', 'forbidden' => 'IP این سرور در فهرست مجاز واسط نیست.'];
+        return 'واسط ایران درخواست را نپذیرفت: ' . ($t[$err] ?? $err);
+    }
+
+    /** Remembers the last success and the last failure for the panel (no secrets, no store data). */
+    private static function note(array $r): array
+    {
+        $bridgeFail = strpos($r['kind'], 'bridge_') === 0;
+        $s = (array)Settings::get('bridge_status', []);
+        if ($bridgeFail) $s = ['last_error' => mb_substr((string)($r['error'] ?? ''), 0, 300), 'last_error_at' => time(), 'last_kind' => $r['kind']] + $s;
+        else $s = ['last_ok_at' => time(), 'last_kind' => $r['kind']] + $s;
+        if (!$bridgeFail && in_array($r['kind'], ['store_unreachable', 'store_auth', 'not_configured'], true)) $s = ['store_error' => $r['kind'] . ' ' . mb_substr((string)($r['error'] ?? ''), 0, 100), 'store_error_at' => time()] + $s;
+        Settings::set('bridge_status', $s);
+        return $r;
+    }
+
+    /** A store call through the gateway, shaped like Http::request so the verdict logic stays in one place. */
+    public static function store(string $action, array $params): array
+    {
+        $r = self::call($action, $params);
+        switch ($r['kind']) {
+            case 'store':
+            case 'store_auth':
+                return ['status' => (int)($r['status'] ?? 0), 'body' => isset($r['body']) && is_array($r['body']) ? json_encode($r['body']) : '', 'error' => '', 'via' => 'bridge'];
+            case 'store_unreachable':
+                return ['status' => 0, 'body' => '', 'error' => 'واسط ایران به فروشگاه نرسید (' . ($r['error'] ?? '') . ')', 'via' => 'bridge'];
+            case 'not_configured':
+                return ['status' => 0, 'body' => '', 'error' => 'کلید این فروشگاه روی واسط ایران ثبت نشده است.', 'via' => 'bridge'];
+            default:
+                return ['status' => 0, 'body' => '', 'error' => (string)($r['error'] ?? $r['kind']), 'via' => 'bridge'];
+        }
+    }
+
+    /** Connection test of one store along the route the panel uses now: [css class, message]. */
+    public static function testStore(string $store, bool $viaBridge = false): array
+    {
+        $name = $store === 'myket' ? 'مایکت' : 'بازار';
+        if ($viaBridge || self::route($store) === 'bridge') {
+            $r = self::call($store . '.test', ['package' => (string)(Settings::get($store, [])['package'] ?? 'com.meysam.divanemtiaz')]);
+            if ($r['kind'] === 'store' && in_array((int)$r['status'], [200, 404], true)) return ['ok', "از راه واسط ایران: ارتباط با $name برقرار است و کلید $name پذیرفته شد."];
+            if ($r['kind'] === 'store_auth') return ['bad', "از راه واسط ایران: $name کلید را نپذیرفت (HTTP " . (int)$r['status'] . '). کلید را در config.php واسط بررسی کنید.'];
+            if ($r['kind'] === 'store_unreachable') return ['bad', "واسط ایران به $name نرسید: " . ($r['error'] ?? '')];
+            if ($r['kind'] === 'not_configured') return ['warn', "کلید $name در config.php واسط ایران خالی است."];
+            if ($r['kind'] === 'store') return ['warn', "پاسخ غیرمنتظرهٔ $name از راه واسط: HTTP " . (int)$r['status']];
+            return ['bad', (string)($r['error'] ?? $r['kind'])];
+        }
+        $v = Stores::get($store)->verify('divan_connectivity_probe', 'probe-' . bin2hex(random_bytes(6)), 'consumable');
+        return $v->state === StoreVerdict::INVALID
+            ? ['ok', "مستقیم: ارتباط با $name برقرار است و کلید پذیرفته شد (رسید آزمایشی را نشناخت که درست است)."]
+            : ['bad', 'مستقیم: نتیجه ' . $v->state . ' — ' . $v->message];
+    }
+}
+
 // ---------------------------------------------------------------- Myket
 /**
  * Myket developer API (server to server, header X-Access-Token from the developer panel):
@@ -82,13 +208,19 @@ final class MyketVerifier implements StoreVerifier
     private function token(): string { return Settings::secret('myket_access_token'); }
     private function package(): string { return (string)(Settings::get('myket', [])['package'] ?? 'com.meysam.divanemtiaz'); }
 
-    public function configured(): bool { return $this->token() !== ''; }
+    private function viaBridge(): bool { return PaymentBridge::route('myket') === 'bridge'; }
+
+    public function configured(): bool { return $this->viaBridge() ? PaymentBridge::ready() : $this->token() !== ''; }
 
     public function verify(string $sku, string $token, string $productType): StoreVerdict
     {
-        if (!$this->configured()) return new StoreVerdict(StoreVerdict::UNAVAILABLE, 'توکن صحت‌سنجی مایکت در پنل ثبت نشده است.');
-        $url = self::BASE . rawurlencode($this->package()) . '/purchases/products/' . rawurlencode($sku) . '/verify';
-        $r = Http::request('POST', $url, ['X-Access-Token: ' . $this->token(), 'Content-Type: application/json', 'Accept: application/json'], json_encode(['tokenId' => $token]));
+        if (!$this->configured()) return new StoreVerdict(StoreVerdict::UNAVAILABLE, $this->viaBridge() ? 'واسط پرداخت ایران پیکربندی نشده است.' : 'توکن صحت‌سنجی مایکت در پنل ثبت نشده است.');
+        if ($this->viaBridge()) {
+            $r = PaymentBridge::store('myket.verify', ['package' => $this->package(), 'sku' => $sku, 'token' => $token]);
+        } else {
+            $url = self::BASE . rawurlencode($this->package()) . '/purchases/products/' . rawurlencode($sku) . '/verify';
+            $r = Http::request('POST', $url, ['X-Access-Token: ' . $this->token(), 'Content-Type: application/json', 'Accept: application/json'], json_encode(['tokenId' => $token]));
+        }
         if ($r['status'] === 0 || $r['status'] >= 500 || $r['status'] === 429) return new StoreVerdict(StoreVerdict::UNAVAILABLE, 'پاسخ مایکت دریافت نشد: ' . ($r['error'] ?: 'HTTP ' . $r['status']));
         $j = json_decode($r['body'], true);
         if ($r['status'] === 401 || $r['status'] === 403) return new StoreVerdict(StoreVerdict::UNAVAILABLE, 'توکن مایکت نامعتبر است.', null, null, false, null, is_array($j) ? $j : []);
@@ -98,14 +230,17 @@ final class MyketVerifier implements StoreVerifier
         $time = isset($j['purchaseTime']) ? intdiv((int)$j['purchaseTime'], 1000) : null;
         $consumed = isset($j['consumptionState']) ? ((int)$j['consumptionState'] === 1) : null;
         if ($state === 0) return new StoreVerdict(StoreVerdict::VALID, '', $time, null, false, $consumed, $j);
+        // purchaseState 1: the payment was returned (refund) — recorded as a refund, not as a fake receipt.
+        if ($state === 1) return new StoreVerdict(StoreVerdict::REFUNDED, 'مایکت خرید را بازپرداخت‌شده اعلام کرده است.', $time, null, false, $consumed, $j);
         return new StoreVerdict(StoreVerdict::INVALID, 'مایکت خرید را پرداخت‌شده نمی‌داند (purchaseState=' . $state . ').', $time, null, false, $consumed, $j);
     }
 
     /** Lists the products in Myket (price in rials) to compare with the panel's prices. */
     public function products(): array
     {
-        if (!$this->configured()) throw new ApiError('not_configured', 'توکن مایکت ثبت نشده است.');
-        $r = Http::request('GET', self::BASE . rawurlencode($this->package()) . '/products?limit=200&offset=0', ['X-Access-Token: ' . $this->token(), 'Accept: application/json']);
+        if (!$this->configured()) throw new ApiError('not_configured', $this->viaBridge() ? 'واسط پرداخت ایران پیکربندی نشده است.' : 'توکن مایکت ثبت نشده است.');
+        $r = $this->viaBridge() ? PaymentBridge::store('myket.products', ['package' => $this->package()])
+            : Http::request('GET', self::BASE . rawurlencode($this->package()) . '/products?limit=200&offset=0', ['X-Access-Token: ' . $this->token(), 'Accept: application/json']);
         $j = json_decode($r['body'], true);
         if ($r['status'] !== 200 || !is_array($j)) throw new ApiError('store_error', 'دریافت محصولات مایکت ممکن نشد (HTTP ' . $r['status'] . ' ' . $r['error'] . ').');
         return $j['skus'] ?? [];
@@ -114,8 +249,9 @@ final class MyketVerifier implements StoreVerifier
     /** Changes the price of a consumable product in Myket (documented for consumables only). */
     public function setPrice(string $sku, int $toman): void
     {
-        if (!$this->configured()) throw new ApiError('not_configured', 'توکن مایکت ثبت نشده است.');
-        $r = Http::request('PUT', self::BASE . rawurlencode($this->package()) . '/products/' . rawurlencode($sku), ['X-Access-Token: ' . $this->token(), 'Content-Type: application/json'], json_encode(['price' => $toman * 10]));
+        if (!$this->configured()) throw new ApiError('not_configured', $this->viaBridge() ? 'واسط پرداخت ایران پیکربندی نشده است.' : 'توکن مایکت ثبت نشده است.');
+        $r = $this->viaBridge() ? PaymentBridge::store('myket.set_price', ['package' => $this->package(), 'sku' => $sku, 'price_rial' => $toman * 10])
+            : Http::request('PUT', self::BASE . rawurlencode($this->package()) . '/products/' . rawurlencode($sku), ['X-Access-Token: ' . $this->token(), 'Content-Type: application/json'], json_encode(['price' => $toman * 10]));
         if ($r['status'] !== 200) throw new ApiError('store_error', 'تغییر قیمت در مایکت انجام نشد (HTTP ' . $r['status'] . ' ' . $r['error'] . ' ' . mb_substr($r['body'], 0, 200) . ').');
     }
 }
@@ -152,8 +288,11 @@ final class BazaarVerifier implements StoreVerifier
     private function cfg(): array { return Settings::get('bazaar', []); }
     private function package(): string { return (string)($this->cfg()['package'] ?? 'com.meysam.divanemtiaz'); }
 
+    private function viaBridge(): bool { return PaymentBridge::route('bazaar') === 'bridge'; }
+
     public function configured(): bool
     {
+        if ($this->viaBridge()) return PaymentBridge::ready();
         return Settings::secret('bazaar_api_secret') !== '' || Settings::secret('bazaar_refresh_token') !== '';
     }
 
@@ -176,7 +315,11 @@ final class BazaarVerifier implements StoreVerifier
 
     public function verify(string $sku, string $token, string $productType): StoreVerdict
     {
-        if (!$this->configured()) return new StoreVerdict(StoreVerdict::UNAVAILABLE, 'کلید API بازار در پنل ثبت نشده است.');
+        if (!$this->configured()) return new StoreVerdict(StoreVerdict::UNAVAILABLE, $this->viaBridge() ? 'واسط پرداخت ایران پیکربندی نشده است.' : 'کلید API بازار در پنل ثبت نشده است.');
+        if ($this->viaBridge()) {
+            $r = PaymentBridge::store('bazaar.verify', ['package' => $this->package(), 'sku' => $sku, 'token' => $token, 'type' => $productType === 'subscription' ? 'subscription' : 'inapp']);
+            return $this->verdict($r, $productType);
+        }
         $secret = Settings::secret('bazaar_api_secret');
         if ($productType === 'subscription') {
             $path = 'api/applications/' . rawurlencode($this->package()) . '/subscriptions/' . rawurlencode($sku) . '/purchases/' . rawurlencode($token);
@@ -191,7 +334,12 @@ final class BazaarVerifier implements StoreVerifier
             if ($access === '') return new StoreVerdict(StoreVerdict::UNAVAILABLE, 'دریافت توکن دسترسی بازار ناموفق بود.');
             $url .= '?access_token=' . rawurlencode($access);
         }
-        $r = Http::request('GET', $url, $headers);
+        return $this->verdict(Http::request('GET', $url, $headers), $productType);
+    }
+
+    /** Reads Bazaar's answer (direct or through the Iranian gateway). */
+    private function verdict(array $r, string $productType): StoreVerdict
+    {
         if ($r['status'] === 0 || $r['status'] >= 500 || $r['status'] === 429) return new StoreVerdict(StoreVerdict::UNAVAILABLE, 'پاسخ بازار دریافت نشد: ' . ($r['error'] ?: 'HTTP ' . $r['status']));
         $j = json_decode($r['body'], true);
         if ($r['status'] === 401 || $r['status'] === 403) return new StoreVerdict(StoreVerdict::UNAVAILABLE, 'کلید بازار نامعتبر یا منقضی است.', null, null, false, null, is_array($j) ? $j : []);
