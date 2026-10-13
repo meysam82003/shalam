@@ -924,7 +924,7 @@ final class ConfigPages
                 <label>تصویر (اختیاری، از رسانه‌ها)</label><select name="media_id"><option value="0">بدون تصویر</option><?php foreach ($media as $m) echo '<option value="' . (int)$m['id'] . '">' . e($m['original_name']) . '</option>'; ?></select>
                 <div class="row">
                   <div><label>مقصد در برنامه</label><select name="target_app"><option value="">صفحهٔ اصلی</option><?php foreach (Ads::APP_TARGETS as $k => $l) echo '<option value="' . e($k) . '">' . e($l) . '</option>'; ?></select></div>
-                  <div><label>یا نشانی وب (https)</label><input type="text" name="target_url" class="ltr" placeholder="https://..."></div>
+                  <div><label>یا نشانی وب (https؛ فقط در نسخهٔ سایت)</label><input type="text" name="target_url" class="ltr" placeholder="https://..."></div>
                 </div>
                 <div class="row">
                   <div><label>مخاطب</label><select name="audience"><?php foreach (Notices::AUDIENCES as $k => $l) echo '<option value="' . $k . '">' . e($l) . '</option>'; ?></select></div>
