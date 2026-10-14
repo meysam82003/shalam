@@ -543,22 +543,54 @@ final class PayOrders
     {
         if (!in_array($channel, self::CHANNELS, true)) throw new ApiError('bad_channel', 'نسخهٔ برنامه نامعتبر است.');
         if (!RateLimit::hit('payorder:' . $user['id'], 20, 3600)) throw new ApiError('rate_limited', 'درخواست‌های پرداخت زیاد است؛ کمی بعد.', 429);
+        $r = self::open((int)$user['id'], $method, $planCode, $channel, 'app', null);
+        $url = $divanPage ? App::baseUrl() . '/pay/start.php?o=' . $r['order'] : $r['gateway_url'];
+        return ['order' => $r['order'], 'url' => $url, 'return' => App::baseUrl() . '/pay/return.php?o=' . $r['order'], 'amount' => $r['amount'], 'method' => $method];
+    }
+
+    /** Length of an activation code without dashes (the recovery-key alphabet, 160 bits). */
+    public const ACTIVATION_LEN = 32;
+
+    /**
+     * Buying on the site (no app, no login): for an existing account by its username — the plan is added to that
+     * account once paid — or, without a username, for an activation code shown after payment and typed in the app
+     * («کد تخفیف یا هدیه»), which then adds the plan to whichever account redeems it, exactly once.
+     * @return array{order:string, gateway_url:string, amount:int}
+     */
+    public static function createSite(string $method, string $planCode, string $username = ''): array
+    {
+        if (!RateLimit::hit('siteorder:' . Http::ip(), 15, 3600)) throw new ApiError('rate_limited', 'درخواست‌های خرید از این شبکه زیاد است؛ کمی بعد دوباره تلاش کنید.', 429);
+        $username = trim($username);
+        if ($username !== '') {
+            $u = Users::byName($username);
+            if ($u === null || $u['status'] !== 'active') throw new ApiError('no_account', 'حسابی با این نام کاربری پیدا نشد. نام کاربری را همان‌طور که در برنامه ساخته‌اید بنویسید، یا خالی بگذارید تا کد فعال‌سازی بگیرید.', 404);
+            return self::open((int)$u['id'], $method, $planCode, 'direct', 'site', null);
+        }
+        $code = Crypto::recoveryKey();
+        return self::open(0, $method, $planCode, 'direct', 'code', $code);
+    }
+
+    /** Creates the order and the gateway invoice (shared by the app, the site by username and activation codes). */
+    private static function open(int $userId, string $method, string $planCode, string $channel, string $buyer, ?string $activation): array
+    {
         $a = PayRegistry::get($method);
         if ($a === null || $a->kind() !== 'web' || PayRegistry::status($method, $channel) !== 'ready') throw new ApiError('method_unavailable', 'امکان خرید موقتاً در دسترس نیست.', 409);
         $plan = Plans::byCode($planCode);
         if ($plan === null || !$plan['active']) throw new ApiError('bad_plan', 'این پلن در دسترس نیست.', 404);
         if (!in_array($method, array_column(PayRegistry::methodsFor($channel, $plan), 'id'), true)) throw new ApiError('method_unavailable', 'امکان خرید موقتاً در دسترس نیست.', 409);
-        $sum = Entitlements::summary((int)$user['id']);
-        if ($sum['lifetime']) throw new ApiError('already_lifetime', 'شما اشتراک مادام‌العمر دارید؛ خرید دوباره لازم نیست.', 409);
+        if ($userId > 0 && Entitlements::summary($userId)['lifetime']) throw new ApiError('already_lifetime', 'این حساب اشتراک مادام‌العمر دارد؛ خرید دوباره لازم نیست.', 409);
         $toman = PayRegistry::price($plan, $channel);
         if ($toman < 1000) throw new ApiError('bad_price', 'قیمت این پلن ثبت نشده است.', 409);
         $code = substr(strtolower(preg_replace('/[^a-z0-9]/i', '', Crypto::token(24))), 0, 20);
         $now = Clock::sql();
-        $id = Db::insert('pay_orders', [
-            'code' => $code, 'user_id' => $user['id'], 'plan_id' => $plan['id'], 'method' => $method, 'channel' => $channel,
+        $row = [
+            'code' => $code, 'user_id' => $userId, 'plan_id' => $plan['id'], 'method' => $method, 'channel' => $channel,
             'amount_toman' => $toman, 'amount_rial' => $toman * 10, 'status' => 'created',
             'expires_at' => Clock::sql(Clock::now() + 3600), 'created_at' => $now, 'updated_at' => $now,
-        ]);
+        ];
+        if ($buyer !== 'app') $row['buyer'] = $buyer;
+        if ($activation !== null) { $row['activation_hash'] = Crypto::hash('activation|' . Crypto::normalizeRecovery($activation)); $row['activation_enc'] = Crypto::encrypt($activation); }
+        $id = Db::insert('pay_orders', $row);
         $order = Db::one('SELECT * FROM {pay_orders} WHERE id = ?', [$id]);
         try {
             $r = $a->create($order, $plan, App::baseUrl() . '/pay/return.php?o=' . $code);
@@ -571,9 +603,79 @@ final class PayOrders
         if (stripos($r['url'], 'https://') !== 0 || !in_array($host, $a->payHosts(), true)) throw new ApiError('gateway_url', 'نشانی پرداخت نامعتبر است.', 502);
         Db::update('pay_orders', ['status' => 'pending', 'gateway_ref' => $r['ref'], 'pay_url' => mb_substr($r['url'], 0, 600), 'updated_at' => Clock::sql()], 'id = ?', [$id]);
         PayRegistry::note($method, true);
-        Audit::log('user', (int)$user['id'], 'pay_order_created', 'pay_order', $id, '', null, ['method' => $method, 'plan' => $plan['code'], 'amount' => $toman]);
-        $url = $divanPage ? App::baseUrl() . '/pay/start.php?o=' . $code : $r['url'];
-        return ['order' => $code, 'url' => $url, 'return' => App::baseUrl() . '/pay/return.php?o=' . $code, 'amount' => $toman, 'method' => $method];
+        Audit::log($userId > 0 ? 'user' : 'system', $userId > 0 ? $userId : null, 'pay_order_created', 'pay_order', $id, '', null, ['method' => $method, 'plan' => $plan['code'], 'amount' => $toman, 'buyer' => $buyer]);
+        return ['order' => $code, 'gateway_url' => $r['url'], 'amount' => $toman];
+    }
+
+    /** Adds the paid plan to an account: one purchase record and its entitlement (inside the caller's transaction). */
+    private static function grant(array $order, int $userId, ?string $refId, string $now): void
+    {
+        $plan = Plans::byId((int)$order['plan_id']);
+        $hash = Crypto::hash('direct|' . $order['method'] . '|' . $order['gateway_ref']);
+        $pid = Db::insert('purchases', [
+            'user_id' => $userId, 'store' => 'direct', 'sku' => $order['method'] . ':' . $plan['code'], 'plan_id' => $plan['id'],
+            'product_type' => $plan['duration_days'] === null ? 'permanent' : 'consumable', 'order_id' => $refId ?: $order['code'],
+            'token_hash' => $hash, 'token_enc' => Crypto::encrypt((string)$order['gateway_ref']), 'payload' => $order['code'],
+            'amount_toman' => (int)$order['amount_toman'], 'purchase_time' => $now, 'status' => 'verified', 'verify_method' => 'gateway_api',
+            'verify_attempts' => 1, 'last_verified_at' => $now, 'next_check_at' => null, 'auto_renewing' => 0, 'consumed' => 1,
+            'note' => 'پرداخت وب: ' . $order['method'] . (($order['buyer'] ?? 'app') === 'app' ? '' : ' (خرید از سایت)'), 'created_at' => $now, 'updated_at' => $now,
+        ]);
+        Db::update('pay_orders', ['purchase_id' => $pid], 'id = ?', [$order['id']]);
+        Entitlements::grantForPurchase($userId, $plan, $pid);
+        Audit::log('system', null, 'pay_order_granted', 'pay_order', $order['id'], '', null, ['purchase' => $pid, 'user' => $userId, 'ref' => $refId]);
+    }
+
+    /** An activation code typed in the app: the paid site order behind it, or null when it is not one. */
+    public static function byActivation(string $code): ?array
+    {
+        $n = Crypto::normalizeRecovery($code);
+        if (strlen($n) !== self::ACTIVATION_LEN) return null;
+        return Db::one('SELECT * FROM {pay_orders} WHERE activation_hash = ?', [Crypto::hash('activation|' . $n)]);
+    }
+
+    public static function looksLikeActivation(string $code): bool { return strlen(Crypto::normalizeRecovery($code)) === self::ACTIVATION_LEN; }
+
+    /** Checks an activation code for this account and app version without using it (the app's «check» step). */
+    public static function checkActivation(string $code, array $user, string $store): array
+    {
+        if (!RateLimit::hit('activation:' . $user['id'], 20, 3600) || !RateLimit::hit('activation-ip:' . Http::ip(), 40, 3600)) throw new ApiError('rate_limited', 'تلاش زیاد است؛ کمی بعد دوباره امتحان کنید.', 429);
+        $o = self::byActivation($code);
+        if ($o === null) {
+            Audit::security('activation_invalid', (int)$user['id'], $user['username']);
+            throw new ApiError('promo_invalid', 'این کد معتبر نیست.', 404);
+        }
+        if (in_array($store, ['bazaar', 'myket'], true) && !Settings::get('site_codes_in_stores', false)) {
+            throw new ApiError('activation_store', 'این کد در نسخهٔ سایت دیوان امتیاز (اندروید مستقیم، وب، ویندوز یا آیفون) فعال می‌شود؛ پس از فعال‌سازی، اشتراک روی همین حساب در همهٔ نسخه‌ها هم هست.', 409);
+        }
+        if ($o['redeemed_by'] !== null) {
+            throw new ApiError('activation_used', (int)$o['redeemed_by'] === (int)$user['id'] ? 'این کد قبلاً روی همین حساب فعال شده است.' : 'این کد قبلاً استفاده شده است.', 409);
+        }
+        if ($o['status'] !== 'paid') {
+            $o = self::settle($o);
+            if ($o['status'] !== 'paid') throw new ApiError('activation_unpaid', 'پرداخت این کد هنوز تأیید نشده است؛ چند دقیقه بعد دوباره امتحان کنید.', 409);
+        }
+        if (Entitlements::summary((int)$user['id'])['lifetime']) throw new ApiError('already_lifetime', 'این حساب اشتراک مادام‌العمر دارد؛ کد را برای حساب دیگری نگه دارید.', 409);
+        $plan = Plans::byId((int)$o['plan_id']);
+        return ['order' => $o, 'info' => ['code' => '••••-' . substr(Crypto::normalizeRecovery($code), -4), 'kind' => 'gift_pro', 'plan' => $plan['code'],
+            'days' => $plan['duration_days'] === null ? null : (int)$plan['duration_days'], 'title' => $plan['title'] . ' (خرید از سایت)']];
+    }
+
+    /** Uses an activation code: the plan goes to this account, once, whoever tries at the same time. */
+    public static function redeemActivation(string $code, array $user, string $store): array
+    {
+        ['order' => $o, 'info' => $info] = self::checkActivation($code, $user, $store);
+        $done = false;
+        Db::tx(function () use ($o, $user, &$done) {
+            $now = Clock::sql();
+            $n = Db::run('UPDATE {pay_orders} SET redeemed_by = ?, redeemed_at = ?, user_id = ?, updated_at = ? WHERE id = ? AND redeemed_by IS NULL AND status = \'paid\'',
+                [$user['id'], $now, $user['id'], $now, $o['id']])->rowCount();
+            if ($n !== 1) return;
+            self::grant(Db::one('SELECT * FROM {pay_orders} WHERE id = ?', [$o['id']]), (int)$user['id'], $o['ref_id'], $now);
+            $done = true;
+        });
+        if (!$done) throw new ApiError('activation_used', 'این کد قبلاً استفاده شده است.', 409);
+        Audit::log('user', (int)$user['id'], 'activation_redeemed', 'pay_order', $o['id']);
+        return $info;
     }
 
     /**
@@ -593,19 +695,9 @@ final class PayOrders
                 $n = Db::run("UPDATE {pay_orders} SET status = 'paid', ref_id = ?, paid_at = ?, updated_at = ? WHERE id = ? AND status IN ('created','pending','failed','expired')",
                     [$c->refId, $now, $now, $order['id']])->rowCount();
                 if ($n !== 1) return;
-                $plan = Plans::byId((int)$order['plan_id']);
-                $hash = Crypto::hash('direct|' . $order['method'] . '|' . $order['gateway_ref']);
-                $pid = Db::insert('purchases', [
-                    'user_id' => $order['user_id'], 'store' => 'direct', 'sku' => $order['method'] . ':' . $plan['code'], 'plan_id' => $plan['id'],
-                    'product_type' => $plan['duration_days'] === null ? 'permanent' : 'consumable', 'order_id' => $c->refId ?: $order['code'],
-                    'token_hash' => $hash, 'token_enc' => Crypto::encrypt((string)$order['gateway_ref']), 'payload' => $order['code'],
-                    'amount_toman' => (int)$order['amount_toman'], 'purchase_time' => $now, 'status' => 'verified', 'verify_method' => 'gateway_api',
-                    'verify_attempts' => 1, 'last_verified_at' => $now, 'next_check_at' => null, 'auto_renewing' => 0, 'consumed' => 1,
-                    'note' => 'پرداخت وب: ' . $order['method'], 'created_at' => $now, 'updated_at' => $now,
-                ]);
-                Db::update('pay_orders', ['purchase_id' => $pid], 'id = ?', [$order['id']]);
-                Entitlements::grantForPurchase((int)$order['user_id'], $plan, $pid);
-                Audit::log('system', null, 'pay_order_paid', 'pay_order', $order['id'], '', null, ['purchase' => $pid, 'ref' => $c->refId]);
+                Audit::log('system', null, 'pay_order_paid', 'pay_order', $order['id'], '', null, ['ref' => $c->refId]);
+                // An activation-code order waits for the account that types the code; the others are granted now.
+                if ((int)$order['user_id'] > 0 && ($order['buyer'] ?? 'app') !== 'code') self::grant($order, (int)$order['user_id'], $c->refId, $now);
             });
             PayRegistry::note((string)$order['method'], true);
         } elseif ($c->state === PayCheck::FAILED) {

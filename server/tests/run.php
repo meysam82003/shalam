@@ -1108,6 +1108,84 @@ scenario('pages around a web payment: Divan page first, result page, panel texts
     Http::$allowLocalHttpForTests = false;
 });
 
+scenario('buying on the site: for an account by username, or an activation code redeemed once in the app', function () use ($root) {
+    freshIp();
+    Http::$allowLocalHttpForTests = true;
+    $port = 24000 + random_int(0, 999);
+    $state = "$root/fake-blupal-site.json";
+    file_put_contents($state, json_encode(['keys' => ['blu_test_KEY12345'], 'invoices' => [], 'next' => 7000]));
+    $proc = proc_open([PHP_BINARY, '-S', "127.0.0.1:$port", __DIR__ . '/fake_blupal.php'], [0 => ['pipe', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $pipes, null, ['FAKE_BLUPAL_STATE' => $state] + getenv());
+    for ($i = 0; $i < 50; $i++) { $sk = @fsockopen('127.0.0.1', $port, $en, $es, 0.2); if ($sk) { fclose($sk); break; } usleep(100000); }
+    $base = App::$config['base_url'];
+    App::$config['base_url'] = 'https://example.test/divan';
+    Settings::set('pay_zarinpal', ['enabled' => false]);
+    Settings::set('pay_aban', ['enabled' => false]);
+    Settings::set('pay_blupal', ['enabled' => true, 'sandbox' => true, 'api_base' => "http://127.0.0.1:$port/api/v1"]);
+    Settings::setSecret('pay_blupal_api_key', 'blu_test_KEY12345');
+    $pay = function (string $order) use ($port) {
+        $row = PayOrders::byCode($order);
+        Http::request('POST', "http://127.0.0.1:$port/api/v1/sandbox/invoices/{$row['gateway_ref']}/simulate", ['X-API-Key: blu_test_KEY12345', 'Content-Type: application/json'], '{"scenario":"success"}');
+        return PayOrders::settle($row);
+    };
+    $m1 = Plans::byCode('m1');
+    $html = PayPages::renderBuy();
+    check(strpos($html, e($m1['title'])) !== false && strpos($html, 'name="method" value="blupal"') !== false && strpos($html, 'name="username"') !== false && PayPages::validFormToken(PayPages::formToken()) && !PayPages::validFormToken('1.abc') && !PayPages::validFormToken((time() - 9000) . '.x'), 'site purchase page: plans, ready methods, optional username, signed form');
+
+    [$ali] = Users::register('ali_site', 'secret123');
+    throws(fn() => PayOrders::createSite('blupal', 'm1', 'nobody_here'), 'no_account', 'an unknown username is refused before paying');
+    $r = PayOrders::createSite('blupal', 'm1', 'ALI_SITE');
+    $row = PayOrders::byCode($r['order']);
+    check($row['buyer'] === 'site' && (int)$row['user_id'] === (int)$ali['id'] && $row['activation_hash'] === null && strpos($r['gateway_url'], 'https://blupal.top/') === 0, 'by username (any letter case): order for that account, no code');
+    $row = $pay($r['order']);
+    check($row['status'] === 'paid' && Entitlements::summary((int)$ali['id'])['expires_at'] === Clock::now() + 30 * 86400 && Users::byId((int)$ali['id'])['pro_device'] === null, 'paid: one month on that account, no phone bound by the site');
+    check(strpos(PayPages::renderReturn($row), 'ali_site') !== false && strpos(PayPages::renderReturn($row), 'download.html') !== false, 'result page: plan added to «ali_site», link to get the app');
+
+    $r2 = PayOrders::createSite('blupal', 'm3', '');
+    $o2 = PayOrders::byCode($r2['order']);
+    $code = Crypto::decrypt($o2['activation_enc']);
+    check($o2['buyer'] === 'code' && (int)$o2['user_id'] === 0 && preg_match('/^([A-Z2-9]{4}-){7}[A-Z2-9]{4}$/', (string)$code) === 1 && $o2['activation_hash'] === Crypto::hash('activation|' . Crypto::normalizeRecovery($code)), 'without username: an activation code like the recovery keys, stored encrypted and hashed');
+    [$sara] = Users::register('sara_site', 'secret123');
+    throws(fn() => PayOrders::redeemActivation($code, $sara, 'direct'), 'activation_unpaid', 'not paid yet: the code does nothing');
+    $o2 = $pay($r2['order']);
+    check($o2['status'] === 'paid' && (int)Db::value('SELECT COUNT(*) FROM {purchases} WHERE payload = ?', [$o2['code']]) === 0, 'paid: nothing granted until someone types the code');
+    $page = PayPages::renderReturn($o2, false, 'paid', true);
+    check(strpos($page, e($code)) !== false && strpos($page, 'کد تخفیف یا هدیه') !== false && strpos(PayPages::renderReturn($o2, false, 'paid', false), e($code)) === false, 'the code is shown only in the buyer\'s browser, with how to use it');
+    throws(fn() => PayOrders::redeemActivation($code, $sara, 'bazaar'), 'activation_store', 'store versions refuse it while the panel switch is off (store rules)');
+    $info = PayOrders::checkActivation(strtolower(str_replace('-', ' ', $code)), $sara, 'direct')['info'];
+    check($info['kind'] === 'gift_pro' && $info['plan'] === 'm3' && strpos($info['title'], 'خرید از سایت') !== false, 'check step: shown in the app like a gift code (dashes, spaces and case do not matter)');
+    $got = PayOrders::redeemActivation($code, $sara, 'direct');
+    $sum = Entitlements::summary((int)$sara['id']);
+    check($got['plan'] === 'm3' && $sum['expires_at'] === Clock::now() + 90 * 86400 && (int)PayOrders::byCode($r2['order'])['redeemed_by'] === (int)$sara['id'], 'redeemed: three months on the account that typed it');
+    throws(fn() => PayOrders::redeemActivation($code, $sara, 'direct'), 'activation_used', 'twice on the same account: refused, no extra time');
+    [$reza] = Users::register('reza_site', 'secret123');
+    throws(fn() => PayOrders::redeemActivation($code, $reza, 'direct'), 'activation_used', 'another account cannot use it again');
+    check(Entitlements::summary((int)$sara['id'])['expires_at'] === Clock::now() + 90 * 86400 && !Entitlements::summary((int)$reza['id'])['pro'], 'still exactly three months, the other account got nothing');
+    throws(fn() => PayOrders::redeemActivation('AAAA-BBBB-CCCC-DDDD-EEEE-FFFF-GGGG-HHHH', $reza, 'direct'), 'promo_invalid', 'a made-up code is refused');
+    Settings::set('site_codes_in_stores', true);
+    $r3 = PayOrders::createSite('blupal', 'm1', '');
+    $pay($r3['order']);
+    $c3 = Crypto::decrypt(PayOrders::byCode($r3['order'])['activation_enc']);
+    $done = PayOrders::redeemActivation($c3, $reza, 'myket');
+    check($done['plan'] === 'm1' && Entitlements::summary((int)$reza['id'])['pro'], 'with the panel switch on, store versions accept codes too');
+    Settings::set('site_codes_in_stores', false);
+    $r4 = PayOrders::createSite('blupal', 'life', '');
+    $pay($r4['order']);
+    $c4 = Crypto::decrypt(PayOrders::byCode($r4['order'])['activation_enc']);
+    PayOrders::redeemActivation($c4, $reza, 'direct');
+    $r5 = PayOrders::createSite('blupal', 'm1', '');
+    $pay($r5['order']);
+    $c5 = Crypto::decrypt(PayOrders::byCode($r5['order'])['activation_enc']);
+    throws(fn() => PayOrders::redeemActivation($c5, $reza, 'direct'), 'already_lifetime', 'a lifetime account does not burn a code');
+    check(PayOrders::byCode($r5['order'])['redeemed_by'] === null, 'that code stays usable for another account');
+    throws(fn() => PayOrders::createSite('blupal', 'm1', 'reza_site'), 'already_lifetime', 'nothing to sell to a lifetime account by username');
+    // the app's own code box (v1/promo/check and v1/promo/redeem) takes activation codes
+    check(PayOrders::looksLikeActivation($c5) && !PayOrders::looksLikeActivation('GIFT2026'), 'activation codes are told apart from gift and discount codes by their length');
+    Settings::set('pay_blupal', ['enabled' => false]);
+    App::$config['base_url'] = $base;
+    proc_terminate($proc); proc_close($proc);
+    Http::$allowLocalHttpForTests = false;
+});
+
 // ---------------------------------------------------------------- report
 echo "\n" . ($failed ? "FAILED " . count($failed) . " of " . ($passed + count($failed)) . " checks\n" . implode("\n", $failed) . "\n" : "ALL $passed CHECKS PASSED\n");
 foreach ($pdo->query("SHOW TABLES LIKE 'dvt\\_%'")->fetchAll(PDO::FETCH_COLUMN) as $t) $pdo->exec("DROP TABLE `$t`");

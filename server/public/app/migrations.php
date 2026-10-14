@@ -431,6 +431,12 @@ final class Migrations
             7 => [
                 "ALTER TABLE {pay_orders} ADD COLUMN pay_url VARCHAR(600) NULL",
             ],
+            // 5.5: buying on the site: for an account by its username, or for an activation code typed in the app.
+            8 => [
+                "ALTER TABLE {pay_orders} ADD COLUMN buyer VARCHAR(8) NOT NULL DEFAULT 'app', ADD COLUMN activation_hash CHAR(64) NULL,
+                    ADD COLUMN activation_enc TEXT NULL, ADD COLUMN redeemed_by BIGINT UNSIGNED NULL, ADD COLUMN redeemed_at DATETIME NULL,
+                    ADD UNIQUE KEY uq_activation (activation_hash)",
+            ],
         ];
     }
 

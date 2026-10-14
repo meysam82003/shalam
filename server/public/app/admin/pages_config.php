@@ -771,6 +771,13 @@ final class ConfigPages
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             self::managerOnly();
             $reason = Admin::requireReason();
+            if (($_POST['action'] ?? '') === 'sitebuy') {
+                $old = (bool)Settings::get('site_codes_in_stores', false);
+                Settings::set('site_codes_in_stores', isset($_POST['site_codes_in_stores']));
+                Admin::audit('site_codes_setting', 'settings', 'site_codes_in_stores', $reason, ['on' => $old], ['on' => isset($_POST['site_codes_in_stores'])]);
+                Admin::flash('تنظیم خرید از سایت ذخیره شد.');
+                Admin::redirect('p=paymethods#site-buy');
+            }
             if (($_POST['action'] ?? '') === 'pages') {
                 $old = PayPages::cfg();
                 $new = ['before_title' => mb_substr(trim(self::post('before_title')), 0, 80) ?: PayPages::defaults()['before_title'],
@@ -834,7 +841,7 @@ final class ConfigPages
             Admin::redirect('p=paymethods#m-' . $id);
         }
         $result = $_SESSION['pay_result'] ?? null; unset($_SESSION['pay_result']);
-        $orders = Db::all('SELECT o.*, u.username, p.title plan_title FROM {pay_orders} o JOIN {users} u ON u.id = o.user_id JOIN {plans} p ON p.id = o.plan_id ORDER BY o.id DESC LIMIT 40');
+        $orders = Db::all('SELECT o.*, u.username, p.title plan_title FROM {pay_orders} o LEFT JOIN {users} u ON u.id = o.user_id JOIN {plans} p ON p.id = o.plan_id ORDER BY o.id DESC LIMIT 40');
         Admin::layout('روش‌های پرداخت', function () use ($adapters, $result, $orders) {
             $pp = PayPages::cfg();
             ?>
@@ -920,6 +927,17 @@ final class ConfigPages
               </form>
             </div>
             <?php endforeach; ?>
+            <div class="card pm-card" id="site-buy"><h3>خرید از سایت (کد فعال‌سازی)</h3>
+              <p class="muted">هر کس بدون برنامه هم می‌تواند از صفحهٔ خرید سایت اشتراک بخرد: یا برای یک حساب موجود (با نام کاربری؛ اشتراک بلافاصله پس از تأیید پرداخت به همان حساب اضافه می‌شود)، یا برای یک
+                <b>کد فعال‌سازی</b> ۳۲ نویسه‌ای که پس از پرداخت فقط در همان مرورگر خریدار نشان داده می‌شود و در برنامه از «دیوان Pro ← کد تخفیف یا هدیه» یک بار روی هر حسابی فعال می‌شود.
+                این خریدها به هیچ گوشی‌ای بسته نیستند؛ اولین گوشی‌ای که با آن حساب وارد شود، مثل هر خرید دیگری ثبت می‌شود.</p>
+              <p><a class="btn sm ghost" href="../pay/buy.php" target="_blank" rel="noopener">صفحهٔ خرید سایت</a> <span class="hint">نشانی برای لینک در سایت: <b class="ltr"><?= e(App::baseUrl() . '/pay/buy.php') ?></b></span></p>
+              <form method="post"><?= Admin::csrfField() ?><input type="hidden" name="action" value="sitebuy">
+                <label class="check"><input type="checkbox" name="site_codes_in_stores" <?= Settings::get('site_codes_in_stores', false) ? 'checked' : '' ?>> کد فعال‌سازی در نسخه‌های کافه‌بازار و مایکت هم پذیرفته شود</label>
+                <p class="hint">پیش‌فرض خاموش است: قوانین کافه‌بازار و مایکت فروش اشتراک بیرون از پرداخت خودشان را در نسخه‌های فروشگاهی نمی‌پذیرند. با خاموش بودن، کد در نسخهٔ سایت، وب، ویندوز و آیفون فعال می‌شود و چون اشتراک روی حساب است، همان حساب در همهٔ نسخه‌ها Pro است (طبق تنظیم «بین فروشگاهی»).</p>
+                <div class="row" style="margin-top:8px"><div style="flex:3"><input type="text" name="reason" placeholder="یادداشت (اختیاری)"></div><button class="btn gold">ذخیره</button></div>
+              </form>
+            </div>
             <div class="card pm-card" id="pay-pages"><h3>صفحه‌های پیش و پس از پرداخت</h3>
               <p class="muted">خریدار نسخهٔ سایت (و وب، ویندوز و آیفون) پیش از درگاه صفحهٔ دیوان را می‌بیند: پلن، مبلغ دقیق، این نکته‌ها و یک پیشنهاد؛ بعد از پرداخت هم به صفحهٔ نتیجهٔ دیوان برمی‌گردد که نتیجهٔ واقعی را از درگاه می‌پرسد و خودکار به‌روز می‌شود.
                 پیشنهادها از «تبلیغات» با جایگاه‌های «صفحهٔ پیش از پرداخت» و «صفحهٔ پس از پرداخت» می‌آیند.</p>
@@ -937,9 +955,18 @@ final class ConfigPages
               </form>
             </div>
             <div class="card pm-card"><h3>آخرین سفارش‌های پرداخت وب</h3>
-              <div class="table-wrap"><table><thead><tr><th>سفارش</th><th>حساب</th><th>پلن</th><th>روش</th><th>مبلغ</th><th>وضعیت</th><th>کد پیگیری</th><th>زمان</th></tr></thead><tbody>
+              <div class="table-wrap"><table><thead><tr><th>سفارش</th><th>حساب / خریدار</th><th>پلن</th><th>روش</th><th>مبلغ</th><th>وضعیت</th><th>کد پیگیری</th><th>زمان</th></tr></thead><tbody>
               <?php foreach ($orders as $o): ?>
-                <tr><td class="ltr"><?= e($o['code']) ?></td><td class="ltr"><?= e($o['username']) ?></td><td><?= e($o['plan_title']) ?></td><td><?= e($o['method']) ?></td><td><?= money((int)$o['amount_toman']) ?></td>
+                <tr><td class="ltr"><?= e($o['code']) ?></td><td><?php
+                  $buyer = $o['buyer'] ?? 'app';
+                  if ($buyer === 'code') {
+                      $act = Crypto::decrypt($o['activation_enc'] ?? null);
+                      echo 'کد فعال‌سازی ' . ($o['redeemed_by'] !== null ? '— فعال شده برای <span class="ltr">' . e($o['username'] ?? '') . '</span>' : '— استفاده‌نشده');
+                      if ($act !== null && $o['status'] === 'paid' && $o['redeemed_by'] === null) echo '<details><summary><small>نمایش کد (برای پشتیبانی)</small></summary><b class="ltr">' . e($act) . '</b></details>';
+                  } else {
+                      echo '<span class="ltr">' . e($o['username'] ?? '—') . '</span>' . ($buyer === 'site' ? ' <small class="muted">(خرید از سایت)</small>' : '');
+                  }
+                ?></td><td><?= e($o['plan_title']) ?></td><td><?= e($o['method']) ?></td><td><?= money((int)$o['amount_toman']) ?></td>
                   <td><?= Admin::statusBadge(['paid' => 'verified', 'pending' => 'pending', 'failed' => 'rejected', 'expired' => 'inactive', 'created' => 'pending'][$o['status']] ?? $o['status']) ?><?= $o['last_error'] && $o['status'] !== 'paid' ? '<br><small class="muted">' . e($o['last_error']) . '</small>' : '' ?></td>
                   <td class="ltr"><?= e($o['ref_id'] ?? '—') ?></td><td><?= e(jdate($o['created_at'])) ?></td></tr>
               <?php endforeach; if (!$orders) echo '<tr><td colspan="8" class="muted">سفارشی نیست.</td></tr>'; ?>

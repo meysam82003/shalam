@@ -40,12 +40,17 @@ window.DIVAN_SITE = {
    * Download section («دریافت دیوان امتیاز»). A platform with an empty url is shown as «به‌زودی» with no link.
    * Fill url, version, size and sha256 after each approved release (the release notes list them).
    */
+  // نشانی صفحهٔ خرید اشتراک از سایت (روی سرور دیوان)
+  buyUrl: '/divan/pay/buy.php',
   downloads: {
     version: '5.5.0',
     date: '',
     android: { url: '', size: '', sha256: '' },
-    bazaar: { url: 'https://cafebazaar.ir/app/com.meysam.divanemtiaz' },
-    myket: { url: 'https://myket.ir/app/com.meysam.divanemtiaz' },
+    // logo: the store's own official icon, loaded from the store's site when the page opens.
+    // badge: if you download the official «دریافت از …» badge from the store's developer panel, upload it to
+    // site-assets/img/ and put its address here; the whole button then shows that badge.
+    bazaar: { url: 'https://cafebazaar.ir/app/com.meysam.divanemtiaz', logo: 'https://cafebazaar.ir/favicon.ico', badge: '' },
+    myket: { url: 'https://myket.ir/app/com.meysam.divanemtiaz', logo: 'https://myket.ir/favicon.ico', badge: '' },
     windows: { url: '', size: '', sha256: '' },
     iphone: { url: '', size: '' },
     web: { url: '/play/' },

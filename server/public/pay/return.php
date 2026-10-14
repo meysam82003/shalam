@@ -19,4 +19,5 @@ $given = (string)($_GET['Authority'] ?? $_GET['authority'] ?? '');
 if ($order !== null && ($given === '' || hash_equals((string)$order['gateway_ref'], $given)) && RateLimit::hit('payreturn:' . Http::ip(), 60, 3600)) {
     try { $order = PayOrders::settle($order); } catch (Throwable $e) { /* shown as pending; the app and the cron ask again */ }
 }
-echo PayPages::renderReturn($order);
+$buyer = $order !== null && hash_equals((string)$order['code'], (string)($_COOKIE[PayPages::COOKIE] ?? ''));
+echo PayPages::renderReturn($order, false, 'paid', $buyer);

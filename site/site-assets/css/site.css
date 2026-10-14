@@ -157,6 +157,9 @@ details p { padding: 0 22px 18px; color: var(--muted); }
 .store:hover { transform: translateY(-3px); border-color: var(--gold); }
 .store span { text-align: right; line-height: 1.4; } .store small { display: block; color: var(--dim); font-size: .78rem; }
 .store b { color: var(--gold2); }
+.store-logo { flex: 0 0 40px; width: 40px; height: 40px; border-radius: 11px; overflow: hidden; background: #fff; box-shadow: 0 0 0 1px rgba(227, 194, 122, .35); display: flex; align-items: center; justify-content: center; }
+.store-logo img { width: 32px; height: 32px; object-fit: contain; }
+.store.badge { padding: 6px 10px; min-width: 0; } .store.badge img { height: 52px; width: auto; display: block; }
 
 /* footer */
 footer { border-top: 1px solid var(--line); padding: 46px 0 30px; margin-top: 40px; background: rgba(3, 10, 8, .6); position: relative; z-index: 1; }

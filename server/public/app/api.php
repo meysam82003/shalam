@@ -240,13 +240,18 @@ final class Api
             case 'v1/promo/check': {
                 self::post($method);
                 $u = self::user();
-                return Promo::describe(Promo::find((string)($in['code'] ?? ''), $u), self::store($in));
+                $code = (string)($in['code'] ?? '');
+                // Activation codes of site purchases go through the same «code» box of the app (any version, no update needed).
+                if (PayOrders::looksLikeActivation($code)) return PayOrders::checkActivation($code, $u, self::store($in))['info'];
+                return Promo::describe(Promo::find($code, $u), self::store($in));
             }
 
             case 'v1/promo/redeem': {
                 self::post($method);
                 $u = self::user();
-                $p = Promo::redeemGift((string)($in['code'] ?? ''), $u);
+                $code = (string)($in['code'] ?? '');
+                if (PayOrders::looksLikeActivation($code)) return ['promo' => PayOrders::redeemActivation($code, $u, self::store($in))] + self::account(Users::byId((int)$u['id']));
+                $p = Promo::redeemGift($code, $u);
                 return ['promo' => Promo::describe($p, self::store($in))] + self::account(Users::byId((int)$u['id']));
             }
 
