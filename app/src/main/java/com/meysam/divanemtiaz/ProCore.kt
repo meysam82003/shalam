@@ -38,6 +38,13 @@ object StoreInfo {
     var pinnedKey: String = ""; private set
     var myketKey: String = ""; private set
     var tapsellAppId: String = ""; private set
+    /** SHA-256 of the official signing certificate (release builds); empty in debug builds and the web version. */
+    var officialCert: String = ""; private set
+    /**
+     * false when this APK is not signed with the official key (a modified or re-signed copy): Pro is then never active
+     * here, whatever the stored certificate says. It raises the bar for patched copies; it cannot make an APK uncrackable.
+     */
+    var integrityOk: Boolean = true; private set
     private var loaded = false
 
     val storeName: String get() = when (storeId) { "myket" -> "مایکت"; "direct" -> "درگاه بانکی"; else -> "کافه‌بازار" }
@@ -54,7 +61,20 @@ object StoreInfo {
         pinnedKey = meta.getString("divan.licenseKey").orEmpty().trim()
         myketKey = meta.getString("divan.myketKey").orEmpty().trim()
         tapsellAppId = meta.getString("divan.tapsellAppId").orEmpty().trim()
+        officialCert = meta.getString("divan.certSha256").orEmpty().trim().replace(":", "").uppercase()
+        if (officialCert.isNotEmpty()) integrityOk = signingCerts(context).any { it == officialCert }
     }
+
+    /** SHA-256 (hex, upper case) of each certificate this installed APK is signed with. */
+    @Suppress("DEPRECATION")
+    private fun signingCerts(context: Context): List<String> = runCatching {
+        val pm = context.packageManager
+        val sigs = if (Build.VERSION.SDK_INT >= 28) {
+            val si = pm.getPackageInfo(context.packageName, PackageManager.GET_SIGNING_CERTIFICATES).signingInfo
+            if (si == null) emptyArray() else if (si.hasMultipleSigners()) si.apkContentsSigners else si.signingCertificateHistory
+        } else pm.getPackageInfo(context.packageName, PackageManager.GET_SIGNATURES).signatures
+        sigs.orEmpty().map { sig -> MessageDigest.getInstance("SHA-256").digest(sig.toByteArray()).joinToString("") { "%02X".format(it) } }
+    }.getOrDefault(emptyList())
 
     /** Tests choose the store and server directly. */
     fun configure(store: String, api: String = DEFAULT_API) { storeId = store; apiBase = api; loaded = true }
@@ -402,7 +422,7 @@ object ProState {
             return License.parse(c, key, userId.takeIf { it > 0 }, deviceId).also { cached = c to it }
         }
 
-    val isPro: Boolean get() = loggedIn && license.proAt(now())
+    val isPro: Boolean get() = loggedIn && StoreInfo.integrityOk && license.proAt(now())
 
     /** Ads are never prepared for Pro users or during a rewarded ad-free window. */
     val adsAllowed: Boolean get() = !isPro && now() >= adFreeUntil
@@ -510,6 +530,7 @@ object Billing {
 // ================================================================ flows
 object ProSync {
     private fun device(): JSONObject = JSONObject().put("device", "${Build.MANUFACTURER} ${Build.MODEL}".trim().take(80)).put("device_id", ProState.deviceId)
+        .put("integrity", StoreInfo.integrityOk)
         .put("platform", "android").put("app_version", APP_VERSION_NAME).put("store", StoreInfo.storeId)
 
     /** Fetches public plans, module access and ads at most every few hours (cached for offline use). */

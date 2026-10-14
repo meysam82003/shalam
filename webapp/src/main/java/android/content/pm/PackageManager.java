@@ -4,7 +4,7 @@ package android.content.pm;
 public class PackageManager {
     public static final PackageManager INSTANCE = new PackageManager();
     public static final int PERMISSION_GRANTED = 0, PERMISSION_DENIED = -1;
-    public static final int GET_META_DATA = 0x80, GET_ACTIVITIES = 1, GET_SIGNATURES = 0x40;
+    public static final int GET_META_DATA = 0x80, GET_ACTIVITIES = 1, GET_SIGNATURES = 0x40, GET_SIGNING_CERTIFICATES = 0x08000000;
 
     public static class NameNotFoundException extends Exception {
         public NameNotFoundException() {}

@@ -278,6 +278,8 @@ final class Api
     private static function open(array $u, array $in): string
     {
         $token = Sessions::signIn((int)$u['id'], $in);
+        // An Android build reports when its APK is not signed with the official key (a modified copy): logged for the owner.
+        if (($in['integrity'] ?? true) === false) Audit::security('unofficial_app', (int)$u['id'], (string)$u['username'], mb_substr((string)($in['device'] ?? ''), 0, 80) . ' ' . mb_substr((string)($in['app_version'] ?? ''), 0, 20));
         self::$auth = [$u, Db::one('SELECT * FROM {sessions} WHERE token_hash = ?', [Crypto::hash($token)])];
         return $token;
     }
