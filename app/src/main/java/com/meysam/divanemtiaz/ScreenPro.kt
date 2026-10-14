@@ -35,13 +35,13 @@ private fun Screen.latinField(hint: String): EditText = kit.field(hint).apply {
 private fun Screen.errorLine(): TextView = kit.text("", TextStyle.LABEL, Royal.alert).apply { visibility = View.GONE }
 private fun TextView.show(msg: String?) { text = msg.orEmpty(); visibility = if (msg.isNullOrBlank()) View.GONE else View.VISIBLE }
 
-/** Shown when the account's device limit (set in the panel) is full and this device has no Pro yet. */
+/** Shown when this device is signed in but the subscription is held by another device (one device at a time). */
 private fun Screen.elsewherePanel(): View? {
     if (!ProState.loggedIn) return null
     val name = ProState.license.elsewhere ?: return null
     return kit.panel(PanelStyle.DANGER).apply {
-        addView(kit.text("سقف دستگاه‌های اشتراک شما پر شده است (آخرین: «$name»)", TextStyle.BODY_BOLD, Royal.ivory))
-        addView(kit.text("حساب شما روی همهٔ دستگاه‌ها و نسخه‌های دیوان کار می‌کند، ولی تعداد دستگاه‌های هم‌زمان سقف دارد. می‌توانید اشتراک را به این دستگاه منتقل کنید؛ دستگاهی که مدت بیشتری استفاده نشده، در اولین اتصال به اینترنت Pro را از دست می‌دهد. انتقال حداکثر چند بار در ماه ممکن است.", TextStyle.LABEL, Royal.muted))
+        addView(kit.text("اشتراک شما روی دستگاه «$name» فعال است", TextStyle.BODY_BOLD, Royal.ivory))
+        addView(kit.text("حساب در هر زمان روی یک دستگاه باز است. می‌توانید اشتراک را به این دستگاه منتقل کنید؛ دستگاه قبلی در اولین اتصال به اینترنت از حساب خارج می‌شود. انتقال حداکثر چند بار در ماه ممکن است.", TextStyle.LABEL, Royal.muted))
         addView(kit.gap(8))
         addView(kit.button("انتقال اشتراک به این دستگاه", ButtonKind.PRIMARY, RoyalIcon.SWAP, 46) {
             val input = secretField("رمز عبور")
@@ -113,7 +113,7 @@ class ProScreen(host: MainActivity, private val reason: String? = null, private 
         }
 
         addView(kit.button(promo?.let { "کد ${it.first}: ${kit.n(it.second)}٪ تخفیف فعال است" } ?: "کد تخفیف یا هدیه دارید؟", ButtonKind.GHOST, RoyalIcon.STAR, 44) { promoDialog() }, kit.spaced(10))
-        addView(kit.text("پرداخت فقط از راه ${StoreInfo.storeName} و با همان قیمتی انجام می‌شود که اینجا می‌بینید. ${if (ProState.plans.any { it.productType == "subscription" }) "اشتراک‌های «تمدید خودکار» را هر زمان از ${StoreInfo.storeName} لغو کنید؛ بقیهٔ پلن‌ها خودکار تمدید نمی‌شوند." else "اشتراک‌های زمان‌دار خودکار تمدید نمی‌شوند."} با همین حساب، اشتراک روی همهٔ دستگاه‌ها و نسخه‌های دیوان (بازار، مایکت، سایت، وب، ویندوز و آیفون) فعال است؛ خرید و تمدید در هر نسخه با روش پرداخت همان نسخه انجام می‌شود.",
+        addView(kit.text("پرداخت فقط از راه ${StoreInfo.storeName} و با همان قیمتی انجام می‌شود که اینجا می‌بینید. ${if (ProState.plans.any { it.productType == "subscription" }) "اشتراک‌های «تمدید خودکار» را هر زمان از ${StoreInfo.storeName} لغو کنید؛ بقیهٔ پلن‌ها خودکار تمدید نمی‌شوند." else "اشتراک‌های زمان‌دار خودکار تمدید نمی‌شوند."} با همین حساب در هر نسخه‌ای (بازار، مایکت، سایت، وب، ویندوز و آیفون) وارد شوید؛ حساب در هر زمان روی یک دستگاه باز است و ورود روی دستگاه تازه، دستگاه قبلی را خودکار خارج می‌کند. خرید و تمدید در هر نسخه با روش پرداخت همان نسخه انجام می‌شود.",
             TextStyle.CAPTION, Royal.dim), kit.spaced(10))
         addView(kit.horizontal().apply {
             addView(kit.weight(kit.button("بازیابی خرید", ButtonKind.SECONDARY, RoyalIcon.UNDO, 44) { restore() }))
@@ -130,7 +130,7 @@ class ProScreen(host: MainActivity, private val reason: String? = null, private 
         val names = Features.titles
         val pro = features?.keys()?.asSequence()?.filter { features.optJSONObject(it)?.optString("mode") in setOf("pro", "limited") }?.toList().orEmpty()
         pro.take(6).forEach { k -> out += Triple(RoyalIcon.CROWN, names[k] ?: k, if (features?.optJSONObject(k)?.optString("mode") == "limited") "بدون محدودیت" else "فقط برای Pro") }
-        out += Triple(RoyalIcon.SAVE, "روی همهٔ دستگاه‌ها", "با یک حساب روی گوشی، رایانه و نسخهٔ وب فعال است؛ روی دستگاه تازه فقط با همان حساب وارد شوید.")
+        out += Triple(RoyalIcon.SAVE, "با دستگاه تازه از دست نمی‌رود", "روی هر دستگاه و نسخه‌ای با همان حساب وارد شوید؛ دستگاه قبلی خودکار از حساب خارج می‌شود.")
         out += Triple(RoyalIcon.TIMER, "بدون اینترنت هم معتبر", "اشتراک تا چند روز بدون اتصال کار می‌کند و بعد با یک اتصال کوتاه تمدید می‌شود.")
         out += Triple(RoyalIcon.HEART, "حمایت از ساخت بازی‌های تازه", "هزینهٔ سرور و توسعهٔ دیوان از همین راه تأمین می‌شود.")
         return out
@@ -496,7 +496,7 @@ class SubscriptionScreen(host: MainActivity) : Screen(host) {
         addView(kit.listGroup(listOf(
             kit.listRow(kit.iconChip(RoyalIcon.USER), "حساب", ProState.username),
             kit.listRow(kit.iconChip(RoyalIcon.CARDS), "فروشگاه این نسخه", StoreInfo.storeName),
-            kit.listRow(kit.iconChip(RoyalIcon.CHECK), "دستگاه‌های اشتراک", if (ProState.license.elsewhere != null) "سقف دستگاه‌ها پر است (آخرین: «${ProState.license.elsewhere}»)" else if (pro) "این دستگاه؛ با همین حساب روی دستگاه‌های دیگر هم فعال است" else "—"),
+            kit.listRow(kit.iconChip(RoyalIcon.CHECK), "دستگاه اشتراک", if (ProState.license.elsewhere != null) "روی «${ProState.license.elsewhere}» فعال است" else if (pro) "همین دستگاه؛ ورود روی دستگاه دیگر، این‌جا را خارج می‌کند" else "—"),
             kit.listRow(kit.iconChip(RoyalIcon.UNDO), "آخرین همگام‌سازی", if (ProState.lastSync() > 0) JalaliDate.format(ProState.lastSync() * 1000, settings.general.persianDigits) else "—") {
                 kit.toast("در حال همگام‌سازی…")
                 ProSync.refreshAccount { e -> kit.toast(e?.message ?: "به‌روز شد") }

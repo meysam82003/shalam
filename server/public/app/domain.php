@@ -155,6 +155,37 @@ final class Sessions
         return $token;
     }
 
+    /**
+     * Signing in on a device: the account stays open on at most the panel's number of devices («pro_devices_limit»,
+     * default 1). Beyond it, the devices used longest ago are signed out (their app signs out at its next sync) and the
+     * new device holds Pro. Each version keeps its own payment method for buying and renewing.
+     */
+    public static function signIn(int $userId, array $device): string
+    {
+        $token = self::create($userId, $device);
+        if (!Devices::enabled()) return $token;
+        $s = Db::one('SELECT * FROM {sessions} WHERE token_hash = ?', [Crypto::hash($token)]);
+        $limit = Devices::limit();
+        if ($limit > 0) {
+            // One entry per device (a session without a device id counts on its own), newest first; this one first of all.
+            $seen = [];
+            $keep = [$s['device_id'] ?? ('s' . $s['id']) => true];
+            foreach (Db::all('SELECT * FROM {sessions} WHERE user_id = ? AND id <> ? AND revoked_at IS NULL AND expires_at > ? ORDER BY last_seen_at DESC, id DESC', [$userId, $s['id'], Clock::sql()]) as $o) {
+                $key = $o['device_id'] ?? ('s' . $o['id']);
+                if (isset($keep[$key]) || (!isset($seen[$key]) && count($keep) < $limit)) { $keep[$key] = true; continue; }
+                $seen[$key] = true;
+                Db::update('sessions', ['revoked_at' => Clock::sql(), 'revoke_reason' => 'replaced'], 'id = ?', [$o['id']]);
+                if ($o['device_id'] !== null) Db::run('DELETE FROM {pro_devices} WHERE user_id = ? AND device = ?', [$userId, $o['device_id']]);
+                Audit::log('system', null, 'signed_out_elsewhere', 'user', $userId, 'replaced', null, ['device' => $o['device_name'], 'by' => $s['device_name']]);
+            }
+        }
+        if ($s['device_id'] !== null) Devices::bind($userId, $s['device_id'], $s['device_name'], 'sign_in');
+        return $token;
+    }
+
+    /** Why the request's token no longer works (for the message the app shows), or null. */
+    public static ?string $endedBecause = null;
+
     /** Resolves the bearer token of the request; returns [user, session] or null. */
     public static function current(): ?array
     {
@@ -163,6 +194,7 @@ final class Sessions
         $token = trim($token);
         if ($token === '' || strlen($token) > 100) return null;
         $s = Db::one('SELECT * FROM {sessions} WHERE token_hash = ?', [Crypto::hash($token)]);
+        if ($s !== null && $s['revoked_at'] !== null) self::$endedBecause = $s['revoke_reason'] ?? null;
         if ($s === null || $s['revoked_at'] !== null || Clock::ts($s['expires_at']) < Clock::now()) return null;
         $u = Users::byId((int)$s['user_id']);
         if ($u === null || $u['status'] !== 'active') return null;
@@ -436,16 +468,16 @@ final class Entitlements
 
 // ================================================================ the devices of a subscription
 /**
- * One account works on all of its owner's devices and versions (Bazaar, Myket, the site's APK, web, Windows, iPhone):
- * each version keeps its own payment method for buying and renewing, but Pro follows the account. The panel sets how
- * many devices may hold Pro at the same time («pro_devices_limit», 0 = no limit); a new device beyond it may take the
- * place of the one used longest ago with the password («انتقال»), a few times a month.
+ * One account works on every version (Bazaar, Myket, the site's APK, web, Windows, iPhone); each version keeps its own
+ * payment method for buying and renewing, but Pro follows the account. The account is open on at most the panel's number
+ * of devices at once («pro_devices_limit», default 1, 0 = no limit): signing in on a new device signs the oldest one out
+ * (Sessions::signIn). A device that has a session but no Pro yet may still take it over with the password («انتقال»).
  */
 final class Devices
 {
     public static function enabled(): bool { return (bool)Settings::get('single_device', true); }
 
-    public static function limit(): int { return max(0, (int)Settings::get('pro_devices_limit', 5)); }
+    public static function limit(): int { return max(0, (int)Settings::get('pro_devices_limit', 1)); }
 
     /** The app sends a SHA-256 of its stable device identifier; nothing else is accepted. */
     public static function clean($id): ?string

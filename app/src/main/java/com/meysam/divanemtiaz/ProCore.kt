@@ -590,7 +590,12 @@ object ProSync {
         val t = ProState.token ?: run { done?.invoke(null); return }
         Api.call("GET", "v1/me", JSONObject().put("store", StoreInfo.storeId), t) { data, err ->
             if (data != null) ProState.applyAccount(data)
-            else if (err?.code == "unauthorized") ProState.logout()
+            else if (err?.code == "unauthorized") {
+                ProState.logout()
+                // Signed in on another device: the server says so; tell the user why this device left the account.
+                val why = err.message.orEmpty()
+                if (why.contains("دستگاه دیگری")) Tls.context?.let { android.widget.Toast.makeText(it, why, android.widget.Toast.LENGTH_LONG).show() }
+            }
             done?.invoke(err)
         }
     }

@@ -457,6 +457,10 @@ final class Migrations
                 "INSERT IGNORE INTO {pro_devices} (user_id, device, name, bound_at, seen_at)
                     SELECT id, pro_device, pro_device_name, COALESCE(pro_device_at, UTC_TIMESTAMP()), COALESCE(pro_device_at, UTC_TIMESTAMP()) FROM {users} WHERE pro_device IS NOT NULL",
             ],
+            // Why a session ended: «replaced» = the account was opened on another device.
+            11 => [
+                "ALTER TABLE {sessions} ADD COLUMN revoke_reason VARCHAR(20) NULL",
+            ],
         ];
     }
 
@@ -538,7 +542,7 @@ final class Seed
             'cross_store' => true,
             'single_device' => true,
             'device_moves_limit' => 3,
-            'pro_devices_limit' => 5,
+            'pro_devices_limit' => 1,
             'ads_enabled' => false,
             'ads_priority' => 'direct_first',
             'ads_interstitial_min_minutes' => 10,

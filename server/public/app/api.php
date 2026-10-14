@@ -13,7 +13,7 @@ final class Api
     private static ?array $auth = null;
 
     /** Forgets the resolved login (each HTTP request is a new process; tests call handle() repeatedly). */
-    public static function reset(): void { self::$auth = null; }
+    public static function reset(): void { self::$auth = null; Sessions::$endedBecause = null; }
 
     public static function route(): string
     {
@@ -49,7 +49,7 @@ final class Api
     private static function user(): array
     {
         if (self::$auth === null) self::$auth = Sessions::current();
-        if (self::$auth === null) throw new ApiError('unauthorized', 'برای این کار وارد حساب شوید.', 401);
+        if (self::$auth === null) throw new ApiError('unauthorized', Sessions::$endedBecause === 'replaced' ? 'حساب شما روی دستگاه دیگری باز شد و از این دستگاه خارج شدید. برای ادامه دوباره وارد شوید.' : 'برای این کار وارد حساب شوید.', 401);
         return self::$auth[0];
     }
 
@@ -274,10 +274,10 @@ final class Api
         throw new ApiError('not_found', 'مسیر یافت نشد.', 404);
     }
 
-    /** New session for this phone; it becomes the request's session. */
+    /** New session for this device (the oldest devices beyond the panel's limit are signed out); it becomes the request's session. */
     private static function open(array $u, array $in): string
     {
-        $token = Sessions::create((int)$u['id'], $in);
+        $token = Sessions::signIn((int)$u['id'], $in);
         self::$auth = [$u, Db::one('SELECT * FROM {sessions} WHERE token_hash = ?', [Crypto::hash($token)])];
         return $token;
     }

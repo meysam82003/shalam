@@ -386,35 +386,43 @@ scenario('one phone per subscription (device limit set to 1 in the panel)', func
     Settings::set('single_device', true);
 });
 
-scenario('one account on every device and version; each version renews with its own payment', function () use ($storeKey) {
+scenario('one account, one device at a time: signing in elsewhere signs the old device out; each version renews with its own payment', function () use ($storeKey) {
     freshIp();
-    Settings::set('pro_devices_limit', 5);
     Settings::set('single_device', true);
-    [$u] = Users::register('every_device', 'secret123');
-    $mk = function (string $name, string $id) use ($u) {
-        $t = Sessions::create((int)$u['id'], ['device' => $name, 'device_id' => hash('sha256', $id)]);
-        return Db::one('SELECT * FROM {sessions} WHERE token_hash = ?', [Crypto::hash($t)]);
-    };
-    // Same phone, two installs: the store build and the site's APK have different package names, so different ids.
-    $bazaarPhone = $mk('Samsung (بازار)', 'phone|com.meysam.divanemtiaz');
-    $sitePhone = $mk('Samsung (سایت)', 'phone|com.meysam.divanemtiaz.site');
-    $web = $mk('Chrome', 'web');
-    $win = $mk('Windows', 'windows');
-    $iphone = $mk('iPhone', 'iphone');
-    buy($u, 'm3', 'bazaar', 'tok-every-1', $storeKey);
-    $cert = fn(array $s, string $store) => json_decode(Crypto::b64uDecode(explode('.', Entitlements::certificate(Users::byId((int)$u['id']), $store, $s)['certificate'])[0]), true);
-    check($cert($bazaarPhone, 'bazaar')['pro'] && $cert($sitePhone, 'direct')['pro'] && $cert($web, 'direct')['pro'] && $cert($win, 'direct')['pro'] && $cert($iphone, 'direct')['pro'],
-        'bought in Bazaar: Pro on the site APK of the same phone, the web, Windows and iPhone with the same account');
-    check(count(Devices::list((int)$u['id'])) === 5, 'five devices listed for the account');
-    $sixth = $mk('Tablet', 'tablet');
-    $c6 = $cert($sixth, 'direct');
-    check($c6['pro'] === false && $c6['device_conflict'] !== null, 'beyond the panel limit a new device is told the limit is full');
-    Clock::$fixed += 7200;
-    foreach ([$sitePhone, $web, $win, $iphone] as $s) $cert($s, 'direct');
-    Clock::$fixed += 7200;
-    Devices::transfer(Users::byId((int)$u['id']), $sixth, 'secret123');
-    check($cert($sixth, 'direct')['pro'] === true && $cert($bazaarPhone, 'bazaar')['pro'] === false && $cert($web, 'direct')['pro'] === true, 'a transfer takes the place of the device used longest ago only');
-    Clock::$fixed -= 14400;
+    Settings::set('pro_devices_limit', 1);
+    [$u] = Users::register('one_at_a_time', 'secret123');
+    buy($u, 'm3', 'bazaar', 'tok-one-1', $storeKey);
+    $sess = fn(string $t) => Db::one('SELECT * FROM {sessions} WHERE token_hash = ?', [Crypto::hash($t)]);
+    $cert = fn(array $s, ?string $store) => json_decode(Crypto::b64uDecode(explode('.', Entitlements::certificate(Users::byId((int)$u['id']), $store, $s)['certificate'])[0]), true);
+    // Bazaar install on the phone, then the site's APK on the same phone (another package, so another device id).
+    $tBazaar = Sessions::signIn((int)$u['id'], ['device' => 'Samsung (بازار)', 'device_id' => hash('sha256', 'phone|bazaar'), 'store' => 'bazaar']);
+    check($cert($sess($tBazaar), 'bazaar')['pro'] === true, 'signed in on the Bazaar version: Pro');
+    Clock::$fixed += 60;
+    $tSite = Sessions::signIn((int)$u['id'], ['device' => 'Samsung (سایت)', 'device_id' => hash('sha256', 'phone|site')]);
+    check($cert($sess($tSite), 'direct')['pro'] === true, 'the same account on the site version: Pro there, no transfer needed');
+    check($sess($tBazaar)['revoked_at'] !== null && $sess($tBazaar)['revoke_reason'] === 'replaced', 'the Bazaar version is signed out');
+    $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $tBazaar; Api::reset();
+    $err = null;
+    try { apiGet('v1/me'); } catch (ApiError $e) { $err = $e; }
+    check($err !== null && $err->errorCode === 'unauthorized' && strpos($err->getMessage(), 'دستگاه دیگری') !== false, 'the old device is told it was signed out because the account opened elsewhere (the app signs out on «unauthorized»)');
+    unset($_SERVER['HTTP_AUTHORIZATION']); Api::reset();
+    Clock::$fixed += 60;
+    $tWeb = Sessions::signIn((int)$u['id'], ['device' => 'Chrome', 'device_id' => hash('sha256', 'web')]);
+    check($sess($tSite)['revoked_at'] !== null && $sess($tWeb)['revoked_at'] === null && count(Devices::list((int)$u['id'])) === 1 && $cert($sess($tWeb), 'direct')['pro'], 'web after the site version: only the web is signed in and holds Pro');
+    $tWeb2 = Sessions::signIn((int)$u['id'], ['device' => 'Chrome', 'device_id' => hash('sha256', 'web')]);
+    check($sess($tWeb)['revoked_at'] === null, 'signing in again on the same device does not sign it out');
+    // A limit of 3 in the panel: the device used longest ago gives its place.
+    Settings::set('pro_devices_limit', 3);
+    Clock::$fixed += 60; $tA = Sessions::signIn((int)$u['id'], ['device' => 'Windows', 'device_id' => hash('sha256', 'win')]);
+    Clock::$fixed += 60; $tB = Sessions::signIn((int)$u['id'], ['device' => 'iPhone', 'device_id' => hash('sha256', 'iphone')]);
+    check($sess($tWeb2)['revoked_at'] === null && $sess($tA)['revoked_at'] === null, 'limit 3: three devices stay signed in');
+    Clock::$fixed += 60; $tC = Sessions::signIn((int)$u['id'], ['device' => 'Tablet', 'device_id' => hash('sha256', 'tablet')]);
+    check($sess($tWeb)['revoked_at'] !== null && $sess($tWeb2)['revoked_at'] !== null && $sess($tA)['revoked_at'] === null && $sess($tB)['revoked_at'] === null && $sess($tC)['revoked_at'] === null, 'a fourth device signs out the one used longest ago (all its sessions)');
+    Settings::set('single_device', false);
+    Clock::$fixed += 60; Sessions::signIn((int)$u['id'], ['device' => 'TV', 'device_id' => hash('sha256', 'tv')]);
+    check($sess($tA)['revoked_at'] === null, 'with the rule off in the panel nobody is signed out');
+    Settings::set('single_device', true);
+    Settings::set('pro_devices_limit', 1);
     // Renewing: each version shows only its own way to pay.
     Settings::set('pay_blupal', ['enabled' => true, 'sandbox' => true]);
     Settings::setSecret('pay_blupal_api_key', 'blu_test_KEY12345');
@@ -424,7 +432,6 @@ scenario('one account on every device and version; each version renews with its 
     check(!in_array('blupal', $ids('bazaar'), true) && !in_array('blupal', $ids('myket'), true) && in_array('blupal', $ids('direct'), true)
         && $bz['m1'] === 'divan_pro_1m' && $dr['m1'] === 'web', 'renewal: Bazaar and Myket versions pay through their store, the site, web, Windows and iPhone versions through the site gateways');
     Settings::set('pay_blupal', ['enabled' => false]);
-    Settings::set('pro_devices_limit', 5);
 });
 
 scenario('cross-store setting', function () use ($storeKey) {
