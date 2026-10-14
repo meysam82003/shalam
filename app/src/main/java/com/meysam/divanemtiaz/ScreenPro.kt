@@ -33,6 +33,9 @@ private fun Screen.latinField(hint: String): EditText = kit.field(hint).apply {
     textDirection = View.TEXT_DIRECTION_FIRST_STRONG
 }
 private fun Screen.errorLine(): TextView = kit.text("", TextStyle.LABEL, Royal.alert).apply { visibility = View.GONE }
+/** Where a purchase or a signed-in device comes from, in words ("" when the server did not say). */
+private fun storeLabel(store: String?): String = when (store) { "myket" -> "مایکت"; "bazaar" -> "بازار"; "direct" -> "نسخهٔ سایت"; "web" -> "نسخهٔ وب"; else -> "" }
+
 private fun TextView.show(msg: String?) { text = msg.orEmpty(); visibility = if (msg.isNullOrBlank()) View.GONE else View.VISIBLE }
 
 /** Shown when this device is signed in but the subscription is held by another device (one device at a time). */
@@ -515,7 +518,7 @@ class SubscriptionScreen(host: MainActivity) : Screen(host) {
             val statusName = mapOf("verified" to "تأییدشده", "signature_verified" to "تأییدشده", "pending" to "در انتظار تأیید", "rejected" to "ردشده", "refunded" to "بازپرداخت", "revoked" to "باطل")
             addView(kit.listGroup((0 until purchases.length()).map { i ->
                 val p = purchases.getJSONObject(i)
-                val store = if (p.optString("store") == "myket") "مایکت" else "بازار"
+                val store = storeLabel(p.optString("store"))
                 kit.listRow(kit.iconChip(RoyalIcon.CROWN), p.optString("plan_title"),
                     "$store  •  ${date(p.optLong("purchase_time"))}  •  ${statusName[p.optString("status")] ?: p.optString("status")}" + (p.optString("order_id").takeIf { it.isNotBlank() && it != "null" }?.let { "\nسفارش $it" } ?: ""),
                     if (!p.isNull("amount")) kit.text(toman(p.optInt("amount")), TextStyle.LABEL_BOLD, Royal.goldLight, maxLines = 1) else null)
@@ -528,8 +531,8 @@ class SubscriptionScreen(host: MainActivity) : Screen(host) {
             addView(kit.listGroup((0 until sessions.length()).map { i ->
                 val s = sessions.getJSONObject(i)
                 val mine = s.optLong("id") == currentId
-                kit.listRow(kit.iconChip(RoyalIcon.USER), s.optString("device").ifBlank { "دستگاه" } + if (mine) " (همین گوشی)" else "",
-                    "آخرین فعالیت ${date(s.optLong("last_seen_at"))}  •  ${if (s.optString("store") == "myket") "مایکت" else "بازار"}",
+                kit.listRow(kit.iconChip(RoyalIcon.USER), s.optString("device").ifBlank { "دستگاه" } + if (mine) " (همین دستگاه)" else "",
+                    "آخرین فعالیت ${date(s.optLong("last_seen_at"))}" + storeLabel(s.optString("store")).let { if (it.isEmpty()) "" else "  •  $it" },
                     if (mine) null else kit.button("خروج", ButtonKind.GHOST, null, 34) {
                         kit.confirm("خروج این دستگاه", "این دستگاه از حساب خارج شود؟", "خروج", danger = true) {
                             ProSync.revokeSession(s.optLong("id"), false) { e -> kit.toast(e?.message ?: "خارج شد") }

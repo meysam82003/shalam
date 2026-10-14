@@ -147,7 +147,7 @@ final class Sessions
             'device_name' => mb_substr((string)($device['device'] ?? ''), 0, 80) ?: null,
             'platform' => mb_substr((string)($device['platform'] ?? 'android'), 0, 20),
             'app_version' => mb_substr((string)($device['app_version'] ?? ''), 0, 20) ?: null,
-            'store' => in_array($device['store'] ?? '', ['bazaar', 'myket', 'web'], true) ? $device['store'] : null,
+            'store' => in_array($device['store'] ?? '', ['bazaar', 'myket', 'direct', 'web'], true) ? $device['store'] : null,
             'device_id' => Devices::clean($device['device_id'] ?? null),
             'ip' => Http::ip(), 'created_at' => Clock::sql($now), 'last_seen_at' => Clock::sql($now),
             'expires_at' => Clock::sql($now + Users::SESSION_DAYS * 86400),

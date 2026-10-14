@@ -247,7 +247,7 @@ final class Admin
         return '<span class="badge ' . $k . '">' . e($l) . '</span>';
     }
 
-    public static function storeName(?string $s): string { return ['bazaar' => 'بازار', 'myket' => 'مایکت', 'web' => 'وب'][$s ?? ''] ?? '—'; }
+    public static function storeName(?string $s): string { return ['bazaar' => 'بازار', 'myket' => 'مایکت', 'direct' => 'سایت', 'web' => 'وب'][$s ?? ''] ?? '—'; }
 
     public static function pager(int $total, int $page, int $per, string $query): string
     {
