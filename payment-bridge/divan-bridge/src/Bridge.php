@@ -4,7 +4,10 @@
  *
  * Only the main Divan server may call it. Every request is signed with a shared key (HMAC-SHA256)
  * over a timestamp, a one-time nonce and the body; a nonce is accepted once. Only fixed actions exist,
- * each mapped to one official endpoint of Myket or Cafe Bazaar: no URL ever comes from the caller.
+ * each mapped to one official endpoint of Myket, Cafe Bazaar or ZarinPal: no URL ever comes from the caller.
+ * Aban Gateway is the one exception: its API address is set in the Divan panel (so a domain change needs no
+ * new bridge), but it must be a plain HTTPS domain, may be pinned by «aban_api_hosts» here, and only the
+ * four invoice calls with checked fields can be sent to it.
  * The response is signed too, bound to the request nonce, so the caller can trust it.
  *
  * Store credentials live only in config.php outside the public folder. Logs never hold tokens or keys.
@@ -16,7 +19,7 @@ namespace DivanBridge;
 
 final class Bridge
 {
-    public const VERSION = '1.0.0';
+    public const VERSION = '1.1.0';
     public const MAX_BODY = 16384;
     public const WINDOW = 300;
     private const TAG = "DIVAN-BRIDGE-V1";
@@ -33,7 +36,13 @@ final class Bridge
 
     private const DESTINATIONS = [self::MYKET, self::MYKET_DOC, self::BAZAAR, self::ZARINPAL, self::ZARINPAL_SANDBOX];
 
-    public const ACTIONS = ['ping', 'myket.verify', 'myket.products', 'myket.set_price', 'myket.test', 'bazaar.verify', 'bazaar.test', 'zarinpal.request', 'zarinpal.verify'];
+    public const ACTIONS = ['ping', 'myket.verify', 'myket.products', 'myket.set_price', 'myket.test', 'bazaar.verify', 'bazaar.test', 'zarinpal.request', 'zarinpal.verify', 'aban.call'];
+
+    /** Aban Gateway's documented API address (docs: github.com/AbanGateway/docs). */
+    public const ABAN_DEFAULT = 'https://api.abangateway.ir/api/v1';
+
+    /** The checked Aban address of the current request (an extra allowed destination for this call only). */
+    private string $extraDestination = '';
 
     /**
      * Replaced only by the automated tests: fn(method, url, headers, body, timeout) → [status, body, error].
@@ -137,7 +146,7 @@ final class Bridge
             case 'ping':
                 return ['ok' => true, 'kind' => 'pong', 'version' => self::VERSION, 'time' => $this->now(), 'key_id' => $this->keyId,
                     'stores' => ['myket' => $this->secret('myket_access_token') !== '', 'bazaar' => $this->bazaarConfigured()],
-                    'set_price' => (bool)($this->cfg['allow_set_price'] ?? false),
+                    'set_price' => (bool)($this->cfg['allow_set_price'] ?? false), 'actions' => self::ACTIONS,
                     'packages' => array_values((array)($this->cfg['packages'] ?? [])), 'skus' => array_values(array_filter((array)($this->cfg['skus'] ?? [])))];
             case 'myket.verify':
                 [$pkg, $sku, $token] = [$this->package($p), $this->sku($p), $this->token($p)];
@@ -161,6 +170,8 @@ final class Bridge
             case 'zarinpal.request':
             case 'zarinpal.verify':
                 return $this->zarinpal($action === 'zarinpal.request' ? 'request' : 'verify', $p);
+            case 'aban.call':
+                return $this->aban($p);
             case 'bazaar.test':
                 // A made-up receipt: 404 means the key was accepted, 401/403 that it was not.
                 return $this->bazaar($this->package($p), 'divan_connectivity_probe', 'probe' . bin2hex(random_bytes(6)), 'inapp');
@@ -226,6 +237,69 @@ final class Bridge
         }
         $base = !empty($p['sandbox']) ? self::ZARINPAL_SANDBOX : self::ZARINPAL;
         $r = $this->http('POST', $base . $what . '.json', ['Content-Type: application/json', 'Accept: application/json'], json_encode($body, JSON_UNESCAPED_UNICODE));
+        if ((int)$r['status'] === 0) return ['ok' => false, 'kind' => 'store_unreachable', 'status' => 0, 'error' => self::netError((string)$r['error'])];
+        $j = json_decode((string)$r['body'], true);
+        return ['ok' => true, 'kind' => 'store', 'status' => (int)$r['status'], 'body' => is_array($j) ? $j : null];
+    }
+
+    /** A plain HTTPS address on a domain name: no IP, no port, no user, no query, no «..». */
+    public static function safeBase(string $base): bool
+    {
+        return strlen($base) <= 200 && (bool)preg_match('#^https://([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}(/[A-Za-z0-9._~-]+)*$#i', $base) && strpos($base, '..') === false;
+    }
+
+    /**
+     * Aban Gateway invoices: create, read, verify, cancel. The token comes from the Divan panel; the body of a new
+     * invoice is rebuilt here from checked fields, and the buyer and the webhook may only go to the Divan site.
+     */
+    private function aban(array $p): array
+    {
+        $base = rtrim((string)($p['base'] ?? self::ABAN_DEFAULT), '/');
+        if (!self::safeBase($base)) throw new BadRequest('base');
+        $pinned = array_map('strtolower', array_filter((array)($this->cfg['aban_api_hosts'] ?? [])));
+        if ($pinned && !in_array(strtolower((string)parse_url($base, PHP_URL_HOST)), $pinned, true)) throw new BadRequest('base');
+        $token = (string)($p['api_token'] ?? '');
+        if (!preg_match('/^ag_(live|test)_[A-Za-z0-9]{16,128}$/', $token)) throw new BadRequest('api_token');
+        $method = (string)($p['method'] ?? '');
+        $path = (string)($p['path'] ?? '');
+        $id = '[A-Za-z0-9_-]{4,80}';
+        $body = null;
+        if ($method === 'POST' && $path === '/invoices') {
+            $in = is_array($p['body'] ?? null) ? $p['body'] : [];
+            $amount = $in['amount_rial'] ?? null;
+            if (!is_int($amount) || $amount < 10000 || $amount > 2000000000) throw new BadRequest('amount_rial');
+            $order = (string)($in['order_id'] ?? '');
+            if (!preg_match('/^[a-z0-9]{20}$/', $order)) throw new BadRequest('order_id');
+            $out = ['amount_rial' => $amount, 'order_id' => $order];
+            foreach (['callback_url', 'return_url'] as $k) {
+                if (!isset($in[$k])) continue;
+                $u = (string)$in[$k];
+                $host = strtolower((string)parse_url($u, PHP_URL_HOST));
+                $hosts = (array)($this->cfg['callback_hosts'] ?? ['httpuser87890.ir']);
+                if (stripos($u, 'https://') !== 0 || strlen($u) > 300 || !in_array($host, $hosts, true) || preg_match('/[\s"<>]/', $u)) throw new BadRequest($k);
+                $out[$k] = $u;
+            }
+            if (isset($in['description'])) $out['description'] = mb_substr(strip_tags((string)$in['description']), 0, 200);
+            if (isset($in['expiry_minutes'])) {
+                if (!is_int($in['expiry_minutes']) || $in['expiry_minutes'] < 1 || $in['expiry_minutes'] > 1440) throw new BadRequest('expiry_minutes');
+                $out['expiry_minutes'] = $in['expiry_minutes'];
+            }
+            $body = json_encode($out, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        } elseif ($method === 'GET' && preg_match('#^/invoices/' . $id . '$#', $path)) {
+            $body = null;
+        } elseif ($method === 'POST' && preg_match('#^/invoices/' . $id . '/(verify|cancel)$#', $path)) {
+            $body = '{}';
+        } else {
+            throw new BadRequest('path');
+        }
+        $headers = ['Authorization: Bearer ' . $token, 'Accept: application/json'];
+        if ($body !== null) $headers[] = 'Content-Type: application/json';
+        $this->extraDestination = $base . '/';
+        try {
+            $r = $this->http($method, $base . $path, $headers, $body);
+        } finally {
+            $this->extraDestination = '';
+        }
         if ((int)$r['status'] === 0) return ['ok' => false, 'kind' => 'store_unreachable', 'status' => 0, 'error' => self::netError((string)$r['error'])];
         $j = json_decode((string)$r['body'], true);
         return ['ok' => true, 'kind' => 'store', 'status' => (int)$r['status'], 'body' => is_array($j) ? $j : null];
@@ -298,6 +372,7 @@ final class Bridge
     {
         $allowed = false;
         foreach (self::DESTINATIONS as $d) if (strpos($url, $d) === 0) $allowed = true;
+        if ($this->extraDestination !== '' && strpos($url, $this->extraDestination) === 0) $allowed = true;
         if (!$allowed) return ['status' => 0, 'body' => '', 'error' => 'destination not allowed'];
         $timeout = max(5, min(40, (int)($this->cfg['timeout'] ?? 20)));
         if (self::$transport !== null) return (self::$transport)($method, $url, $headers, $body, $timeout);

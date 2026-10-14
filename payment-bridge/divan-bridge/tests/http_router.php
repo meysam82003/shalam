@@ -12,6 +12,18 @@ $cfgFile = (string)getenv('DIVAN_BRIDGE_TEST_CFG');
 $cfg = json_decode((string)file_get_contents($cfgFile), true);
 \DivanBridge\Bridge::$transport = function (string $m, string $url, array $h, ?string $b, int $t) use ($cfgFile) {
     file_put_contents($cfgFile . '.calls', json_encode([$m, $url]) . "\n", FILE_APPEND | LOCK_EX);
+    // Aban Gateway: the real bridge's request is passed on, over local HTTP, to the fake Aban of the server tests.
+    $aban = (string)getenv('FAKE_ABAN_URL');
+    if ($aban !== '' && preg_grep('/^Authorization: Bearer ag_/', $h)) {
+        $local = preg_replace('#^https://[^/]+#', $aban, $url);
+        $ch = curl_init($local);
+        curl_setopt_array($ch, [CURLOPT_CUSTOMREQUEST => $m, CURLOPT_RETURNTRANSFER => true, CURLOPT_HTTPHEADER => $h, CURLOPT_TIMEOUT => 10]);
+        if ($b !== null) curl_setopt($ch, CURLOPT_POSTFIELDS, $b);
+        $resp = curl_exec($ch);
+        $st = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        curl_close($ch);
+        return ['status' => $resp === false ? 0 : $st, 'body' => (string)$resp, 'error' => $resp === false ? 'Operation timed out' : ''];
+    }
     if (strpos($url, 'zarinpal.com/pg/v4/payment/') !== false) {
         $j = json_decode((string)$b, true);
         if (substr($url, -12) === 'request.json') {

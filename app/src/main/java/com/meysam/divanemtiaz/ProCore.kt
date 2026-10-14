@@ -633,8 +633,16 @@ object ProSync {
     /** A way to pay that the server says is allowed and ready for this app version and plan. */
     class PayMethod(val id: String, val kind: String, val title: String, val description: String, val hosts: Set<String>)
 
-    /** Hosts a web payment may ever open, whatever the server says (the server can only narrow this). */
-    val WEB_PAY_HOSTS = setOf("payment.zarinpal.com", "sandbox.zarinpal.com", "www.zarinpal.com", "blupal.top")
+    /**
+     * A web payment page may be opened only over HTTPS and only on a domain the server listed for that method.
+     * The list comes from the panel, so a gateway that moves to a new domain keeps working without a new APK.
+     */
+    fun isPayUrl(url: String, hosts: Set<String>): Boolean {
+        val u = runCatching { java.net.URI(url) }.getOrNull() ?: return false
+        val host = u.host?.lowercase() ?: return false
+        return u.scheme == "https" && u.rawUserInfo == null && (u.port == -1 || u.port == 443) &&
+            Regex("^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,24}$").matches(host) && host in hosts.map { it.lowercase() }
+    }
 
     /**
      * Methods to show for a plan. An older server without the list keeps the store's own billing (store builds).
@@ -656,16 +664,17 @@ object ProSync {
         }
     }
 
-    /** Opens a web payment: the order and its price come from the server; only known gateway pages are opened. */
-    fun webPay(activity: Activity, method: PayMethod, plan: PlanOffer, done: (ApiError?) -> Unit) {
+    /**
+     * Starts a web payment: the order and its price come from the server, and only a page on a domain the server
+     * listed for the method is accepted. The page is shown inside the app ([PayBrowserScreen]), not in a browser.
+     */
+    fun webPay(method: PayMethod, plan: PlanOffer, done: (String?, ApiError?) -> Unit) {
         Api.call("POST", "v1/pay/order", JSONObject().put("method", method.id).put("plan", plan.code).put("store", StoreInfo.storeId), ProState.token) { data, err ->
-            if (data == null) { done(err); return@call }
+            if (data == null) { done(null, err); return@call }
             val url = data.optString("url")
-            val host = runCatching { android.net.Uri.parse(url).host?.lowercase() }.getOrNull()
-            if (!url.startsWith("https://") || host == null || host !in WEB_PAY_HOSTS || host !in method.hosts) { done(ApiError("bad_url", "نشانی پرداخت معتبر نیست.")); return@call }
+            if (!isPayUrl(url, method.hosts)) { done(null, ApiError("bad_url", "نشانی پرداخت معتبر نیست.")); return@call }
             ProState.pendingOrder = data.optString("order")
-            val ok = runCatching { activity.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))) }.isSuccess
-            done(if (ok) null else ApiError("browser", "مرورگری برای باز کردن صفحهٔ پرداخت پیدا نشد."))
+            done(url, null)
         }
     }
 

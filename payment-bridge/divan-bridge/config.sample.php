@@ -35,6 +35,11 @@ return [
     'callback_hosts' => ['httpuser87890.ir'],
     'zarinpal_merchants' => [],
 
+    // Aban Gateway (site version only): its API address comes from the Divan panel. To pin it, list the
+    // allowed API domains here (e.g. ['api.abangateway.ir']); empty = any HTTPS domain the panel sets.
+    // The buyer and the webhook may only go to «callback_hosts» above.
+    'aban_api_hosts' => [],
+
     // Changing Myket prices from the Divan panel (consumable products only). Off unless you need it.
     'allow_set_price' => false,
 

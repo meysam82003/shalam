@@ -149,6 +149,35 @@ $r = req(['action' => 'zarinpal.verify', 'params' => ['merchant_id' => $M, 'amou
 check(end($calls)[1] === 'https://payment.zarinpal.com/pg/v4/payment/verify.json' && json_decode(end($calls)[3], true)['authority'] === 'A0000000000000000000000000000000012345', 'ZarinPal verify with the given authority and amount');
 check(req(['action' => 'zarinpal.verify', 'params' => ['merchant_id' => $M, 'amount' => 190000, 'authority' => 'A00/../../x']])['status'] === 400, 'bad authority refused');
 
+// ---------------------------------------------------------------- Aban Gateway (site version)
+$AT = 'ag_test_' . str_repeat('Ab1', 16);
+$ab = fn(array $over = []) => ['action' => 'aban.call', 'params' => $over + ['base' => 'https://api.abangateway.ir/api/v1', 'api_token' => $AT, 'method' => 'POST', 'path' => '/invoices',
+    'body' => ['amount_rial' => 1900000, 'order_id' => 'abcdefghij0123456789', 'callback_url' => 'https://httpuser87890.ir/divan/pay/webhook.php?m=aban', 'return_url' => 'https://httpuser87890.ir/divan/pay/return.php?o=abcdefghij0123456789', 'description' => '<b>x</b>', 'expiry_minutes' => 60, 'extra' => 'dropped']]];
+$r = req($ab());
+$c = end($calls);
+$sent = json_decode((string)$c[3], true);
+check($r['json']['kind'] === 'store' && $c[0] === 'POST' && $c[1] === 'https://api.abangateway.ir/api/v1/invoices' && in_array('Authorization: Bearer ' . $AT, $c[2], true), 'Aban create: documented address, bearer token');
+check($sent['amount_rial'] === 1900000 && $sent['description'] === 'x' && !isset($sent['extra']) && $sent['order_id'] === 'abcdefghij0123456789', 'Aban create: body rebuilt from checked fields only');
+$r = req($ab(['base' => 'https://api.new-aban-domain.ir/api/v2']));
+check(end($calls)[1] === 'https://api.new-aban-domain.ir/api/v2/invoices', 'Aban domain/version changed in the panel: used without a new bridge');
+$pin = $cfg; $pin['aban_api_hosts'] = ['api.abangateway.ir'];
+$n1 = count($calls);
+check(req($ab(['base' => 'https://api.new-aban-domain.ir/api/v1']), ['cfg' => $pin])['status'] === 400, 'a pinned bridge refuses other Aban domains');
+foreach (['http://api.abangateway.ir/api/v1', 'https://10.0.0.5/api', 'https://127.0.0.1/api', 'https://localhost/api', 'https://user@api.abangateway.ir/x', 'https://api.abangateway.ir:8443/api', 'https://api.abangateway.ir/../x', 'https://api.abangateway.ir/api?x=1'] as $bad)
+    check(req($ab(['base' => $bad]))['status'] === 400, 'unsafe Aban address refused: ' . $bad);
+check(req($ab(['api_token' => 'ag_live_short']))['status'] === 400 && req($ab(['api_token' => 'Bearer x']))['status'] === 400, 'bad Aban token refused');
+check(req($ab(['body' => ['amount_rial' => 1900000, 'order_id' => 'abcdefghij0123456789', 'callback_url' => 'https://evil.example/hook']]))['status'] === 400, 'Aban webhook may only point at the Divan site');
+check(req($ab(['body' => ['amount_rial' => 1900000, 'order_id' => 'abcdefghij0123456789', 'return_url' => 'https://evil.example/']]))['status'] === 400, 'buyer may only return to the Divan site');
+check(req($ab(['body' => ['amount_rial' => '1900000', 'order_id' => 'abcdefghij0123456789']]))['status'] === 400 && req($ab(['body' => ['amount_rial' => 1900000, 'order_id' => '../x']]))['status'] === 400, 'Aban amount and order id checked');
+check(req($ab(['method' => 'DELETE', 'path' => '/invoices/inv_abc123']))['status'] === 400 && req($ab(['method' => 'POST', 'path' => '/invoices/inv_abc123/simulate-payment']))['status'] === 400 && req($ab(['method' => 'GET', 'path' => '/invoices/../../admin']))['status'] === 400 && req($ab(['method' => 'GET', 'path' => '/settings']))['status'] === 400, 'only the four invoice calls exist');
+check(count($calls) === $n1, 'nothing sent for refused Aban requests');
+req($ab(['method' => 'GET', 'path' => '/invoices/inv_9fk2m4qx7t3p8wzy1a6b']));
+check(end($calls)[0] === 'GET' && end($calls)[1] === 'https://api.abangateway.ir/api/v1/invoices/inv_9fk2m4qx7t3p8wzy1a6b' && end($calls)[3] === null, 'Aban read invoice');
+req($ab(['path' => '/invoices/inv_9fk2m4qx7t3p8wzy1a6b/verify']));
+check(end($calls)[1] === 'https://api.abangateway.ir/api/v1/invoices/inv_9fk2m4qx7t3p8wzy1a6b/verify' && end($calls)[3] === '{}', 'Aban verify');
+check(req($verify('valid-token-0001'))['json']['kind'] === 'store' && strpos(end($calls)[1], 'abangateway') === false, 'the Aban address is not allowed for other actions afterwards');
+check(in_array('aban.call', req(['action' => 'ping'])['json']['actions'], true), 'ping lists the actions this bridge knows');
+
 // ---------------------------------------------------------------- rate limit
 $lim = $cfg; $lim['rate_per_minute'] = 10; $lim['allowed_ips'] = [];
 $codes = [];

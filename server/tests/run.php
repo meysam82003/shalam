@@ -826,19 +826,20 @@ scenario('Blupal card-to-card: sandbox/live key rules, server-side check, webhoo
     file_put_contents($state, json_encode(['keys' => ['blu_test_KEY12345', 'blu_live_LIVE12345'], 'invoices' => [], 'next' => 1000]));
     $proc = proc_open([PHP_BINARY, '-S', "127.0.0.1:$port", __DIR__ . '/fake_blupal.php'], [0 => ['pipe', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $pipes, null, ['FAKE_BLUPAL_STATE' => $state] + getenv());
     for ($i = 0; $i < 50; $i++) { $s = @fsockopen('127.0.0.1', $port, $en, $es, 0.2); if ($s) { fclose($s); break; } usleep(100000); }
-    BlupalAdapter::$testBase = "http://127.0.0.1:$port/api";
+    // The API address is the panel's field (here: the local fake Blupal).
+    $bset = fn(array $c) => Settings::set('pay_blupal', $c + ['api_base' => "http://127.0.0.1:$port/api/v1"]);
     $simulate = function (string $ref, string $scenario) use ($port) {
         return Http::request('POST', "http://127.0.0.1:$port/api/v1/sandbox/invoices/$ref/simulate", ['X-API-Key: blu_test_KEY12345', 'Content-Type: application/json'], json_encode(['scenario' => $scenario]));
     };
     $ids = fn(string $ch, ?array $plan = null) => array_column(PayRegistry::methodsFor($ch, $plan), 'id');
     Settings::set('pay_zarinpal', ['enabled' => false]);
 
-    Settings::set('pay_blupal', ['enabled' => true]);
+    $bset(['enabled' => true]);
     check(PayRegistry::status('blupal', 'direct') === 'needs_config' && $ids('direct') === [], 'on without an API key: «needs settings», not shown');
     Settings::setSecret('pay_blupal_api_key', 'blu_test_KEY12345');
     check(PayRegistry::status('blupal', 'direct') === 'needs_config', 'a test key with the sandbox switch off is refused (no free Pro from test payments)');
     check(PayRegistry::get('blupal')->test()[0] === 'warn', 'panel test explains the key/mode mismatch');
-    Settings::set('pay_blupal', ['enabled' => true, 'sandbox' => true]);
+    $bset(['enabled' => true, 'sandbox' => true]);
     check($ids('direct') === ['blupal'], 'test key + sandbox on: shown in the site version');
     check(PayRegistry::status('blupal', 'bazaar') === 'not_allowed' && PayRegistry::status('blupal', 'myket') === 'not_allowed' && $ids('bazaar') === ['bazaar'] && $ids('myket') === ['myket'], 'never in the Bazaar or Myket versions');
     check(PayRegistry::get('blupal')->test()[0] === 'ok', 'panel connection test reaches Blupal and the key is accepted');
@@ -846,9 +847,9 @@ scenario('Blupal card-to-card: sandbox/live key rules, server-side check, webhoo
     check(PayRegistry::get('blupal')->test()[0] === 'bad', 'panel test reports a wrong key');
     Settings::setSecret('pay_blupal_api_key', 'blu_live_LIVE12345');
     check(PayRegistry::status('blupal', 'direct') === 'needs_config', 'a live key with the sandbox switch on is refused');
-    Settings::set('pay_blupal', ['enabled' => true, 'sandbox' => false]);
+    $bset(['enabled' => true, 'sandbox' => false]);
     check($ids('direct') === ['blupal'] && PayRegistry::get('blupal')->test()[0] === 'ok', 'live key + sandbox off: ready');
-    Settings::set('pay_blupal', ['enabled' => true, 'sandbox' => true]);
+    $bset(['enabled' => true, 'sandbox' => true]);
     Settings::setSecret('pay_blupal_api_key', 'blu_test_KEY12345');
     $api = apiGet('v1/pay/methods', ['store' => 'direct', 'plan' => 'm1']);
     check(array_column($api['methods'], 'id') === ['blupal'] && $api['methods'][0]['hosts'] === ['blupal.top'] && strpos(json_encode(apiGet('v1/pay/methods', ['store' => 'myket'])), 'blupal') === false, 'API: listed with its page host for the site version only');
@@ -900,11 +901,142 @@ scenario('Blupal card-to-card: sandbox/live key rules, server-side check, webhoo
     $o4 = PayOrders::create($u, 'blupal', 'm6', 'direct');
     $simulate(PayOrders::byCode($o4['order'])['gateway_ref'], 'expire');
     check(PayOrders::settle(PayOrders::byCode($o4['order']))['status'] === 'failed', 'expired invoice: failed');
-    Settings::set('pay_blupal', ['enabled' => true, 'sandbox' => true, 'kill' => true]);
+    $bset(['enabled' => true, 'sandbox' => true, 'api_base' => "http://127.0.0.1:1/api/v1"]);
+    check(PayRegistry::get('blupal')->test()[0] === 'bad', 'API address changed in the panel: used at once (a wrong one fails the panel test)');
+    Settings::set('pay_blupal', ['enabled' => true, 'sandbox' => true, 'api_base' => 'https://10.0.0.1/api']);
+    check(PayEndpoint::base(PayRegistry::get('blupal')) === 'https://blupal.top/api/v1', 'an unsafe stored address falls back to the documented one');
+    $bset(['enabled' => true, 'sandbox' => true, 'hosts' => 'pay.blupal-new.ir']);
+    check(apiGet('v1/pay/methods', ['store' => 'direct'])['methods'][0]['hosts'] === ['pay.blupal-new.ir'], 'payment-page domain changed in the panel: sent to the app');
+    throws(fn() => PayOrders::create($u, 'blupal', 'm1', 'direct'), 'gateway_url', 'a payment page outside the panel domains is never opened');
+    $bset(['enabled' => true, 'sandbox' => true]);
+    check(PayRegistry::get('blupal')->test()[0] === 'ok' && PayRegistry::get('blupal')->payHosts() === ['blupal.top'], 'back to the right address: works again');
+    $bset(['enabled' => true, 'sandbox' => true, 'kill' => true]);
     check($ids('direct') === [], 'emergency stop removes Blupal at once');
-    Settings::set('pay_blupal', ['enabled' => false]);
-    BlupalAdapter::$testBase = null;
+    $bset(['enabled' => false]);
     proc_terminate($proc); proc_close($proc);
+    Http::$allowLocalHttpForTests = false;
+});
+
+scenario('Aban Gateway: token/mode rules, Iran bridge and direct routes, one-shot verify, signed webhook, panel address', function () use ($root) {
+    freshIp();
+    Http::$allowLocalHttpForTests = true;
+    $fport = 21000 + random_int(0, 999);
+    $state = "$root/fake-aban.json";
+    $TT = 'ag_test_' . str_repeat('T1x', 16);
+    $LT = 'ag_live_' . str_repeat('L2y', 16);
+    file_put_contents($state, json_encode(['tokens' => [$TT, $LT], 'invoices' => [], 'requests' => []]));
+    $fake = proc_open([PHP_BINARY, '-S', "127.0.0.1:$fport", __DIR__ . '/fake_aban.php'], [0 => ['pipe', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $pp1, null, ['FAKE_ABAN_STATE' => $state] + getenv());
+    // The real Iran bridge (fake stores), passing Aban calls on to the fake Aban.
+    $bport = 22000 + random_int(0, 999);
+    $key = bin2hex(random_bytes(32));
+    $bdata = "$root/bridge-data-aban"; @mkdir($bdata, 0700, true);
+    $cfgFile = "$root/bridge-cfg-aban.json";
+    file_put_contents($cfgFile, json_encode(['keys' => ['k1' => $key], 'allowed_ips' => ['127.0.0.1'], 'packages' => ['com.meysam.divanemtiaz'], 'skus' => [], 'callback_hosts' => ['example.test'], 'rate_per_minute' => 1000, '__data' => $bdata]));
+    $router = dirname(__DIR__, 2) . '/payment-bridge/divan-bridge/tests/http_router.php';
+    $bridge = proc_open([PHP_BINARY, '-S', "127.0.0.1:$bport", $router], [0 => ['pipe', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $pp2, null, ['DIVAN_BRIDGE_TEST_CFG' => $cfgFile, 'FAKE_ABAN_URL' => "http://127.0.0.1:$fport"] + getenv());
+    foreach ([$fport, $bport] as $pt) for ($i = 0; $i < 50; $i++) { $sk = @fsockopen('127.0.0.1', $pt, $en, $es, 0.2); if ($sk) { fclose($sk); break; } usleep(100000); }
+    Settings::set('payment_bridge', ['url' => "http://127.0.0.1:$bport/", 'key_id' => 'k1', 'route_myket' => 'direct', 'route_bazaar' => 'direct']);
+    Settings::setSecret('bridge_key', $key);
+    $base = App::$config['base_url'];
+    App::$config['base_url'] = 'https://example.test/divan';
+    $sim = function (string $ref) use ($fport, $TT) { return Http::request('POST', "http://127.0.0.1:$fport/api/v1/invoices/$ref/simulate-payment", ['Authorization: Bearer ' . $TT], '{}'); };
+    $inv = fn(string $ref) => json_decode(file_get_contents($state), true)['invoices'][$ref];
+    $ids = fn(string $ch) => array_column(PayRegistry::methodsFor($ch), 'id');
+    $a = PayRegistry::get('aban');
+    Settings::set('pay_zarinpal', ['enabled' => false]);
+    Settings::set('pay_blupal', ['enabled' => false]);
+
+    Settings::set('pay_aban', ['enabled' => true]);
+    check(PayRegistry::status('aban', 'direct') === 'needs_config' && $ids('direct') === [], 'on without a token: «needs settings», not shown');
+    Settings::setSecret('pay_aban_token', $TT);
+    check(PayRegistry::status('aban', 'direct') === 'needs_config' && $a->test()[0] === 'warn', 'test token with the sandbox switch off: refused (no free Pro from test payments)');
+    Settings::set('pay_aban', ['enabled' => true, 'sandbox' => true]);
+    check($ids('direct') === ['aban'] && $a->test()[0] === 'ok', 'test token + sandbox, through the Iran bridge: ready, panel test reaches Aban');
+    check(PayRegistry::status('aban', 'bazaar') === 'not_allowed' && PayRegistry::status('aban', 'myket') === 'not_allowed' && $ids('bazaar') === ['bazaar'] && $ids('myket') === ['myket'], 'never in the Bazaar or Myket versions');
+    $api = apiGet('v1/pay/methods', ['store' => 'direct', 'plan' => 'm1']);
+    check(array_column($api['methods'], 'id') === ['aban'] && $api['methods'][0]['hosts'] === ['abangateway.ir'] && strpos(json_encode(apiGet('v1/pay/methods', ['store' => 'bazaar'])), 'aban') === false, 'API: listed with its page domain for the site version only');
+    Settings::setSecret('pay_aban_token', 'ag_test_' . str_repeat('W9z', 16));
+    check($a->test()[0] === 'bad', 'panel test reports a wrong token');
+    Settings::setSecret('pay_aban_token', $LT);
+    check(PayRegistry::status('aban', 'direct') === 'needs_config', 'live token with the sandbox switch on: refused');
+    Settings::set('pay_aban', ['enabled' => true, 'sandbox' => false]);
+    check($a->test()[0] === 'ok', 'live token + sandbox off: ready');
+    Settings::set('pay_aban', ['enabled' => true, 'sandbox' => true]);
+    Settings::setSecret('pay_aban_token', $TT);
+
+    [$u] = Users::register('aban_buyer', 'secret123');
+    throws(fn() => PayOrders::create($u, 'aban', 'm1', 'bazaar'), 'method_unavailable', 'the Bazaar version cannot open an Aban payment');
+    $m1 = Plans::byCode('m1');
+    $o = PayOrders::create($u, 'aban', 'm1', 'direct');
+    $row = PayOrders::byCode($o['order']);
+    $iv = $inv($row['gateway_ref']);
+    check(strpos($o['url'], 'https://abangateway.ir/pay/inv_') === 0 && $row['status'] === 'pending' && $iv['amount'] === (int)$m1['base_price_toman'] * 10 && $iv['order'] === $o['order']
+        && $iv['callback'] === 'https://example.test/divan/pay/webhook.php?m=aban' && $iv['return'] === 'https://example.test/divan/pay/return.php?o=' . $o['order'], 'order through the bridge: server price in rials, our order code, webhook and return to our site');
+    $row = PayOrders::settle($row);
+    check($row['status'] === 'pending' && !Entitlements::summary((int)$u['id'])['pro'], 'not paid yet: pending, nothing granted');
+    $raw = json_encode(['event' => 'invoice.paid', 'invoice_id' => $row['gateway_ref'], 'order_id' => $o['order'], 'amount_rial' => (int)$row['amount_rial'], 'status' => 'paid', 'is_test' => true]);
+    check(PayWebhooks::handle('aban', $raw, ['signature' => ''], '10.8.8.8')[0] === 200 && PayOrders::byCode($o['order'])['status'] === 'pending', 'forged «paid» webhook (no secret set): Aban is asked, still unpaid');
+    Settings::setSecret('pay_aban_webhook_secret', 'whsec_test_123456');
+    check(PayWebhooks::handle('aban', $raw, ['signature' => 'deadbeef'], '10.8.8.8')[0] === 401 && PayWebhooks::handle('aban', $raw, ['signature' => ''], '10.8.8.8')[0] === 401, 'with the webhook secret set: unsigned or wrongly signed webhooks are refused');
+    $sim($row['gateway_ref']);
+    touch("$state.wrongamount");
+    check(PayOrders::settle(PayOrders::byCode($o['order']))['status'] === 'failed' && !Entitlements::summary((int)$u['id'])['pro'], 'paid but Aban reports another amount: refused');
+    unlink("$state.wrongamount");
+    touch("$state.wrongorder");
+    check(PayOrders::settle(array_merge(PayOrders::byCode($o['order']), ['status' => 'pending']))['status'] === 'failed', 'paid invoice of another order: refused');
+    unlink("$state.wrongorder");
+    touch("$state.wrongtest");
+    check(PayOrders::settle(array_merge(PayOrders::byCode($o['order']), ['status' => 'pending']))['status'] === 'failed', 'test/live mode differs: refused');
+    unlink("$state.wrongtest");
+    touch("$state.down");
+    check(PayOrders::settle(PayOrders::byCode($o['order']))['status'] === 'failed' && !Entitlements::summary((int)$u['id'])['pro'], 'Aban down: no change');
+    unlink("$state.down");
+    $w = PayWebhooks::handle('aban', $raw, ['signature' => hash_hmac('sha256', $raw, 'whsec_test_123456')], '10.8.8.8');
+    $row = PayOrders::byCode($o['order']);
+    check($w[0] === 200 && $row['status'] === 'paid' && $row['ref_id'] === 'ABAN-' . $row['gateway_ref'] && $inv($row['gateway_ref'])['verified'] && Entitlements::summary((int)$u['id'])['expires_at'] === Clock::now() + 30 * 86400, 'signed webhook after payment: checked, verified once at Aban, one month granted');
+    PayWebhooks::handle('aban', $raw, ['signature' => hash_hmac('sha256', $raw, 'whsec_test_123456')], '10.8.8.8');
+    PayOrders::settle(array_merge(PayOrders::byCode($o['order']), ['status' => 'pending']));
+    check((int)Db::value("SELECT COUNT(*) FROM {purchases} WHERE store = 'direct' AND user_id = ?", [$u['id']]) === 1 && Entitlements::summary((int)$u['id'])['expires_at'] === Clock::now() + 30 * 86400, 'repeated webhooks and checks («already verified»): still one purchase');
+    $o2 = PayOrders::create($u, 'aban', 'm3', 'direct');
+    $r2 = PayOrders::byCode($o2['order']);
+    $sim($r2['gateway_ref']);
+    $procs = [];
+    for ($k = 0; $k < 4; $k++) { $pp = []; $procs[] = [proc_open([PHP_BINARY, __DIR__ . '/race_child.php', $root, $o2['order'], '0', (string)Clock::now(), 'settle'], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pp, null, null), $pp]; }
+    foreach ($procs as [$pr, $pp]) { stream_get_contents($pp[1]); stream_get_contents($pp[2]); fclose($pp[1]); fclose($pp[2]); proc_close($pr); }
+    $paid = PayOrders::byCode($o2['order']);
+    check($paid['status'] === 'paid' && (int)Db::value('SELECT COUNT(*) FROM {entitlements} WHERE purchase_id = ?', [$paid['purchase_id']]) === 1 && Entitlements::summary((int)$u['id'])['expires_at'] === Clock::now() + 120 * 86400, '4 checks at once: one purchase, three months added');
+    check(PayWebhooks::handle('aban', 'not json', ['signature' => hash_hmac('sha256', 'not json', 'whsec_test_123456')], '10.8.8.8')[0] === 400
+        && PayWebhooks::handle('aban', $bad = json_encode(['invoice_id' => '../x']), ['signature' => hash_hmac('sha256', $bad, 'whsec_test_123456')], '10.8.8.8')[0] === 400
+        && PayWebhooks::handle('aban', $unk = json_encode(['event' => 'invoice.paid', 'invoice_id' => 'inv_unknown123']), ['signature' => hash_hmac('sha256', $unk, 'whsec_test_123456')], '10.8.8.8')[0] === 200, 'bad webhooks refused; unknown invoices acknowledged and ignored');
+    $o3 = PayOrders::create($u, 'aban', 'm6', 'direct');
+    Http::request('POST', "http://127.0.0.1:$fport/api/v1/invoices/" . PayOrders::byCode($o3['order'])['gateway_ref'] . '/cancel', ['Authorization: Bearer ' . $TT], '{}');
+    check(PayOrders::settle(PayOrders::byCode($o3['order']))['status'] === 'failed', 'cancelled invoice: failed');
+
+    // Direct route and a changed API address, from the panel only.
+    Settings::set('pay_aban', ['enabled' => true, 'sandbox' => true, 'route' => 'direct', 'api_base' => "http://127.0.0.1:$fport/api/v1"]);
+    $before = count(json_decode(file_get_contents($state), true)['requests']);
+    check($a->test()[0] === 'ok' && count(json_decode(file_get_contents($state), true)['requests']) === $before + 1, 'direct route with the address from the panel');
+    $o4 = PayOrders::create($u, 'aban', 'm6', 'direct');
+    $sim(PayOrders::byCode($o4['order'])['gateway_ref']);
+    check(PayOrders::settle(PayOrders::byCode($o4['order']))['status'] === 'paid', 'direct route: paid and verified');
+    Settings::set('pay_aban', ['enabled' => true, 'sandbox' => true, 'route' => 'direct', 'api_base' => 'http://127.0.0.1:1/api/v1']);
+    check($a->test()[0] === 'bad', 'a wrong address in the panel shows up in the panel test');
+    Settings::set('pay_aban', ['enabled' => true, 'sandbox' => true, 'api_base' => 'https://api.aban-new-domain.ir/api/v1']);
+    check($a->test()[0] === 'ok', 'new API domain set in the panel, through the bridge: works without a new bridge or APK');
+    file_put_contents("$state.payhost", 'pay.aban-new-domain.ir');
+    throws(fn() => PayOrders::create($u, 'aban', 'm1', 'direct'), 'gateway_url', 'payment page moved but the panel still lists the old domain: never opened');
+    Settings::set('pay_aban', ['enabled' => true, 'sandbox' => true, 'api_base' => 'https://api.aban-new-domain.ir/api/v1', 'hosts' => 'pay.aban-new-domain.ir']);
+    $o5 = PayOrders::create($u, 'aban', 'm1', 'direct');
+    check(strpos($o5['url'], 'https://pay.aban-new-domain.ir/pay/') === 0 && apiGet('v1/pay/methods', ['store' => 'direct'])['methods'][0]['hosts'] === ['pay.aban-new-domain.ir'], 'payment-page domain changed in the panel: orders work and the app gets the new domain');
+    unlink("$state.payhost");
+    check(PayEndpoint::parseHosts('a.ir, b.ir،c.ir') === ['a.ir', 'b.ir', 'c.ir'] && PayEndpoint::parseHosts('evil.ir/x') === null && PayEndpoint::parseHosts('10.0.0.1') === null
+        && !PayEndpoint::validBase('https://127.0.0.1/api') && !PayEndpoint::validBase('https://u@x.ir/') && !PayEndpoint::validBase('https://x.ir:8443/') && !PayEndpoint::validBase('ftp://x.ir') && PayEndpoint::validBase('https://api.x.ir/api/v2'), 'panel address checks: HTTPS domains only');
+    Settings::set('pay_aban', ['enabled' => true, 'sandbox' => true, 'kill' => true]);
+    check($ids('direct') === [], 'emergency stop removes Aban at once');
+    Settings::set('pay_aban', ['enabled' => false]);
+    Settings::setSecret('pay_aban_webhook_secret', '');
+    App::$config['base_url'] = $base;
+    proc_terminate($fake); proc_close($fake); proc_terminate($bridge); proc_close($bridge);
     Http::$allowLocalHttpForTests = false;
 });
 

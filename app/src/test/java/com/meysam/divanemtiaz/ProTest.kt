@@ -25,9 +25,18 @@ class ProTest {
             .put("exp", exp ?: JSONObject.NULL).put("grace", exp ?: JSONObject.NULL).put("iat", now).put("offline_until", offline)
             .put("features", JSONObject().put("cloud_backup", JSONObject().put("mode", "pro").put("allowed", true)))
 
-    @Test fun webPaymentPagesAreLimitedToKnownGateways() {
-        assertTrue("blupal.top" in ProSync.WEB_PAY_HOSTS && "payment.zarinpal.com" in ProSync.WEB_PAY_HOSTS)
-        assertFalse("blupal.top.evil.com" in ProSync.WEB_PAY_HOSTS || "example.com" in ProSync.WEB_PAY_HOSTS)
+    @Test fun webPaymentPagesOnlyOnDomainsTheServerListed() {
+        val hosts = setOf("blupal.top", "abangateway.ir")
+        assertTrue(ProSync.isPayUrl("https://blupal.top/payment/abc", hosts))
+        assertTrue(ProSync.isPayUrl("https://abangateway.ir/pay/inv_9fk2m4qx7t3p8wzy1a6b", hosts))
+        assertTrue(ProSync.isPayUrl("https://pay.new-aban.ir/pay/inv_1", setOf("pay.new-aban.ir")))
+        assertFalse(ProSync.isPayUrl("http://blupal.top/payment/abc", hosts))
+        assertFalse(ProSync.isPayUrl("https://blupal.top.evil.com/payment", hosts))
+        assertFalse(ProSync.isPayUrl("https://evil.com/blupal.top", hosts))
+        assertFalse(ProSync.isPayUrl("https://user@blupal.top/x", hosts))
+        assertFalse(ProSync.isPayUrl("https://blupal.top:8443/x", hosts))
+        assertFalse(ProSync.isPayUrl("javascript:alert(1)", hosts))
+        assertFalse(ProSync.isPayUrl("https://blupal.top/x", emptySet()))
     }
 
     @Test fun base64RoundTrip() {

@@ -790,6 +790,16 @@ final class ConfigPages
             $num = fn($k) => self::post($k) === '' ? null : max(0, (int)self::post($k));
             $new = ['enabled' => isset($_POST['enabled']), 'sort' => (int)self::post('sort', '0'), 'min' => $num('min'), 'max' => $num('max'),
                 'sandbox' => isset($_POST['sandbox']), 'route' => self::post('route') === 'direct' ? 'direct' : 'bridge'] + $cfg;
+            if ($a instanceof PayEndpointAdapter) {
+                // API address and payment-page domains: empty = the documented defaults; anything else must be a clean HTTPS domain.
+                $base = rtrim(trim(self::post('api_base')), '/');
+                $hosts = trim(self::post('hosts'));
+                if ($base !== '' && !PayEndpoint::validBase($base)) { Admin::flash('نشانی API معتبر نیست: فقط https:// و نام دامنه (بدون IP، درگاه، ? و ..). چیزی ذخیره نشد.', 'bad'); Admin::redirect('p=paymethods#m-' . $id); }
+                $list = PayEndpoint::parseHosts($hosts);
+                if ($list === null) { Admin::flash('دامنهٔ صفحهٔ پرداخت معتبر نیست: فقط نام دامنه، جدا با ویرگول. چیزی ذخیره نشد.', 'bad'); Admin::redirect('p=paymethods#m-' . $id); }
+                $new['api_base'] = $base === $a->defaultBase() ? '' : $base;
+                $new['hosts'] = $list === $a->defaultHosts() ? '' : implode(', ', $list);
+            }
             Settings::set('pay_' . $id, $new);
             foreach ($a->fields() as $k => [$label, $secret]) {
                 $v = self::post('f_' . $k);
@@ -807,7 +817,7 @@ final class ConfigPages
             ?>
             <div class="alert info">
               هر نسخهٔ برنامه فقط روش‌هایی را می‌بیند که <b>هم</b> مجاز باشند <b>هم</b> آماده. طبق قوانین کافه‌بازار و مایکت، فروش اشتراک و قابلیت دیجیتال در نسخه‌های این دو فروشگاه فقط با پرداخت درون‌برنامه‌ای همان فروشگاه است؛
-              درگاه‌های وب (زرین‌پال، بلوپال و …) فقط در <b>نسخهٔ سایت</b> (APK مستقیم که در هیچ فروشگاهی منتشر نمی‌شود) نمایش داده می‌شوند و این قانون از پنل قابل تغییر نیست.
+              درگاه‌های وب (زرین‌پال، بلوپال، آبان گیت‌وی و …) فقط در <b>نسخهٔ سایت</b> (APK مستقیم که در هیچ فروشگاهی منتشر نمی‌شود) نمایش داده می‌شوند و این قانون از پنل قابل تغییر نیست.
               <br>روشن کردن یک روش بدون تنظیمات درست، آن را در برنامه نشان نمی‌دهد؛ وضعیتش «نیازمند تنظیمات» می‌ماند. همهٔ تغییرها بدون APK تازه در برنامه اعمال می‌شوند.
             </div>
             <?php foreach ($adapters as $id => $a): $c = PayRegistry::cfg($id); $st = (array)Settings::get('pay_status_' . $id, []); ?>
@@ -830,13 +840,24 @@ final class ConfigPages
                 <?php if ($a->kind() === 'web'): ?>
                   <div class="row">
                     <label class="check" style="flex:0;white-space:nowrap"><input type="checkbox" name="sandbox" <?= $c['sandbox'] ? 'checked' : '' ?>> حالت آزمایشی (Sandbox)</label>
-                    <?php if ($id === 'zarinpal'): ?>
+                    <?php if ($id === 'zarinpal' || $id === 'aban'): ?>
                     <div><label>مسیر ارتباط</label><select name="route"><option value="bridge">از راه واسط ایران (پیشنهادی)</option><option value="direct"<?= $c['route'] === 'direct' ? ' selected' : '' ?>>مستقیم از هلند</option></select></div>
                     <?php endif; ?>
                   </div>
+                  <?php if ($a instanceof PayEndpointAdapter): ?>
+                    <div class="row">
+                      <div><label>نشانی API <small class="muted">(خالی = پیش‌فرض)</small></label><input type="text" name="api_base" class="ltr" value="<?= e($c['api_base']) ?>" placeholder="<?= e($a->defaultBase()) ?>"></div>
+                      <div><label>دامنهٔ صفحهٔ پرداخت <small class="muted">(خالی = پیش‌فرض؛ چند دامنه با ویرگول)</small></label><input type="text" name="hosts" class="ltr" value="<?= e($c['hosts']) ?>" placeholder="<?= e(implode(', ', $a->defaultHosts())) ?>"></div>
+                    </div>
+                    <p class="hint">اگر <?= e($a->title()) ?> دامنه یا نسخهٔ API را عوض کرد، نشانی تازه را اینجا بنویسید و «آزمایش اتصال» بزنید؛ APK یا نصب تازه لازم نیست. نشانی فعلی: <b class="ltr"><?= e(PayEndpoint::base($a)) ?></b> — صفحهٔ پرداخت: <b class="ltr"><?= e(implode('، ', PayEndpoint::hosts($a))) ?></b></p>
+                  <?php endif; ?>
                   <?php if ($id === 'blupal'): ?>
                     <p class="hint">بلوپال از هلند مستقیم در دسترس است. کلید <span class="ltr">blu_test_…</span> فقط با «حالت آزمایشی» و کلید <span class="ltr">blu_live_…</span> فقط بدون آن کار می‌کند.
                     نشانی Webhook را در پنل بلوپال (مدیریت API Key) ثبت کنید: <b class="ltr"><?= e(App::baseUrl() . '/pay/webhook.php?m=blupal') ?></b> — بدون Webhook هم پرداخت‌ها با استعلام برنامه و Cron تأیید می‌شوند.</p>
+                  <?php endif; ?>
+                  <?php if ($id === 'aban'): ?>
+                    <p class="hint">سرورهای آبان در ایران‌اند؛ مسیر «واسط ایران» را نگه دارید (نسخهٔ ۱٫۱ واسط لازم است). توکن <span class="ltr">ag_test_…</span> فقط با «حالت آزمایشی» و <span class="ltr">ag_live_…</span> فقط بدون آن کار می‌کند.
+                    آبان وبهوک را به نشانی <b class="ltr"><?= e(App::baseUrl() . '/pay/webhook.php?m=aban') ?></b> می‌فرستد (خودکار، با هر فاکتور). کلید مخفی وبهوک را از پنل آبان وارد کنید تا وبهوک‌های بدون امضا رد شوند — بدون آن هم پرداخت فقط با استعلام از خود آبان تأیید می‌شود.</p>
                   <?php endif; ?>
                   <?php if ($c['sandbox']): ?><div class="alert warn">حالت آزمایشی روشن است: در این حالت پرداخت بدون پول واقعی شبیه‌سازی می‌شود و هر کاربری می‌تواند Pro آزمایشی بگیرد. فقط برای تست؛ پیش از انتشار خاموش کنید.</div><?php endif; ?>
                 <?php endif; ?>
