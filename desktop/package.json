@@ -1,0 +1,61 @@
+{
+  "name": "divan-emtiaz",
+  "productName": "Divan Emtiaz",
+  "version": "5.5.0",
+  "description": "دیوان امتیاز — داور و دفتر امتیاز شلم، منفی، هزارتایی، دولو، مافیا، پانتومیم و جاسوس",
+  "author": "Divan Emtiaz",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis --x64 --publish never"
+  },
+  "devDependencies": {
+    "electron": "44.7.2",
+    "electron-builder": "26.0.12"
+  },
+  "build": {
+    "appId": "com.meysam.divanemtiaz.windows",
+    "productName": "Divan Emtiaz",
+    "copyright": "Divan Emtiaz",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "play/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": false,
+      "artifactName": "Divan-Emtiaz-Setup-v${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "دیوان امتیاز",
+      "uninstallDisplayName": "دیوان امتیاز",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "deleteAppDataOnUninstall": false,
+      "unicode": true
+    },
+    "publish": null
+  }
+}

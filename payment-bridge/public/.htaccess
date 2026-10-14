@@ -1,0 +1,31 @@
+# Divan payment gateway: only index.php answers, only over HTTPS.
+Options -Indexes
+DirectoryIndex index.php
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  # Let cPanel AutoSSL (Let's Encrypt) renew the certificate.
+  RewriteCond %{REQUEST_URI} ^/\.well-known/
+  RewriteRule ^ - [L]
+  # Plain HTTP is refused (not redirected: a redirected POST would lose its body).
+  RewriteCond %{HTTPS} !=on
+  RewriteCond %{HTTP:X-Forwarded-Proto} !=https
+  RewriteRule ^ - [F]
+  # Any path other than / and /index.php is refused.
+  RewriteCond %{REQUEST_URI} !^/(index\.php)?$
+  RewriteRule ^ - [F]
+</IfModule>
+<FilesMatch "^(bridge-path\.php|.*\.(ini|log|json|sample|md|txt|bak|sql|zip))$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set Cache-Control "no-store"
+  Header always set Strict-Transport-Security "max-age=31536000"
+  Header always set X-Frame-Options "DENY"
+</IfModule>

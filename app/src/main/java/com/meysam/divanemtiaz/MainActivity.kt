@@ -1,726 +1,634 @@
 package com.meysam.divanemtiaz
 
 import android.app.Activity
-import android.app.AlertDialog
-import android.content.Context
-import android.graphics.Color
-import android.graphics.Rect
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
-import android.text.Editable
-import android.text.InputType
-import android.text.TextWatcher
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
-import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowInsets
+import android.view.WindowInsetsController
 import android.view.WindowManager
-import android.widget.Button
-import android.widget.EditText
 import android.widget.FrameLayout
-import android.widget.GridLayout
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
-import android.widget.Switch
-import android.widget.TextView
-import android.widget.Toast
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+
+abstract class Screen(val host: MainActivity) {
+    val kit: RoyalKit get() = host.kit
+    val settings: AppSettings get() = host.settings
+
+    abstract fun build(): View
+
+    /** Returns true when the screen handled back itself. */
+    open fun onBack(): Boolean = false
+    open fun onShow() {}
+    open fun onHide() {}
+
+    /** Scroll position of the page, kept while another page is on top and across rebuilds. */
+    var savedScroll = 0
+
+    /** Pages of a running game keep a compact page bar instead of the large title. */
+    open val compactHeader: Boolean get() = sessionId != null
+
+    /** Tab of the bottom navigation this page belongs to ([NavBar]); -1 = no navigation bar. */
+    open val navTab: Int get() = -1
+
+    /** Where on this page ads may appear (home, history, …); null for every game, timer and input page. */
+    open val adZone: String? get() = null
+
+    /** Module of this page for the free / Pro rules of the panel (null: always open). */
+    open val featureKey: String? get() = null
+
+    /** For count-limited modules: how many the player already has when this page creates a new one (-1: not a create page). */
+    open val featureUsed: Int get() = -1
+
+    /** Session shown by this screen, used to restore the game after process death. */
+    open val sessionId: Long? get() = null
+
+    /** Subtitle of the page bar (pages update it in place). */
+    var subtitleView: android.widget.TextView? = null
+        private set
+
+    fun scaffold(
+        title: String,
+        subtitle: String? = null,
+        showBack: Boolean = true,
+        actions: List<View> = emptyList(),
+        bottom: View? = null,
+        content: LinearLayout.() -> Unit
+    ): View {
+        val root = kit.vertical().apply { layoutDirection = View.LAYOUT_DIRECTION_RTL }
+        val light = ThemeEngine.spec.light
+        val barFill = android.graphics.drawable.ColorDrawable(Royal.alpha(Royal.scrim, if (light) 0.86f else 0.80f)).apply { alpha = 0 }
+        val bar = kit.horizontal().apply {
+            setPadding(kit.dp(12), kit.dp(6), kit.dp(12), kit.dp(6))
+            minimumHeight = kit.dp(54)
+            background = barFill
+        }
+        if (showBack) {
+            bar.addView(kit.iconButton(RoyalIcon.BACK, "بازگشت", ButtonKind.SECONDARY, 42) { host.onBackPressedCompat() })
+            bar.addView(kit.hgap(10))
+        }
+        // Game pages keep a compact title; other pages show a large title that slides into the bar on scroll.
+        val large = !compactHeader
+        val smallTitle = kit.vertical().apply {
+            addView(kit.text(title, if (large) TextStyle.HEADING else TextStyle.TITLE, Royal.title, maxLines = 1))
+            subtitleView = null
+            if (!large && !subtitle.isNullOrBlank()) addView(kit.text(subtitle, TextStyle.CAPTION, Royal.muted, maxLines = 1).also { subtitleView = it })
+            if (large) alpha = 0f
+        }
+        bar.addView(smallTitle, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        actions.forEach {
+            bar.addView(kit.hgap(6))
+            bar.addView(it)
+        }
+        root.addView(bar)
+        val hairline = View(host).apply {
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.RIGHT_LEFT,
+                intArrayOf(0, Royal.alpha(Royal.gold, if (light) 0.35f else 0.55f), 0)
+            )
+            if (large) alpha = 0f
+        }
+        root.addView(hairline, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(1)))
+        val header = if (large) kit.vertical().apply {
+            setPadding(kit.dp(4), kit.dp(2), kit.dp(4), kit.dp(14))
+            addView(kit.text(title, TextStyle.DISPLAY, Royal.title, maxLines = 2).apply { setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, kit.textSize(26f)) })
+            if (!subtitle.isNullOrBlank()) addView(kit.text(subtitle, TextStyle.LABEL, Royal.muted, maxLines = 2).also { subtitleView = it })
+            addView(View(host).apply {
+                background = android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.RIGHT_LEFT,
+                    ThemeEngine.spec.primary).apply { cornerRadius = kit.dpf(2f) }
+            }, LinearLayout.LayoutParams(kit.dp(34), kit.dp(3)).apply { topMargin = kit.dp(8) })
+        } else null
+        val column = kit.vertical().apply {
+            setPadding(kit.dp(16), kit.dp(if (large) 2 else 10), kit.dp(16), kit.dp(22))
+            layoutDirection = View.LAYOUT_DIRECTION_RTL
+            if (header != null) addView(header, kit.fill())
+            content()
+        }
+        root.addView(object : ScrollView(host) {
+            override fun onScrollChanged(l: Int, t: Int, oldl: Int, oldt: Int) {
+                super.onScrollChanged(l, t, oldl, oldt)
+                if (header == null) return
+                val f = (t / maxOf(1f, header.height * 0.75f)).coerceIn(0f, 1f)
+                smallTitle.alpha = f
+                hairline.alpha = f
+                barFill.alpha = (255 * f).toInt()
+            }
+        }.apply {
+            isFillViewport = true
+            isVerticalScrollBarEnabled = false
+            addView(column)
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        if (bottom != null) {
+            root.addView(FrameLayout(host).apply {
+                background = android.graphics.drawable.GradientDrawable(
+                    android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                    intArrayOf(Royal.alpha(Royal.scrim, 0.2f), Royal.alpha(Royal.scrim, 0.92f))
+                )
+                setPadding(kit.dp(14), kit.dp(8), kit.dp(14), kit.dp(10))
+                addView(bottom, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
+            })
+        }
+        if (navTab >= 0) root.addView(NavBar.view(this, navTab))
+        return root
+    }
+}
 
 class MainActivity : Activity() {
-    private lateinit var settings: AppSettings
-    private var currentScreen = "home"
-    private var activeSession: GameSession? = null
-    private var backAction: (() -> Unit)? = null
+    lateinit var repo: GameRepository
+        private set
+    lateinit var settings: AppSettings
+        private set
+    lateinit var kit: RoyalKit
+        private set
+    private lateinit var container: FrameLayout
+    private lateinit var frame: LinearLayout
+    private val proListener: () -> Unit = { handler.post { onProChanged() } }
+    private lateinit var topAd: FrameLayout
+    private lateinit var bottomAd: FrameLayout
+    private lateinit var rootView: FrameLayout
+    private val stack = ArrayList<Screen>()
+    private val handler = Handler(Looper.getMainLooper())
+    private var resumed = false
+
+    val current: Screen? get() = stack.lastOrNull()
+
+    /** Mafia narrator games and settings, kept in the same store as the score games. */
+    val mafia: MafiaRepository by lazy { MafiaRepository(repo.store) }
+
+    /** «پانتومیم» matches and words, and «جاسوس» games and words, in the same store. */
+    val panto: PantoRepository by lazy { PantoRepository(repo.store) }
+    val spy: SpyRepository by lazy { SpyRepository(repo.store) }
+
+    /** Narrator cues, night music and voice recording. */
+    val audio: MafiaAudio by lazy { MafiaAudio(this) }
+    private var audioUsed = false
+    fun audio(): MafiaAudio { audioUsed = true; return audio }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        settings = GameStore.loadSettings(this)
-        window.statusBarColor = RoyalPalette.midnight
-        window.navigationBarColor = RoyalPalette.midnight
+        repo = GameStore.open(this)
+        settings = repo.settings()
+        kit = RoyalKit(this) { settings }
+        ThemeEngine.apply(Themes.byId(settings.general.theme))
+        PhotoStore.init(this)
+        ProState.init(this)
+        AdEngine.init(this)
+        MafiaRoleRegistry.user = mafia.roleDefs()
+        val root = FrameLayout(this).apply {
+            background = BackdropDrawable(resources.displayMetrics.density)
+            layoutDirection = View.LAYOUT_DIRECTION_RTL
+        }
+        rootView = root
+        container = FrameLayout(this)
+        // Pages sit between two fixed ad bars (hidden unless the panel turns them on); the bars take their own
+        // space, so they never cover a button, and they stay still while pages change.
+        frame = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        topAd = FrameLayout(this).apply { visibility = View.GONE }
+        bottomAd = FrameLayout(this).apply { visibility = View.GONE }
+        frame.addView(topAd, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        frame.addView(container, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        frame.addView(bottomAd, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        root.addView(frame, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        ProState.listeners += proListener
+        setContentView(root)
+        fitSystemBars(root)
         applyWindowSettings()
-        showHome()
+        val restored = savedInstanceState?.getLong(STATE_SESSION, 0L)?.takeIf { it != 0L }?.let { repo.session(it) }
+        if (restored != null) {
+            stack += HomeScreen(this)
+            stack += if (restored.finished) ResultScreen(this, restored) else boardFor(restored)
+            render(animate = false)
+        } else if (savedInstanceState != null) {
+            stack += HomeScreen(this)
+            render(animate = false)
+        } else {
+            stack += SplashScreen(this)
+            render(animate = false)
+        }
+        Notices.channels(this)
+        if (Notices.offersWanted(this) || Notices.reminders(this)) Notices.schedule(this)
+        // Opened from a notification or a payment page: act once the first page is on screen.
+        if (intent?.data != null || intent?.hasExtra(Notices.EXTRA_TARGET) == true) post(SplashScreen.LOGO_MS + 500) { openFromIntent(intent) }
+    }
+
+    /** «Back to the app» link of the payment page (divan://pay/…): just shows the Pro page, which asks the server. */
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        openFromIntent(intent)
+    }
+
+    private fun openFromIntent(intent: android.content.Intent?) {
+        val data = intent?.data
+        if (data != null && data.scheme == "divan" && data.host == "pay" && ProState.pendingOrder != null) {
+            if (current !is ProScreen) push(ProScreen(this)) else current?.onShow()
+            return
+        }
+        // A tapped notification: opens an allowed in-app page only.
+        Notices.opened(this, intent)
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        stack.lastOrNull { it.sessionId != null }?.sessionId?.let { outState.putLong(STATE_SESSION, it) }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Plans, module access and the account are refreshed in the background; games never wait for it.
+        if (Build.FINGERPRINT != "robolectric") ProSync.onStart()
+        resumed = true
+        current?.onShow()
+    }
+
+    override fun onPause() {
+        AdEngine.flush()
+        current?.onHide()
+        resumed = false
+        if (audioUsed) {
+            audio.stopMusic()
+            if (audio.isRecording) audio.stopRecording(discard = true)
+        }
+        super.onPause()
+    }
+
+    override fun onDestroy() {
+        ProState.listeners -= proListener
+        if (audioUsed) audio.release()
+        super.onDestroy()
+    }
+
+    /**
+     * Draws behind the status and navigation bars on every Android version (Android 15 forces this)
+     * and pads the content by the bars, display cutout and keyboard so nothing is hidden under them.
+     */
+    @Suppress("DEPRECATION")
+    private fun fitSystemBars(root: FrameLayout) {
+        paintSystemBars()
+        if (Build.VERSION.SDK_INT >= 30) {
+            window.setDecorFitsSystemWindows(false)
+        } else {
+            root.systemUiVisibility = View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+        }
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        root.setOnApplyWindowInsetsListener { _, insets ->
+            if (Build.VERSION.SDK_INT >= 30) {
+                val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+                val ime = insets.getInsets(WindowInsets.Type.ime())
+                frame.setPadding(bars.left, bars.top, bars.right, maxOf(bars.bottom, ime.bottom))
+            } else {
+                frame.setPadding(insets.systemWindowInsetLeft, insets.systemWindowInsetTop, insets.systemWindowInsetRight, insets.systemWindowInsetBottom)
+            }
+            insets
+        }
+        root.requestApplyInsets()
+    }
+
+    /** Bar colours of the active style; light styles get dark status and navigation icons. */
+    @Suppress("DEPRECATION")
+    private fun paintSystemBars() {
+        val light = ThemeEngine.spec.light
+        window.statusBarColor = Royal.alpha(Royal.scrim, if (light) 0.72f else 0.55f)
+        window.navigationBarColor = Royal.alpha(Royal.scrim, if (light) 0.9f else 0.75f)
+        if (Build.VERSION.SDK_INT >= 30) {
+            val mask = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+            window.insetsController?.setSystemBarsAppearance(if (light) mask else 0, mask)
+        } else if (Build.VERSION.SDK_INT >= 23) {
+            var flags = rootView.systemUiVisibility
+            val lightFlags = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or if (Build.VERSION.SDK_INT >= 26) View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR else 0
+            flags = if (light) flags or lightFlags else flags and lightFlags.inv()
+            rootView.systemUiVisibility = flags
+        }
+    }
+
+    /** Switches the whole interface to another style without losing the page stack. */
+    fun applyTheme(id: String) {
+        val next = Themes.byId(id)
+        if (next === ThemeEngine.spec) return
+        ThemeEngine.apply(next)
+        rootView.background = BackdropDrawable(resources.displayMetrics.density)
+        paintSystemBars()
+        refresh()
+    }
+
+    fun applyWindowSettings() {
+        if (settings.general.keepScreenAwake) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
+
+    fun updateSettings(transform: (AppSettings) -> AppSettings) {
+        val before = settings.general.theme
+        settings = transform(settings)
+        repo.saveSettings(settings)
+        applyWindowSettings()
+        if (settings.general.theme != before) applyTheme(settings.general.theme)
+    }
+
+    fun push(screen: Screen) {
+        if (!Gate.allows(this, screen)) return
+        saveScroll()
+        current?.onHide()
+        stack += screen
+        render()
+    }
+
+    /** Replaces the top screen (for example board → result) without growing the back stack. */
+    fun replace(screen: Screen) {
+        if (!Gate.allows(this, screen)) return
+        current?.onHide()
+        if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex)
+        stack += screen
+        render()
+    }
+
+    fun resetTo(vararg screens: Screen) {
+        screens.lastOrNull()?.let { if (!Gate.allows(this, it)) return }
+        current?.onHide()
+        stack.clear()
+        stack.addAll(screens)
+        render()
+    }
+
+    fun pop() {
+        if (stack.size <= 1) {
+            finish()
+            return
+        }
+        current?.onHide()
+        stack.removeAt(stack.lastIndex)
+        render(forward = false)
+    }
+
+    /** Rebuilds the visible screen, e.g. after its state changed. */
+    fun refresh() {
+        saveScroll()
+        render(animate = false, notify = false)
+    }
+
+    /** Remembers how far the page on screen is scrolled (the last child is the page being shown). */
+    private fun saveScroll() {
+        val screen = current ?: return
+        val page = container.getChildAt(container.childCount - 1) ?: return
+        findScroll(page)?.let { screen.savedScroll = it.scrollY }
+    }
+
+    /** Puts a rebuilt or returning page back where the user left it, once it is laid out. */
+    private fun restoreScroll(view: View, y: Int) {
+        if (y <= 0) return
+        val sv = findScroll(view) ?: return
+        sv.viewTreeObserver.addOnPreDrawListener(object : android.view.ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                if (sv.viewTreeObserver.isAlive) sv.viewTreeObserver.removeOnPreDrawListener(this)
+                sv.scrollTo(0, y)
+                return true
+            }
+        })
+    }
+
+    fun onBackPressedCompat() {
+        if (current?.onBack() == true) return
+        pop()
     }
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        backAction?.invoke() ?: super.onBackPressed()
+        onBackPressedCompat()
     }
 
-    private fun applyWindowSettings() {
-        if (settings.keepScreenAwake) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    fun post(delayMs: Long, action: () -> Unit) {
+        handler.postDelayed(action, delayMs)
     }
 
-    private fun showHome() {
-        currentScreen = "home"
-        activeSession = null
-        backAction = null
-        val page = page()
-        page.addView(hero(
-            R.drawable.royal_hero_home,
-            Rect(0, 0, 640, 400),
-            "دیوان امتیاز",
-            "شلم • منفی • هزارتایی"
-        ))
-        page.addView(section("انتخاب بازی"))
-        GameType.values().forEach { game -> page.addView(gameCard(game), spaced()) }
-        page.addView(gap(10))
-        page.addView(primaryButton("شروع بازی") { showGameSelection() })
-        page.addView(gap(10))
-        page.addView(secondaryButton("تاریخچه و ادامهٔ بازی‌ها") { showHistory() })
-        page.addView(gap(10))
-        page.addView(secondaryButton("تنظیمات حرفه‌ای") { showSettings() })
-        page.addView(gap(26))
-        page.addView(text("نسخهٔ ۲.۰.۰  •  آفلاین  •  بدون تبلیغ", 12f, RoyalPalette.muted, false, Gravity.CENTER))
-        render(page)
+    fun cancelPosts() {
+        handler.removeCallbacksAndMessages(null)
     }
 
-    private fun showGameSelection() {
-        currentScreen = "games"
-        backAction = { showHome() }
-        val page = page()
-        page.addView(toolbar("انتخاب بازی") { showHome() })
-        page.addView(text("نوع داوری را انتخاب کنید", 14f, RoyalPalette.muted, false, Gravity.CENTER))
-        page.addView(gap(14))
-        GameType.values().forEach { game -> page.addView(gameCard(game), spaced()) }
-        render(page)
-    }
+    private var pendingResult: ((Uri?) -> Unit)? = null
 
-    private fun gameCard(game: GameType): View = panel().apply {
-        orientation = LinearLayout.VERTICAL
-        setPadding(dp(10), dp(10), dp(10), dp(14))
-        addView(GameArtView(this@MainActivity, game), LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, dp(136)
-        ))
-        addView(gap(10))
-        addView(text(game.title, 23f, RoyalPalette.paleGold, true, Gravity.CENTER))
-        addView(text(game.subtitle, 13f, RoyalPalette.muted, false, Gravity.CENTER))
-        setOnClickListener { tap(it); showSetup(game) }
-    }
-
-    private fun showSetup(game: GameType) {
-        currentScreen = "setup"
-        backAction = { showGameSelection() }
-        var avatarA = 0
-        var avatarB = 3
-        val page = page()
-        page.addView(toolbar("آماده‌سازی ${game.title}") { showGameSelection() })
-        page.addView(text(
-            if (game == GameType.HEZARTAII) "نام بازیکنان را وارد کنید" else "نام و نشان دو تیم را تنظیم کنید",
-            14f, RoyalPalette.muted, false, Gravity.CENTER
-        ))
-        page.addView(gap(16))
-
-        val nameA = input(if (game == GameType.HEZARTAII) "بازیکن اول" else "تیم اول", "شیران پارس")
-        val avatarViewA = AvatarCropView(this, avatarA)
-        page.addView(teamEditor(if (game == GameType.HEZARTAII) "بازیکن اول" else "تیم اول", nameA, avatarViewA) {
-            pickAvatar { index -> avatarA = index; avatarViewA.setAvatar(index) }
-        })
-        page.addView(gap(12))
-
-        val nameB = input(if (game == GameType.HEZARTAII) "بازیکن دوم" else "تیم دوم", "پارس‌بانان")
-        val avatarViewB = AvatarCropView(this, avatarB)
-        page.addView(teamEditor(if (game == GameType.HEZARTAII) "بازیکن دوم" else "تیم دوم", nameB, avatarViewB) {
-            pickAvatar { index -> avatarB = index; avatarViewB.setAvatar(index) }
-        })
-        page.addView(gap(18))
-        page.addView(primaryButton("شروع داوری ${game.title}") {
-            val session = GameSession(
-                game,
-                nameA.text.toString().trim().ifBlank { "تیم اول" },
-                nameB.text.toString().trim().ifBlank { "تیم دوم" },
-                avatarA,
-                avatarB
-            )
-            activeSession = session
-            showLiveGame(session)
-        })
-        render(page)
-    }
-
-    private fun teamEditor(title: String, name: EditText, avatar: AvatarCropView, choose: () -> Unit): View = panel(true).apply {
-        gravity = Gravity.CENTER_VERTICAL
-        setPadding(dp(12), dp(12), dp(12), dp(12))
-        avatar.setOnClickListener { choose() }
-        addView(avatar, LinearLayout.LayoutParams(dp(92), dp(108)))
-        addView(gapHorizontal(12))
-        addView(LinearLayout(this@MainActivity).apply {
-            orientation = LinearLayout.VERTICAL
-            addView(text(title, 13f, RoyalPalette.gold, true))
-            addView(gap(5))
-            addView(name)
-            addView(gap(6))
-            addView(text("برای تغییر آواتار، تصویر را لمس کنید", 11f, RoyalPalette.muted))
-        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-    }
-
-    private fun pickAvatar(onSelected: (Int) -> Unit) {
-        val grid = GridLayout(this).apply {
-            columnCount = 4
-            setPadding(dp(8), dp(8), dp(8), dp(8))
-            setBackgroundColor(RoyalPalette.navy)
-        }
-        val dialog = AlertDialog.Builder(this).setTitle("انتخاب آواتار سه‌بعدی").setView(grid).setNegativeButton("بستن", null).create()
-        repeat(16) { index ->
-            grid.addView(AvatarCropView(this, index).apply {
-                setOnClickListener { onSelected(index); dialog.dismiss() }
-            }, GridLayout.LayoutParams().apply {
-                width = dp(72); height = dp(86); setMargins(dp(3), dp(3), dp(3), dp(3))
-            })
-        }
-        dialog.show()
-    }
-
-    private fun showLiveGame(session: GameSession) {
-        activeSession = session
-        when (session.game) {
-            GameType.SHALAM -> showShalam(session)
-            GameType.MENFI -> showMenfi(session)
-            GameType.HEZARTAII -> showHezartaii(session)
-        }
-    }
-
-    private fun showShalam(session: GameSession) {
-        currentScreen = "shalam"
-        backAction = { askLeave(session) }
-        val page = page()
-        page.addView(toolbar("داوری زندهٔ شلم") { askLeave(session) })
-        page.addView(scoreHeader(session))
-        page.addView(section("دست ${fa(session.rounds.size + 1)} — تیم حاکم"))
-        var contractTeam = 1
-        val teamAButton = choiceButton(session.teamA, true)
-        val teamBButton = choiceButton(session.teamB, false)
-        val contractRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            addView(teamAButton, LinearLayout.LayoutParams(0, dp(56), 1f))
-            addView(gapHorizontal(8))
-            addView(teamBButton, LinearLayout.LayoutParams(0, dp(56), 1f))
-        }
-        fun selectTeam(team: Int) {
-            contractTeam = team
-            styleChoice(teamAButton, team == 1)
-            styleChoice(teamBButton, team == 2)
-        }
-        teamAButton.setOnClickListener { selectTeam(1) }
-        teamBButton.setOnClickListener { selectTeam(2) }
-        page.addView(contractRow)
-        page.addView(section("امتیاز خوانده‌شده"))
-        page.addView(text("پاس یا عدد آماده را انتخاب کنید؛ نتیجه در مرحلهٔ بعد ثبت می‌شود.", 12f, RoyalPalette.muted, false, Gravity.CENTER))
-        page.addView(gap(8))
-        val grid = GridLayout(this).apply { columnCount = 4 }
-        ShalamEngine.readyBids.forEach { bid ->
-            grid.addView(compactButton(bid.title) {
-                if (bid.kind == ShalamBidKind.PASS) {
-                    session.rounds.add(ScoreRound(0, 0, "پاس", contractTeam = contractTeam, contract = bid.title))
-                    autoSave(session)
-                    showShalam(session)
-                } else showShalamResult(session, contractTeam, bid)
-            }, GridLayout.LayoutParams().apply {
-                width = 0; height = dp(54); columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
-                setMargins(dp(3), dp(3), dp(3), dp(3))
-            })
-        }
-        page.addView(grid)
-        page.addView(roundHistory(session))
-        page.addView(gap(12))
-        page.addView(secondaryButton("پایان بازی و ثبت نتیجه") { finishGame(session) })
-        render(page)
-    }
-
-    private fun showShalamResult(session: GameSession, contractTeam: Int, bid: ShalamBid) {
-        currentScreen = "shalam_result"
-        backAction = { showShalam(session) }
-        val page = page()
-        page.addView(toolbar("ثبت نتیجهٔ دست") { showShalam(session) })
-        page.addView(hero(R.drawable.royal_hero_shalam, Rect(0, 0, 640, 400), "محاسبهٔ شلم", "تعهد، گرفتهٔ حریف، نتیجه"))
-        page.addView(scoreHeader(session))
-        page.addView(section("تعهد ${fa(bid.title)} — ${if (contractTeam == 1) session.teamA else session.teamB}"))
-        page.addView(infoPanel("امتیاز تیم حریف را وارد کنید", "امتیاز تیم حاکم به‌صورت خودکار از ۱۶۵ محاسبه می‌شود."))
-        page.addView(gap(12))
-        val opponentInput = numericInput("امتیاز حریف از ۰ تا ۱۶۵", "0", signed = false)
-        val actual = text("امتیاز واقعی حاکم: ${fa(165)}", 17f, RoyalPalette.cream, true, Gravity.CENTER)
-        val preview = text("نتیجهٔ قابل ثبت", 21f, RoyalPalette.paleGold, true, Gravity.CENTER)
-        val state = intArrayOf(0)
-        fun update(value: Int) {
-            val safe = value.coerceIn(0, 165)
-            state[0] = safe
-            val result = ShalamEngine.calculate(bid, safe, settings.shalamAwardContractOnly, settings.shalamValue)
-            actual.text = "امتیاز واقعی حاکم: ${fa(result.actualContractPoints)} = ${fa(165)} − ${fa(safe)}"
-            val contractName = if (contractTeam == 1) session.teamA else session.teamB
-            val opponentName = if (contractTeam == 1) session.teamB else session.teamA
-            preview.text = "$contractName: ${signed(result.contractScore)}   |   $opponentName: ${signed(result.opponentScore)}"
-            preview.setTextColor(if (result.succeeded) RoyalPalette.turquoise else RoyalPalette.danger)
-        }
-        opponentInput.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                update(toLatin(s?.toString().orEmpty()).toIntOrNull() ?: 0)
+    /** Opens the system file picker; [onResult] gets the chosen document (null when cancelled). */
+    fun pickDocument(create: Boolean, fileName: String, onResult: (Uri?) -> Unit) {
+        val intent = if (create) {
+            Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "application/json"
+                putExtra(Intent.EXTRA_TITLE, fileName)
             }
-            override fun afterTextChanged(s: Editable?) = Unit
-        })
-        page.addView(opponentInput)
-        page.addView(gap(10))
-        page.addView(stepper("تنظیم سریع امتیاز حریف", state, 0, 165, 5) {
-            opponentInput.setText(it.toString()); opponentInput.setSelection(opponentInput.length())
-        })
-        page.addView(gap(14))
-        page.addView(panel().apply {
-            setPadding(dp(14), dp(14), dp(14), dp(14)); gravity = Gravity.CENTER
-            addView(actual); addView(gap(6)); addView(preview)
-        })
-        page.addView(gap(16))
-        page.addView(primaryButton("تأیید و ثبت این دست") {
-            val result = ShalamEngine.calculate(bid, state[0], settings.shalamAwardContractOnly, settings.shalamValue)
-            val round = if (contractTeam == 1) {
-                ScoreRound(result.contractScore, result.opponentScore, "تعهد ${bid.title}", result.actualContractPoints, state[0], 1, bid.title)
-            } else {
-                ScoreRound(result.opponentScore, result.contractScore, "تعهد ${bid.title}", state[0], result.actualContractPoints, 2, bid.title)
+        } else {
+            Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "*/*"
+                putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/json", "text/plain", "application/octet-stream"))
             }
-            session.rounds.add(round)
-            autoSave(session)
-            showShalam(session)
-        })
-        update(0)
-        render(page)
+        }
+        pendingResult = onResult
+        try {
+            @Suppress("DEPRECATION")
+            startActivityForResult(intent, REQUEST_DOCUMENT)
+        } catch (e: Exception) {
+            pendingResult = null
+            kit.toast("انتخاب فایل در این گوشی در دسترس نیست")
+        }
     }
 
-    private fun showMenfi(session: GameSession) {
-        currentScreen = "menfi"
-        backAction = { askLeave(session) }
-        val page = page()
-        page.addView(toolbar("داوری زندهٔ منفی") { askLeave(session) })
-        page.addView(scoreHeader(session, settings.menfiHiddenUntilReveal))
-        page.addView(section("دست ${fa(session.rounds.size + 1)} از ${fa(settings.menfiHands)}"))
-        page.addView(infoPanel("ثبت عدد هر دو تیم", "اعداد آماده از ۳ تا ۱۳ هستند. نتیجه فقط بعد از انتخاب حالت نهایی ثبت می‌شود."))
-        page.addView(gap(14))
-        var numberA: Int? = null
-        var numberB: Int? = null
-        val statusA = text("ثبت نشده", 13f, RoyalPalette.muted, true, Gravity.CENTER)
-        val statusB = text("ثبت نشده", 13f, RoyalPalette.muted, true, Gravity.CENTER)
-        val aButton = secondaryButton("ثبت عدد ${session.teamA}") {
-            pickMenfiNumber(session.teamA) { numberA = it; statusA.text = "ثبت شد ✓"; statusA.setTextColor(RoyalPalette.turquoise) }
+    /** Opens the system picker for any of [mimeTypes] (e.g. audio or images). */
+    fun pickFile(mimeTypes: Array<String>, onResult: (Uri?) -> Unit) {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = if (mimeTypes.size == 1) mimeTypes[0] else "*/*"
+            if (mimeTypes.size > 1) putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes)
         }
-        val bButton = secondaryButton("ثبت عدد ${session.teamB}") {
-            pickMenfiNumber(session.teamB) { numberB = it; statusB.text = "ثبت شد ✓"; statusB.setTextColor(RoyalPalette.turquoise) }
+        pendingResult = onResult
+        try {
+            @Suppress("DEPRECATION")
+            startActivityForResult(intent, REQUEST_DOCUMENT)
+        } catch (e: Exception) {
+            pendingResult = null
+            kit.toast("انتخاب فایل در این گوشی در دسترس نیست")
         }
-        page.addView(twoColumn(
-            panel().apply { gravity = Gravity.CENTER; addView(aButton); addView(gap(6)); addView(statusA) },
-            panel().apply { gravity = Gravity.CENTER; addView(bButton); addView(gap(6)); addView(statusB) }
-        ))
-        page.addView(gap(16))
-        page.addView(primaryButton("نمایش حالت‌های نتیجه") {
-            if (numberA == null || numberB == null) toast("ابتدا عدد هر دو تیم را ثبت کنید")
-            else showMenfiOutcomes(session, numberA!!, numberB!!)
-        })
-        page.addView(roundHistory(session))
-        page.addView(gap(12))
-        page.addView(secondaryButton("پایان بازی و ثبت نتیجه") { finishGame(session) })
-        render(page)
     }
 
-    private fun pickMenfiNumber(team: String, selected: (Int) -> Unit) {
-        val grid = GridLayout(this).apply { columnCount = 4; setPadding(dp(8), dp(8), dp(8), dp(8)) }
-        val dialog = AlertDialog.Builder(this).setTitle("عدد $team").setView(grid).setNegativeButton("انصراف", null).create()
-        MenfiEngine.readyNumbers.forEach { number ->
-            grid.addView(compactButton(fa(number)) { selected(number); dialog.dismiss() }, GridLayout.LayoutParams().apply {
-                width = dp(68); height = dp(52); setMargins(dp(3), dp(3), dp(3), dp(3))
-            })
+    private var pendingPermission: ((Boolean) -> Unit)? = null
+
+    /** Asks for the microphone (Android 6+); older versions grant it at install. */
+    fun requestMicrophone(onResult: (Boolean) -> Unit) {
+        if (Build.VERSION.SDK_INT < 23 || checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            onResult(true)
+            return
         }
-        dialog.show()
+        pendingPermission = onResult
+        requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), REQUEST_MIC)
     }
 
-    private fun showMenfiOutcomes(session: GameSession, numberA: Int, numberB: Int, editIndex: Int? = null) {
-        currentScreen = "menfi_result"
-        backAction = { showMenfi(session) }
-        val page = page()
-        page.addView(toolbar("انتخاب نتیجهٔ دست") { showMenfi(session) })
-        page.addView(hero(R.drawable.royal_hero_menfi, Rect(0, 0, 640, 400), "نتیجهٔ پنهان", "عددها ثبت شدند"))
-        page.addView(infoPanel(
-            "${session.teamA}: ${fa(numberA)}   |   ${session.teamB}: ${fa(numberB)}",
-            "حالت رخ‌داده را انتخاب کنید؛ تا پیش از تأیید هیچ امتیازی ثبت نمی‌شود."
-        ))
-        page.addView(gap(12))
-        MenfiEngine.outcomes(numberA, numberB).forEachIndexed { index, outcome ->
-            val detail = when (index) {
-                0 -> "هر دو تیم گرفتند"
-                1 -> "${session.teamA} گرفت؛ ${session.teamB} نگرفت"
-                else -> "${session.teamA} نگرفت؛ ${session.teamB} گرفت"
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != REQUEST_MIC) return
+        val callback = pendingPermission ?: return
+        pendingPermission = null
+        callback(grantResults.isNotEmpty() && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED)
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        @Suppress("DEPRECATION")
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQUEST_DOCUMENT) return
+        val callback = pendingResult ?: return
+        pendingResult = null
+        callback(if (resultCode == RESULT_OK) data?.data else null)
+    }
+
+    /**
+     * Draws [view] at the given width into a PNG and opens the share sheet. The view is laid out
+     * off screen, so it never disturbs the current page.
+     */
+    fun shareImage(view: View, title: String, widthPx: Int = kit.dp(420)) {
+        try {
+            view.layoutDirection = View.LAYOUT_DIRECTION_RTL
+            view.measure(View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+            view.layout(0, 0, view.measuredWidth, view.measuredHeight)
+            val bitmap = Bitmap.createBitmap(view.measuredWidth.coerceAtLeast(1), view.measuredHeight.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            BackdropDrawable(resources.displayMetrics.density).apply { setBounds(0, 0, bitmap.width, bitmap.height) }.draw(canvas)
+            view.draw(canvas)
+            val dir = java.io.File(cacheDir, ShareProvider.DIR).apply { mkdirs() }
+            dir.listFiles()?.forEach { it.delete() }
+            val file = java.io.File(dir, "divan-${System.currentTimeMillis()}.png")
+            file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            bitmap.recycle()
+            val uri = Uri.parse("content://${ShareProvider.authority(packageName)}/${file.name}")
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = "image/png"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_TEXT, title)
+                clipData = android.content.ClipData.newRawUri(title, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            page.addView(panel().apply {
-                setPadding(dp(16), dp(14), dp(16), dp(14))
-                addView(text("${signed(outcome.teamAScore)}   |   ${signed(outcome.teamBScore)}", 23f, RoyalPalette.paleGold, true, Gravity.CENTER))
-                addView(text(detail, 13f, RoyalPalette.muted, false, Gravity.CENTER))
-                setOnClickListener {
-                    val round = ScoreRound(outcome.teamAScore, outcome.teamBScore, detail, numberA, numberB)
-                    if (editIndex == null) session.rounds.add(round) else session.rounds[editIndex] = round
-                    autoSave(session)
-                    showMenfi(session)
+            startActivity(Intent.createChooser(send, "اشتراک تصویر").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+        } catch (e: Exception) {
+            kit.toast("ساخت تصویر ممکن نشد")
+        }
+    }
+
+    /** Sends a text file (a backup) to any app the user picks, e.g. a messenger or cloud drive. */
+    fun shareFile(name: String, text: String, mime: String) {
+        try {
+            val dir = java.io.File(cacheDir, ShareProvider.DIR).apply { mkdirs() }
+            dir.listFiles()?.forEach { it.delete() }
+            val file = java.io.File(dir, name)
+            file.writeText(text, Charsets.UTF_8)
+            val uri = Uri.parse("content://${ShareProvider.authority(packageName)}/${file.name}")
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = mime
+                putExtra(Intent.EXTRA_STREAM, uri)
+                clipData = android.content.ClipData.newRawUri(name, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(send, "ارسال فایل پشتیبان").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+        } catch (e: Exception) {
+            kit.toast("ارسال فایل ممکن نشد")
+        }
+    }
+
+    /** Reads settings again after a backup replaced them. */
+    fun reloadSettings() {
+        settings = repo.settings()
+        applyWindowSettings()
+        applyTheme(settings.general.theme)
+    }
+
+    fun boardFor(session: GameSession): Screen = when (session.game) {
+        GameType.SHALAM -> ShalamBoardScreen(this, session)
+        GameType.MENFI -> MenfiBoardScreen(this, session)
+        GameType.HEZARTAII -> HezarBoardScreen(this, session)
+        GameType.DOLO -> DoloBoardScreen(this, session)
+    }
+
+    /** Opens a stored game: unfinished games go to their board, finished ones to the result page. */
+    fun openSession(session: GameSession) {
+        push(if (session.finished) ResultScreen(this, session) else boardFor(session))
+    }
+
+    private var transition = 0
+
+    private fun render(animate: Boolean = true, forward: Boolean = true, notify: Boolean = true) {
+        val screen = current ?: return
+        val view = screen.build()
+        restoreScroll(view, screen.savedScroll)
+        if (!animate || !settings.general.animations) {
+            transition++
+            for (i in 0 until container.childCount) container.getChildAt(i).animate().cancel()
+            container.removeAllViews()
+            container.addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        } else {
+            // Slide + fade on hardware layers (RTL: a new page enters from the left, going back slides it to the right).
+            // The motion starts only after the new page's first frame is drawn, so building and drawing a heavy page
+            // never eats the animation's frames.
+            val shift = container.width.takeIf { it > 0 }?.let { it * 0.22f } ?: kit.dpf(80f)
+            // Only the page on screen slides out; anything left from an interrupted transition goes at once.
+            val children = (0 until container.childCount).map { container.getChildAt(it) }
+            children.forEach { it.animate().cancel() }
+            children.dropLast(1).forEach { container.removeView(it) }
+            val olds = children.takeLast(1).onEach { it.isEnabled = false; it.alpha = 1f; it.translationX = 0f }
+            val id = ++transition
+            container.addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            view.alpha = 0f
+            view.translationX = if (forward) -shift else shift
+            val entrance = Entrance.prepare(view, resources.displayMetrics.density)
+            ArtWarmer.hold(Motion.PAGE_IN + 400)
+            val start = Runnable {
+                if (id != transition) return@Runnable
+                olds.forEach { old ->
+                    old.animate().alpha(0f).translationX(if (forward) shift * 0.6f else -shift * 0.6f).setDuration(Motion.PAGE_OUT)
+                        .setInterpolator(Motion.EASE_IN_OUT).withLayer().withEndAction { container.removeView(old) }.start()
                 }
-            }, spaced())
-        }
-        render(page)
-    }
-
-    private fun showHezartaii(session: GameSession) {
-        currentScreen = "hezartaii"
-        backAction = { askLeave(session) }
-        val page = page()
-        page.addView(toolbar("داوری هزارتایی") { askLeave(session) })
-        page.addView(hero(R.drawable.royal_hero_hezartaii, Rect(0, 0, 640, 400), "هزارتایی", "رقابت امتیازی انفرادی"))
-        page.addView(scoreHeader(session))
-        page.addView(section("دور ${fa(session.rounds.size + 1)} از ${fa(settings.hezartaiiRounds)}"))
-        page.addView(infoPanel("ثبت امتیاز بازیکنان", "صفر با جریمهٔ ${signed(settings.hezartaiiZeroPenalty)} ثبت می‌شود و امتیازهای منفی نیز مجازند."))
-        page.addView(gap(12))
-        val inputA = numericInput(session.teamA, "0", true)
-        val inputB = numericInput(session.teamB, "0", true)
-        page.addView(twoColumn(inputA, inputB))
-        page.addView(gap(12))
-        page.addView(primaryButton("ثبت امتیاز این دور") {
-            val rawA = toLatin(inputA.text.toString()).toIntOrNull()
-            val rawB = toLatin(inputB.text.toString()).toIntOrNull()
-            if (rawA == null || rawB == null) toast("امتیاز هر دو بازیکن را وارد کنید")
-            else {
-                val a = if (rawA == 0) settings.hezartaiiZeroPenalty else rawA
-                val b = if (rawB == 0) settings.hezartaiiZeroPenalty else rawB
-                session.rounds.add(ScoreRound(a, b, "دور ${session.rounds.size + 1}", rawA, rawB))
-                autoSave(session)
-                showHezartaii(session)
+                view.animate().alpha(1f).translationX(0f).setDuration(Motion.PAGE_IN).setInterpolator(Motion.EASE_OUT).withLayer().start()
+                Entrance.play(entrance)
             }
-        })
-        page.addView(roundHistory(session))
-        page.addView(gap(12))
-        page.addView(secondaryButton("پایان بازی و ثبت نتیجه") { finishGame(session) })
-        render(page)
-    }
-
-    private fun scoreHeader(session: GameSession, hidden: Boolean = false): View {
-        val scoreA = ScoreEngine.total(session.rounds, true)
-        val scoreB = ScoreEngine.total(session.rounds, false)
-        return twoColumn(
-            scoreCard(session.teamA, session.avatarA, if (hidden) "•••" else signed(scoreA), RoyalPalette.green),
-            scoreCard(session.teamB, session.avatarB, if (hidden) "•••" else signed(scoreB), RoyalPalette.crimson)
-        )
-    }
-
-    private fun scoreCard(name: String, avatar: Int, score: String, fill: Int): View = panel().apply {
-        gravity = Gravity.CENTER
-        background = royalShape(fill, RoyalPalette.gold, 18f, 1, this@MainActivity)
-        addView(AvatarCropView(this@MainActivity, avatar), LinearLayout.LayoutParams(dp(64), dp(72)))
-        addView(gap(5))
-        addView(text(name, 13f, RoyalPalette.cream, true, Gravity.CENTER).apply { maxLines = 2 })
-        addView(text(score, 25f, RoyalPalette.paleGold, true, Gravity.CENTER))
-    }
-
-    private fun roundHistory(session: GameSession): View = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        addView(section("دست‌های ثبت‌شده"))
-        if (session.rounds.isEmpty()) {
-            addView(text("هنوز دستی ثبت نشده است.", 13f, RoyalPalette.muted, false, Gravity.CENTER))
-        } else session.rounds.forEachIndexed { index, round ->
-            addView(panel(true).apply {
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(10), dp(10), dp(10), dp(10))
-                addView(text(fa(index + 1), 14f, RoyalPalette.gold, true, Gravity.CENTER), LinearLayout.LayoutParams(dp(30), dp(38)))
-                addView(text("${signed(round.teamA)}   |   ${signed(round.teamB)}\n${round.note}", 14f, RoyalPalette.cream, true), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-                addView(smallButton("ویرایش") {
-                    if (session.game == GameType.MENFI && round.sourceA != null && round.sourceB != null) {
-                        showMenfiOutcomes(session, round.sourceA, round.sourceB, index)
-                    } else editRound(session, index)
-                })
-                addView(smallButton("حذف", true) {
-                    confirm("حذف دست", "این دست از جمع امتیازها حذف شود؟") {
-                        session.rounds.removeAt(index); autoSave(session); showLiveGame(session)
-                    }
-                })
-            }, spaced())
-        }
-    }
-
-    private fun editRound(session: GameSession, index: Int) {
-        val round = session.rounds[index]
-        val a = numericInput(session.teamA, round.teamA.toString(), true)
-        val b = numericInput(session.teamB, round.teamB.toString(), true)
-        val body = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(8), dp(18), dp(4))
-            addView(a); addView(gap(8)); addView(b)
-        }
-        AlertDialog.Builder(this).setTitle("ویرایش دست ${fa(index + 1)}").setView(body)
-            .setPositiveButton("ذخیره") { _, _ ->
-                val newA = toLatin(a.text.toString()).toIntOrNull()
-                val newB = toLatin(b.text.toString()).toIntOrNull()
-                if (newA != null && newB != null) {
-                    session.rounds[index] = round.copy(teamA = newA, teamB = newB, note = "ویرایش‌شده")
-                    autoSave(session); showLiveGame(session)
+            view.viewTreeObserver.addOnPreDrawListener(object : android.view.ViewTreeObserver.OnPreDrawListener {
+                override fun onPreDraw(): Boolean {
+                    if (view.viewTreeObserver.isAlive) view.viewTreeObserver.removeOnPreDrawListener(this)
+                    view.post(start)
+                    return true
                 }
-            }.setNegativeButton("انصراف", null).show()
-    }
-
-    private fun finishGame(session: GameSession) {
-        if (session.rounds.isEmpty()) { toast("حداقل یک دست ثبت کنید"); return }
-        GameStore.saveSession(this, session, true)
-        showFinalResult(session)
-    }
-
-    private fun showFinalResult(session: GameSession) {
-        currentScreen = "result"
-        backAction = { showHome() }
-        val a = ScoreEngine.total(session.rounds, true)
-        val b = ScoreEngine.total(session.rounds, false)
-        val winner = when (ScoreEngine.winner(session.game, a, b)) { 1 -> session.teamA; 2 -> session.teamB; else -> "مساوی" }
-        val page = page()
-        page.addView(toolbar("نتیجهٔ نهایی") { showHome() })
-        page.addView(hero(R.drawable.royal_hero_results, Rect(0, 0, 640, 400), "برنده: $winner", session.game.title))
-        page.addView(twoColumn(
-            scoreCard(session.teamA, session.avatarA, signed(a), RoyalPalette.green),
-            scoreCard(session.teamB, session.avatarB, signed(b), RoyalPalette.crimson)
-        ))
-        page.addView(roundHistory(session))
-        page.addView(gap(16))
-        page.addView(primaryButton("بازگشت به خانه") { showHome() })
-        render(page)
-    }
-
-    private fun askLeave(session: GameSession) {
-        confirm("ذخیره و خروج", "بازی در تاریخچه ذخیره می‌شود و بعداً می‌توانید ادامه دهید.") {
-            GameStore.saveSession(this, session, false); showHome()
-        }
-    }
-
-    private fun autoSave(session: GameSession) = GameStore.saveSession(this, session, false)
-
-    private fun showHistory() {
-        currentScreen = "history"
-        backAction = { showHome() }
-        val history = GameStore.loadHistory(this)
-        val page = page()
-        page.addView(toolbar("تاریخچهٔ بازی‌ها") { showHome() })
-        page.addView(hero(R.drawable.royal_hero_history, Rect(0, 0, 640, 400), "دیوان بازی‌ها", "ادامه، ویرایش و نتیجه"))
-        if (history.isEmpty()) page.addView(infoPanel("تاریخچه خالی است", "پس از ثبت اولین دست، بازی شما اینجا ذخیره می‌شود."))
-        history.forEach { record ->
-            page.addView(panel().apply {
-                setPadding(dp(14), dp(14), dp(14), dp(14))
-                addView(text("${record.game.title}  •  ${if (record.finished) "پایان‌یافته" else "در جریان"}", 16f, RoyalPalette.gold, true))
-                addView(text("${record.teamA}: ${signed(record.scoreA)}   |   ${record.teamB}: ${signed(record.scoreB)}", 17f, RoyalPalette.cream, true))
-                addView(text("${fa(record.rounds.size)} دست  •  ${date(record.timestamp)}", 12f, RoyalPalette.muted))
-                addView(gap(8))
-                addView(LinearLayout(this@MainActivity).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    addView(smallButton(if (record.finished) "مشاهده" else "ادامه") {
-                        val session = GameStore.toSession(record); activeSession = session; showLiveGame(session)
-                    }, LinearLayout.LayoutParams(0, dp(46), 1f))
-                    addView(gapHorizontal(8))
-                    addView(smallButton("حذف", true) {
-                        confirm("حذف بازی", "این بازی برای همیشه از تاریخچه حذف شود؟") {
-                            GameStore.deleteHistory(this@MainActivity, record.id); showHistory()
-                        }
-                    }, LinearLayout.LayoutParams(0, dp(46), 1f))
-                })
-            }, spaced())
-        }
-        if (history.isNotEmpty()) {
-            page.addView(gap(10)); page.addView(dangerButton("پاک‌کردن کل تاریخچه") {
-                confirm("پاک‌کردن تاریخچه", "تمام بازی‌های ذخیره‌شده حذف شوند؟") { GameStore.clearHistory(this); showHistory() }
             })
         }
-        render(page)
+        if (notify && resumed) screen.onShow()
+        updateStickyAds()
     }
 
-    private fun showSettings() {
-        currentScreen = "settings"
-        backAction = { showHome() }
-        val page = page()
-        page.addView(toolbar("تنظیمات حرفه‌ای") { saveAndHome() })
-        page.addView(hero(R.drawable.royal_hero_settings, Rect(0, 0, 640, 400), "تنظیمات دیوان", "کنترل کامل قوانین و تجربه"))
-        page.addView(section("عمومی"))
-        page.addView(settingSwitch("بازخورد لمسی", "لرزش کوتاه هنگام ثبت", settings.haptic) { settings.haptic = it })
-        page.addView(settingSwitch("روشن ماندن صفحه", "مناسب داوری طولانی", settings.keepScreenAwake) { settings.keepScreenAwake = it; applyWindowSettings() })
-        page.addView(settingSwitch("اعداد فارسی", "نمایش همهٔ امتیازها با رقم فارسی", settings.persianDigits) { settings.persianDigits = it })
-        page.addView(settingSwitch("متن درشت", "افزایش خوانایی بدون بیرون‌زدگی", settings.largeText) { settings.largeText = it })
-
-        page.addView(section("قوانین شلم — مطابق شلم‌شمار"))
-        page.addView(settingNumber("امتیاز پایان بازی", settings.shalamTarget, 100, 5000, 50) { settings.shalamTarget = it })
-        page.addView(settingNumber("امتیاز شلم", settings.shalamValue, 330, 400, 70) { settings.shalamValue = it })
-        page.addView(settingSwitch("محاسبهٔ امتیاز تعهد", "تیم حاکم در برد فقط امتیاز تعهد را بگیرد", settings.shalamAwardContractOnly) { settings.shalamAwardContractOnly = it })
-        page.addView(settingSwitch("بازی با جوکر", "فعال‌سازی حالت شلم با جوکر", settings.shalamWithJoker) { settings.shalamWithJoker = it })
-        page.addView(settingSwitch("پرسش برای دوبل", "پیش از ثبت دوبل مثبت یا منفی سؤال شود", settings.shalamAskDouble) { settings.shalamAskDouble = it })
-        page.addView(settingNumber("پایان بازی با اختلاف", settings.shalamEndDifference, 0, 1000, 50) { settings.shalamEndDifference = it })
-
-        page.addView(section("منفی"))
-        page.addView(AtlasCropView(this, R.drawable.royal_hero_menfi_settings, Rect(0, 0, 640, 400), 16f, true), LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, dp(140)
-        ))
-        page.addView(gap(10))
-        page.addView(settingNumber("تعداد دست‌ها", settings.menfiHands, 1, 20, 1) { settings.menfiHands = it })
-        page.addView(settingSwitch("پنهان‌بودن جمع امتیاز", "تا زمان نمایش نتیجه، جمع دیده نشود", settings.menfiHiddenUntilReveal) { settings.menfiHiddenUntilReveal = it })
-
-        page.addView(section("هزارتایی"))
-        page.addView(settingNumber("تعداد دورها", settings.hezartaiiRounds, 1, 30, 1) { settings.hezartaiiRounds = it })
-        page.addView(settingNumber("جریمهٔ صفر", settings.hezartaiiZeroPenalty, -200, 0, 10) { settings.hezartaiiZeroPenalty = it })
-        page.addView(gap(18))
-        page.addView(primaryButton("ذخیرهٔ تنظیمات") { saveAndHome() })
-        render(page)
+    /** Fixed top / bottom ad bars for pages that allow them; an ad that is already showing is left in place. */
+    fun updateStickyAds() {
+        val screen = current
+        AdEngine.sticky(screen, "sticky_top", topAd)
+        AdEngine.sticky(screen, "sticky_bottom", bottomAd)
     }
 
-    private fun saveAndHome() { GameStore.saveSettings(this, settings); applyWindowSettings(); showHome() }
-
-    private fun settingSwitch(title: String, subtitle: String, checked: Boolean, changed: (Boolean) -> Unit): View = panel(true).apply {
-        gravity = Gravity.CENTER_VERTICAL; setPadding(dp(12), dp(12), dp(12), dp(12))
-        addView(LinearLayout(this@MainActivity).apply {
-            orientation = LinearLayout.VERTICAL
-            addView(text(title, 15f, RoyalPalette.cream, true)); addView(text(subtitle, 11f, RoyalPalette.muted))
-        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        addView(Switch(this@MainActivity).apply {
-            isChecked = checked; buttonTintList = null; setOnCheckedChangeListener { _, value -> changed(value) }
-        })
+    /** New plans, rules or ads from the server, Pro bought or ended: pages that show ads or Pro are redrawn. */
+    private fun onProChanged() {
+        val screen = current ?: return
+        if (screen.adZone != null) refresh() else updateStickyAds()
     }
 
-    private fun settingNumber(title: String, value: Int, min: Int, max: Int, step: Int, changed: (Int) -> Unit): View {
-        val state = intArrayOf(value)
-        return panel().apply {
-            setPadding(dp(12), dp(12), dp(12), dp(12))
-            addView(text(title, 15f, RoyalPalette.cream, true))
-            addView(gap(8))
-            addView(stepper("", state, min, max, step) { changed(it) })
+    private fun findScroll(view: View): ScrollView? {
+        if (view is ScrollView) return view
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) findScroll(view.getChildAt(i))?.let { return it }
         }
+        return null
     }
 
-    private fun stepper(title: String, state: IntArray, min: Int, max: Int, step: Int, changed: (Int) -> Unit): View {
-        val value = text(fa(state[0]), 18f, RoyalPalette.paleGold, true, Gravity.CENTER)
-        return LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            if (title.isNotBlank()) addView(text(title, 13f, RoyalPalette.muted), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            addView(smallButton("−") { state[0] = (state[0] - step).coerceAtLeast(min); value.text = fa(state[0]); changed(state[0]) })
-            addView(value, LinearLayout.LayoutParams(dp(82), dp(44)))
-            addView(smallButton("+") { state[0] = (state[0] + step).coerceAtMost(max); value.text = fa(state[0]); changed(state[0]) })
-        }
-    }
-
-    private fun hero(resource: Int, crop: Rect, title: String, subtitle: String): View = FrameLayout(this).apply {
-        background = royalShape(RoyalPalette.navy, RoyalPalette.gold, 22f, 1, this@MainActivity)
-        addView(AtlasCropView(this@MainActivity, resource, crop, 22f, false), FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
-        ))
-        addView(View(this@MainActivity).apply { setBackgroundColor(Color.argb(130, 2, 15, 31)) })
-        addView(LinearLayout(this@MainActivity).apply {
-            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(dp(18), dp(18), dp(18), dp(18))
-            addView(text("♛", 40f, RoyalPalette.paleGold, true, Gravity.CENTER))
-            addView(text(title, 29f, RoyalPalette.paleGold, true, Gravity.CENTER))
-            addView(text(subtitle, 14f, RoyalPalette.cream, false, Gravity.CENTER))
-        }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-    }.also { it.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(230)).apply { bottomMargin = dp(14) } }
-
-    private fun toolbar(title: String, back: () -> Unit): View = LinearLayout(this).apply {
-        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-        addView(smallButton("›") { back() }, LinearLayout.LayoutParams(dp(48), dp(48)))
-        addView(text(title, 22f, RoyalPalette.paleGold, true, Gravity.CENTER), LinearLayout.LayoutParams(0, dp(58), 1f))
-        addView(text("◆", 17f, RoyalPalette.turquoise, true, Gravity.CENTER), LinearLayout.LayoutParams(dp(48), dp(48)))
-    }
-
-    private fun infoPanel(title: String, subtitle: String): View = panel().apply {
-        setPadding(dp(14), dp(13), dp(14), dp(13))
-        addView(text(title, 15f, RoyalPalette.paleGold, true, Gravity.CENTER))
-        addView(gap(3)); addView(text(subtitle, 12f, RoyalPalette.muted, false, Gravity.CENTER).apply { maxLines = 3 })
-    }
-
-    private fun section(title: String): View = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        addView(gap(14)); addView(RoyalDivider(this@MainActivity), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(18)))
-        addView(text(title, 17f, RoyalPalette.gold, true, Gravity.CENTER)); addView(gap(8))
-    }
-
-    private fun panel(horizontal: Boolean = false): LinearLayout = LinearLayout(this).apply {
-        orientation = if (horizontal) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
-        background = royalShape(Color.argb(236, 6, 31, 55), RoyalPalette.gold, 17f, 1, this@MainActivity)
-        clipToPadding = false
-    }
-
-    private fun twoColumn(first: View, second: View): View = LinearLayout(this).apply {
-        orientation = LinearLayout.HORIZONTAL
-        addView(first, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        addView(gapHorizontal(8))
-        addView(second, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-    }
-
-    private fun page(): LinearLayout = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        setPadding(dp(16), dp(14), dp(16), dp(34))
-        layoutDirection = View.LAYOUT_DIRECTION_RTL
-    }
-
-    private fun render(page: View) {
-        val root = FrameLayout(this).apply { setBackgroundColor(RoyalPalette.midnight) }
-        root.addView(ImageView(this).apply {
-            setImageResource(R.drawable.royal_background); scaleType = ImageView.ScaleType.CENTER_CROP; alpha = .48f
-        }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        root.addView(View(this).apply { setBackgroundColor(Color.argb(95, 1, 12, 26)) }, FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
-        ))
-        root.addView(ScrollView(this).apply { isFillViewport = true; addView(page) }, FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
-        ))
-        setContentView(root)
-    }
-
-    private fun text(value: String, size: Float, color: Int, bold: Boolean = false, gravityValue: Int = Gravity.RIGHT): TextView = TextView(this).apply {
-        text = value; textSize = size + if (settings.largeText) 1f else 0f; setTextColor(color)
-        gravity = gravityValue; preparePersianText(this@MainActivity, bold)
-        maxLines = 4; setPadding(dp(3), dp(2), dp(3), dp(2))
-    }
-
-    private fun baseButton(title: String, selected: Boolean, danger: Boolean, action: () -> Unit): Button = Button(this).apply {
-        text = title; isAllCaps = false; textSize = 15f; minHeight = dp(50); maxLines = 2
-        preparePersianText(this@MainActivity, true); gravity = Gravity.CENTER
-        setTextColor(if (selected) RoyalPalette.midnight else RoyalPalette.cream)
-        background = when { danger -> royalShape(RoyalPalette.crimson, RoyalPalette.gold, 15f, 1, this@MainActivity); else -> royalGradient(this@MainActivity, selected) }
-        setPadding(dp(10), dp(4), dp(10), dp(4)); setOnClickListener { tap(it); action() }
-    }
-
-    private fun primaryButton(title: String, action: () -> Unit) = baseButton(title, true, false, action)
-    private fun secondaryButton(title: String, action: () -> Unit) = baseButton(title, false, false, action)
-    private fun dangerButton(title: String, action: () -> Unit) = baseButton(title, false, true, action)
-    private fun compactButton(title: String, action: () -> Unit) = baseButton(fa(title), false, false, action).apply { textSize = 13f; minWidth = 0; minimumWidth = 0; setPadding(dp(3), dp(2), dp(3), dp(2)) }
-    private fun smallButton(title: String, danger: Boolean = false, action: () -> Unit) = baseButton(title, false, danger, action).apply {
-        textSize = 12f; minWidth = dp(48); minimumWidth = dp(48); setPadding(dp(7), dp(2), dp(7), dp(2))
-    }
-
-    private fun choiceButton(title: String, selected: Boolean) = baseButton(title, selected, false) { }.also { styleChoice(it, selected) }
-    private fun styleChoice(button: Button, selected: Boolean) {
-        button.background = royalGradient(this, selected)
-        button.setTextColor(if (selected) RoyalPalette.midnight else RoyalPalette.cream)
-    }
-
-    private fun input(hint: String, initial: String): EditText = EditText(this).apply {
-        this.hint = hint; setText(initial); setTextColor(RoyalPalette.cream); setHintTextColor(RoyalPalette.muted)
-        textSize = 15f; setSingleLine(true); preparePersianText(this@MainActivity)
-        background = royalShape(Color.rgb(4, 24, 45), RoyalPalette.gold, 13f, 1, this@MainActivity)
-        setPadding(dp(12), dp(4), dp(12), dp(4)); minHeight = dp(52)
-    }
-
-    private fun numericInput(hint: String, initial: String, signed: Boolean): EditText = input(hint, initial).apply {
-        inputType = InputType.TYPE_CLASS_NUMBER or if (signed) InputType.TYPE_NUMBER_FLAG_SIGNED else 0
-        gravity = Gravity.CENTER; textDirection = View.TEXT_DIRECTION_LTR
-    }
-
-    private fun gap(value: Int) = View(this).apply { layoutParams = LinearLayout.LayoutParams(1, dp(value)) }
-    private fun gapHorizontal(value: Int) = View(this).apply { layoutParams = LinearLayout.LayoutParams(dp(value), 1) }
-    private fun spaced() = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) }
-    private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
-    private fun tap(view: View) { if (settings.haptic) view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) }
-    private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
-    private fun fa(value: Any): String = PersianText.digits(value, settings.persianDigits)
-    private fun signed(value: Int): String = PersianText.signed(value, settings.persianDigits)
-    private fun toLatin(value: String): String {
-        var result = value
-        "۰۱۲۳۴۵۶۷۸۹".forEachIndexed { index, char -> result = result.replace(char, '0' + index) }
-        return result
-    }
-
-    private fun date(timestamp: Long): String = SimpleDateFormat("yyyy/MM/dd  HH:mm", Locale("fa", "IR")).format(Date(timestamp))
-
-    private fun confirm(title: String, message: String, action: () -> Unit) {
-        AlertDialog.Builder(this).setTitle(title).setMessage(message)
-            .setPositiveButton("تأیید") { _, _ -> action() }.setNegativeButton("انصراف", null).show()
+    companion object {
+        private const val STATE_SESSION = "session_id"
+        private const val REQUEST_DOCUMENT = 4101
+        private const val REQUEST_MIC = 4102
     }
 }

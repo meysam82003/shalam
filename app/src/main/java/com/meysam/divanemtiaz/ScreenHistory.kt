@@ -1,0 +1,373 @@
+package com.meysam.divanemtiaz
+
+import android.view.Gravity
+import android.view.View
+import android.view.ViewGroup
+import android.widget.LinearLayout
+import kotlin.math.abs
+
+class ResultScreen(host: MainActivity, private val session: GameSession) : Screen(host) {
+    override val adZone: String? get() = if (session.finished) "result" else null
+    override val sessionId: Long get() = session.id
+
+    override fun build(): View {
+        val totals = GameEngine.totals(session)
+        val winners = GameEngine.winners(session)
+        val winnerText = if (winners.isEmpty()) "مساوی" else "برنده: ${winners.joinToString(" و ") { session.sides[it].name }}"
+        return scaffold(
+            title = "نتیجهٔ بازی ${session.game.title}",
+            subtitle = sessionSubtitle(session),
+            bottom = kit.vertical().apply {
+                val league = session.leagueId.takeIf { it != 0L }?.let { host.repo.league(it) }
+                if (league != null) {
+                    val match = leagueMatchOf(league, session.id)
+                    val st = match?.let { LeagueEngine.state(league, it) { id -> host.repo.session(id) } }
+                    if (match != null && st != null && st.ready && !st.decided && st.openGame == null) {
+                        addView(kit.button("بازی بعدی همین تیم‌ها در لیگ", ButtonKind.PRIMARY, RoyalIcon.PLAY) {
+                            host.resetTo(HomeScreen(host), LeagueListScreen(host), LeagueScreen(host, league.id))
+                            val fresh = host.repo.league(league.id)
+                            val freshMatch = fresh?.matches?.firstOrNull { it.id == match.id }
+                            if (fresh != null && freshMatch != null) host.current?.startLeagueGame(fresh, freshMatch)
+                        }, kit.spaced(8))
+                        addView(kit.button("بازگشت به لیگ", ButtonKind.SECONDARY, RoyalIcon.TROPHY, 46) { backToLeague() }, kit.spaced(8))
+                    } else {
+                        addView(kit.button("بازگشت به لیگ", ButtonKind.PRIMARY, RoyalIcon.TROPHY) { backToLeague() }, kit.spaced(8))
+                    }
+                } else {
+                    addView(kit.button("بازی دوباره با همین ترکیب", ButtonKind.PRIMARY, RoyalIcon.PLAY) { rematch() }, kit.spaced(8))
+                }
+                // A Menfi game whose hands are all played with a winner is over: it can be corrected, not extended.
+                val menfiDone = session.game == GameType.MENFI &&
+                    MenfiEngine.isComplete(GameEngine.playedHands(session), totals, session.rules.menfi) && winners.isNotEmpty()
+                addView(kit.horizontal().apply {
+                    addView(kit.weight(kit.button(if (menfiDone) "ویرایش دست‌ها" else "ادامهٔ بازی", ButtonKind.SECONDARY, if (menfiDone) RoyalIcon.EDIT else RoyalIcon.UNDO, 48) { reopen() }))
+                    addView(kit.hgap(8))
+                    addView(kit.weight(kit.button("خانه", ButtonKind.SECONDARY, RoyalIcon.HOME, 48) {
+                        host.resetTo(HomeScreen(host))
+                        if (session.finished) host.current?.let { AdEngine.maybeInterstitial(it) }
+                    }))
+                })
+            }
+        ) {
+            addView(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
+                background = PanelDrawable(kit.density, PanelStyle.RAISED, 22f)
+                setPadding(kit.dp(14), kit.dp(16), kit.dp(14), kit.dp(18))
+                layoutParams = kit.spaced(10)
+                addView(TrophyView(host), LinearLayout.LayoutParams(kit.dp(96), kit.dp(96)))
+                addView(kit.text(winnerText, TextStyle.TITLE, Royal.goldLight, Gravity.CENTER))
+                addView(kit.text(reason(totals), TextStyle.LABEL, Royal.muted, Gravity.CENTER))
+            })
+            if (session.game.isTeamGame) {
+                addView(kit.horizontal(Gravity.TOP).apply {
+                    layoutParams = kit.spaced(10)
+                    session.sides.forEachIndexed { i, side ->
+                        if (i > 0) addView(kit.hgap(10))
+                        addView(kit.weight(sideScoreCard(side, kit.signed(totals[i]), null, winners.singleOrNull() == i, null).apply {
+                            isClickable = true
+                            setOnClickListener { kit.tap(it); host.push(ProfileScreen(host, side.name, true)) }
+                        }))
+                    }
+                })
+            } else {
+                GameEngine.ranking(session).forEachIndexed { place, i ->
+                    addView(kit.horizontal().apply {
+                        background = PanelDrawable(kit.density, if (place == 0 && winners.isNotEmpty()) PanelStyle.RAISED else PanelStyle.NORMAL, 16f)
+                        setPadding(kit.dp(10), kit.dp(6), kit.dp(10), kit.dp(9))
+                        layoutParams = kit.spaced(5)
+                        addView(kit.text("${kit.n(place + 1)}.", TextStyle.BODY_BOLD, Royal.gold))
+                        addView(kit.hgap(8))
+                        addView(kit.avatar(session.sides[i].avatar, 34))
+                        addView(kit.hgap(8))
+                        addView(kit.weight(kit.text(session.sides[i].name, TextStyle.BODY_BOLD, maxLines = 1)))
+                        addView(kit.text(kit.signed(totals[i]), TextStyle.HEADING, Royal.goldLight))
+                        isClickable = true
+                        setOnClickListener { kit.tap(it); host.push(ProfileScreen(host, session.sides[i].name, false)) }
+                    })
+                }
+            }
+            addView(kit.panel(PanelStyle.FLAT, 14).apply {
+                layoutParams = kit.spaced(10)
+                listOf(
+                    "تعداد دست‌ها" to kit.n(GameEngine.playedHands(session)),
+                    "مدت بازی" to timerText(session),
+                    "شروع" to JalaliDate.format(session.id, settings.general.persianDigits),
+                    "پایان" to (session.endedAt?.let { JalaliDate.format(it, settings.general.persianDigits) } ?: "—")
+                ).forEach { (label, value) ->
+                    addView(kit.horizontal().apply {
+                        addView(kit.weight(kit.text(label, TextStyle.LABEL, Royal.muted)))
+                        addView(kit.text(value, TextStyle.LABEL_BOLD, Royal.ivory))
+                    })
+                }
+            })
+            if (session.rounds.any { it.kind != RoundKind.DOLO_ELIM } && !ProState.feature("charts").second) {
+                addView(kit.button("نمودار و آمار کامل بازی (Pro)", ButtonKind.GHOST, RoyalIcon.CHART, 42) { Gate.open(this@ResultScreen, "charts") {} }, kit.spaced(10))
+            } else if (session.rounds.any { it.kind != RoundKind.DOLO_ELIM }) {
+                addView(kit.section("نمودار بازی", RoyalIcon.CHART))
+                addView(kit.panel(PanelStyle.FLAT, 10).apply {
+                    layoutParams = kit.spaced(8)
+                    addView(gameChart(session), kit.fill())
+                })
+            }
+            addView(kit.grid(2, listOf(
+                kit.button("اشتراک تصویر نتیجه", ButtonKind.GHOST, RoyalIcon.SHARE, 42) { shareSession(session) },
+                kit.button("کارنامه و رتبه‌ها", ButtonKind.GHOST, RoyalIcon.TROPHY, 42) { host.push(RankingScreen(host)) }
+            ), 8), kit.spaced(8))
+            if (session.game.isTeamGame && (session.leagueId == 0L || host.repo.league(session.leagueId) == null)) {
+                addView(kit.button("افزودن این بازی به لیگ", ButtonKind.GHOST, RoyalIcon.LEAGUE, 42) { addToLeague(session) { host.refresh() } }, kit.spaced(8))
+            }
+            if (session.game == GameType.SHALAM) {
+                addView(kit.button("آمار کامل بازی", ButtonKind.GHOST, RoyalIcon.CHART, 42) { Gate.open(this@ResultScreen, "charts") { shalamStatsDialog(session) } }, kit.spaced(10))
+            }
+            addView(kit.section("دست‌ها", RoyalIcon.HISTORY))
+            session.rounds.forEachIndexed { index, round ->
+                addView(roundRow(index, session.sides.indices.map { kit.signed(round.score(it)) }, session.sides.indices.map { scoreColor(round.score(it)) }, describeRound(session, round), null))
+            }
+            // Only on a finished game, below everything: the play is over, nothing is waiting for input.
+            if (session.finished) AdEngine.slot(this@ResultScreen, "result_bottom")?.let { addView(kit.gap(8)); addView(it) }
+        }
+    }
+
+    private fun reason(totals: List<Int>): String = when (session.game) {
+        GameType.SHALAM -> {
+            val r = session.rules.shalam
+            when {
+                totals.any { it >= r.endPoint } -> "رسیدن به امتیاز پایان ${kit.n(r.endPoint)}"
+                r.mode.endWithDiff && abs(totals[0] - totals[1]) >= r.mode.endDiff -> "رسیدن اختلاف امتیازها به ${kit.n(r.mode.endDiff)}"
+                else -> "پایان با تأیید داور"
+            }
+        }
+        GameType.MENFI -> {
+            val r = session.rules.menfi
+            val basis = if (r.highWins) "بیشترین جمع" else "کمترین جمع"
+            when {
+                GameEngine.winners(session).isEmpty() -> "مساوی با تأیید داور"
+                GameEngine.playedHands(session) >= r.totalHands -> "پایان ${menfiHandsText(r)} دست • برنده با $basis"
+                else -> "پایان با تأیید داور • برنده با $basis"
+            }
+        }
+        GameType.HEZARTAII -> {
+            val r = session.rules.hezar
+            when {
+                r.target > 0 && totals.any { it >= r.target } -> "رسیدن به امتیاز هدف ${kit.n(r.target)}"
+                r.rounds > 0 && GameEngine.playedHands(session) >= r.rounds -> "پایان ${kit.n(r.rounds)} دور"
+                else -> "پایان با تأیید داور"
+            }
+        }
+        GameType.DOLO -> if (DoloEngine.state(session).active.size == 1) "آخرین بازیکن باقی‌مانده" else "پایان با تأیید داور"
+    }
+
+    private fun reopen() {
+        session.finished = false
+        session.endedAt = null
+        SessionOps.commit(host, session)
+        host.replace(host.boardFor(session))
+    }
+
+    private fun backToLeague() {
+        val league = host.repo.league(session.leagueId) ?: return
+        host.resetTo(HomeScreen(host), LeagueListScreen(host), LeagueScreen(host, league.id))
+    }
+
+    private fun rematch() {
+        val id = host.repo.newSessionId()
+        val rules = session.rules.copy(menfi = session.rules.menfi.copy(extraHands = 0))
+        val fresh = GameSession(id, session.game, session.sides.toList(), rules = rules, updatedAt = id, label = session.label)
+        host.resetTo(HomeScreen(host), host.boardFor(fresh))
+    }
+}
+
+fun Screen.describeRound(session: GameSession, round: Round): String {
+    val team = session.sides.getOrNull(round.contractTeam)?.name ?: ""
+    return when (round.kind) {
+        RoundKind.SHALAM_HAND -> {
+            val o = ShalamEngine.outcome(round, session.rules.shalam)
+            "حاکم: $team • تعهد ${kit.n(round.bid)} • حریف ${kit.n(round.taken)} • ${if (o.succeeded) "موفق" else if (o.isDouble) "دوبل" else "ناموفق"}"
+        }
+        RoundKind.SHALAM_SHELEM -> "حاکم: $team • شلم • ${if (round.taken == 0) "برد" else "باخت"}"
+        RoundKind.SHALAM_DOUBLE_SHELEM -> "حاکم: $team • شلم دوبل • ${if (round.taken == 0) "برد" else "باخت"}"
+        RoundKind.SHALAM_PASS -> "پاس"
+        RoundKind.MENFI_HAND -> listOfNotNull(
+            if (round.numbers.size == 2) "اعداد ${kit.n(round.numbers[0])} و ${kit.n(round.numbers[1])}" else null,
+            menfiOutcomeTitle(session, round.outcome).ifBlank { null }
+        ).joinToString(" • ")
+        RoundKind.HEZAR_ROUND -> round.raw.mapIndexed { i, v -> "${session.sides.getOrNull(i)?.name ?: ""} ${kit.n(v)}" }.joinToString(" • ")
+        RoundKind.DOLO_HAND -> {
+            val parts = mutableListOf("حداقل ${kit.n(round.bid)}")
+            session.sides.getOrNull(round.contractTeam)?.let { parts += "حکم: ${it.name}" + if (round.suit != Suit.NONE) " (${Suit.title(round.suit)})" else "" }
+            if (round.outcome == MenfiEngine.MANUAL) parts += "ثبت دستی"
+            else {
+                val missed = session.sides.indices.filter { round.numbers.getOrElse(it) { -1 } >= 0 && round.raw.getOrElse(it) { 0 } != 1 }
+                parts += if (missed.isEmpty()) "همه گرفتند" else "نگرفتند: ${missed.joinToString("، ") { session.sides[it].name }}"
+            }
+            parts.joinToString(" • ")
+        }
+        RoundKind.DOLO_ELIM -> {
+            val out = round.raw.indices.filter { round.raw[it] == 1 }
+            if (out.isNotEmpty()) "حذف: ${out.joinToString("، ") { session.sides.getOrNull(it)?.name ?: "" }}"
+            else "${round.note.ifBlank { "ادامه" }} • ${kit.n(round.bid)} دست اضافه"
+        }
+        else -> round.note
+    }
+}
+
+class HistoryScreen(host: MainActivity) : Screen(host) {
+    override val adZone: String? get() = "history"
+    override val featureKey: String get() = "history"
+    override val navTab: Int get() = NavBar.HISTORY
+
+    private var status = 0
+    private var gameFilter: GameType? = null
+    /** "mafia", "panto" or "spy" for the narrator and party games. */
+    private var party: String? = null
+
+    /** One saved game of any kind, newest first. */
+    private class Entry(val kind: String, val time: Long, val finished: Boolean, val view: () -> View)
+
+    override fun build(): View {
+        val all = host.repo.sessions()
+        val mafiaGames = host.mafia.games().filter { it.started }
+        val panto = host.panto.matches()
+        val spy = host.spy.games()
+        val entries = ArrayList<Entry>()
+        all.forEach { s -> entries += Entry(s.game.key, s.updatedAt, s.finished) { card(s) } }
+        mafiaGames.forEach { g -> entries += Entry("mafia", g.updatedAt, g.finished) { mafiaCard(g) } }
+        panto.forEach { m -> entries += Entry("panto", m.updatedAt, m.finished) { pantoCard(m) } }
+        spy.forEach { g -> entries += Entry("spy", g.updatedAt, g.finished) { spyCard(g) } }
+        val filter = party ?: gameFilter?.key
+        val shown = entries.filter { e ->
+            (filter == null || e.kind == filter) && when (status) { 1 -> !e.finished; 2 -> e.finished; else -> true }
+        }.sortedByDescending { it.time }
+        return scaffold(title = "تاریخچهٔ بازی‌ها", subtitle = "${kit.n(entries.size)} بازی ذخیره‌شده") {
+            addView(SlidingTabs(host, kit, listOf("همه", "در جریان", "پایان‌یافته"), status) { i ->
+                status = i
+                host.post(Motion.ITEM.toLong()) { host.refresh() }
+            }, kit.spaced(8))
+            val kinds = listOf<String?>(null) + GameType.values().map { it.key } + listOf("mafia", "panto", "spy")
+            addView(kit.chipRail((listOf(
+                kit.chip("همهٔ بازی‌ها", gameFilter == null && party == null, ButtonKind.CHIP_GOLD) { gameFilter = null; party = null; host.refresh() }
+            ) + GameType.values().map { g ->
+                kit.chip(g.title, gameFilter == g && party == null, ButtonKind.CHIP_GOLD) { gameFilter = g; party = null; host.refresh() }
+            } + listOf("mafia" to "راوی مافیا", "panto" to "پانتومیم", "spy" to "جاسوس").map { (k, t) ->
+                kit.chip(t, party == k, ButtonKind.CHIP_GOLD) { party = k; gameFilter = null; host.refresh() }
+            }).map { it.apply { setPadding(kit.dp(12), kit.dp(4), kit.dp(12), kit.dp(6)) } }, kinds.indexOf(filter).coerceAtLeast(0)), kit.spaced(12))
+            if (shown.isEmpty()) {
+                addView(emptyState(RoyalIcon.HISTORY, "بازی‌ای پیدا نشد", "پس از ثبت اولین دست، بازی اینجا ذخیره می‌شود."))
+            }
+            // Grouped by day: today, yesterday, then each date.
+            var lastDay = ""
+            var count = 0
+            shown.forEach { e ->
+                if (count++ == 3) AdEngine.slot(this@HistoryScreen, "history_inline")?.let { addView(it) }
+                val day = dayLabel(e.time)
+                if (day != lastDay) {
+                    lastDay = day
+                    addView(kit.text(day, TextStyle.LABEL_BOLD, Royal.muted).apply { setPadding(kit.dp(6), kit.dp(8), kit.dp(6), kit.dp(6)) })
+                }
+                addView(e.view())
+            }
+            if (entries.isNotEmpty()) {
+                addView(kit.gap(12))
+                addView(kit.button("پاک‌کردن کل تاریخچه", ButtonKind.DANGER, RoyalIcon.TRASH, 48) {
+                    kit.confirm("پاک‌کردن تاریخچه", "تمام بازی‌های ذخیره‌شده برای همیشه حذف شوند؟", "حذف همه", true) {
+                        host.repo.clearHistory()
+                        host.mafia.games().forEach { host.mafia.delete(it.id) }
+                        host.panto.matches().forEach { host.panto.delete(it.id) }
+                        host.spy.games().forEach { host.spy.delete(it.id) }
+                        host.refresh()
+                    }
+                })
+            }
+        }
+    }
+
+    private fun dayLabel(time: Long): String {
+        fun start(t: Long) = java.util.Calendar.getInstance().apply { timeInMillis = t; set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0); set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0) }.timeInMillis
+        val days = ((start(System.currentTimeMillis()) - start(time)) / 86_400_000L).toInt()
+        return when (days) {
+            0 -> "امروز"
+            1 -> "دیروز"
+            in 2..6 -> "${kit.n(days)} روز پیش"
+            else -> JalaliDate.format(time, settings.general.persianDigits).substringBefore("  ")
+        }
+    }
+
+    /** A narrator game: result or phase, players, report. */
+    private fun mafiaCard(g: MafiaGame): View = kit.vertical().apply {
+        background = PanelDrawable(kit.density, PanelStyle.NORMAL, 16f)
+        setPadding(kit.dp(10), kit.dp(9), kit.dp(10), kit.dp(12))
+        layoutParams = kit.spaced(8)
+        addView(kit.horizontal().apply {
+            addView(RoleSealView(host, MafiaGlyph.MASK, MafiaColors.MAFIA), LinearLayout.LayoutParams(kit.dp(36), kit.dp(36)))
+            addView(kit.hgap(10))
+            addView(kit.vertical().apply {
+                addView(kit.horizontal().apply {
+                    addView(kit.text("راوی مافیا", TextStyle.BODY_BOLD, Royal.goldLight))
+                    addView(kit.hgap(8))
+                    addView(if (g.finished) kit.badge("پایان‌یافته", Royal.gold) else kit.badge("در جریان", Royal.turquoise, true))
+                })
+                addView(kit.text(JalaliDate.format(g.updatedAt, settings.general.persianDigits), TextStyle.CAPTION, Royal.muted))
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(kit.iconButton(RoyalIcon.TRASH, "حذف بازی", ButtonKind.CHIP, 40) {
+                kit.confirm("حذف بازی", "این بازی و گزارش آن حذف شود؟", "حذف", true) { host.mafia.delete(g.id); host.refresh() }
+            })
+        })
+        addView(kit.gap(6))
+        addView(kit.text(if (g.finished) g.winner else "${g.phaseTitle} • ${kit.n(g.players.size)} بازیکن", TextStyle.LABEL, Royal.ivory, maxLines = 2))
+        isClickable = true
+        contentDescription = "بازی مافیا"
+        setOnClickListener { kit.tap(it); host.push(if (g.finished) MafiaReportScreen(host, g.id) else MafiaGameScreen(host, g.id)) }
+    }
+
+    private fun card(session: GameSession): View {
+        val totals = GameEngine.totals(session)
+        val hidden = session.game == GameType.MENFI && session.rules.menfi.hidden && !session.finished
+        val winners = if (session.finished) GameEngine.winners(session) else emptyList()
+        return kit.vertical().apply {
+            background = PanelDrawable(kit.density, PanelStyle.NORMAL, 16f)
+            setPadding(kit.dp(10), kit.dp(9), kit.dp(10), kit.dp(12))
+            layoutParams = kit.spaced(8)
+            addView(kit.horizontal().apply {
+                addView(GameSealView(host, session.game), LinearLayout.LayoutParams(kit.dp(36), kit.dp(36)))
+                addView(kit.hgap(10))
+                addView(kit.vertical().apply {
+                    addView(kit.horizontal().apply {
+                        addView(kit.text(session.game.title, TextStyle.BODY_BOLD, Royal.goldLight))
+                        addView(kit.hgap(8))
+                        addView(if (session.finished) kit.badge("پایان‌یافته", Royal.gold) else kit.badge("در جریان", Royal.turquoise, true))
+                    })
+                    addView(kit.text(JalaliDate.format(session.updatedAt, settings.general.persianDigits), TextStyle.CAPTION, Royal.muted))
+                }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                if (session.game.isTeamGame && (session.leagueId == 0L || host.repo.league(session.leagueId) == null)) {
+                    addView(kit.iconButton(RoyalIcon.LEAGUE, "افزودن به لیگ", ButtonKind.CHIP, 44) { addToLeague(session) { host.refresh() } })
+                    addView(kit.hgap(6))
+                } else if (session.leagueId != 0L) {
+                    addView(kit.badge("لیگ", Royal.turquoise))
+                    addView(kit.hgap(6))
+                }
+                addView(kit.iconButton(RoyalIcon.TRASH, "حذف بازی", ButtonKind.CHIP, 44) {
+                    kit.confirm("حذف بازی", "این بازی برای همیشه از تاریخچه حذف شود؟", "حذف", true) {
+                        host.repo.delete(session.id)
+                        host.refresh()
+                    }
+                })
+            })
+            addView(kit.gap(8))
+            val shownSides = if (session.game.isTeamGame) session.sides.indices.toList() else GameEngine.ranking(session).take(4)
+            shownSides.forEach { i ->
+                val side = session.sides[i]
+                addView(kit.horizontal().apply {
+                    addView(kit.avatar(side.avatar, 24))
+                    addView(kit.hgap(8))
+                    addView(kit.weight(kit.text(side.name + if (i in winners) "  ♛" else "", TextStyle.LABEL_BOLD, if (i in winners) Royal.goldLight else Royal.ivory, maxLines = 1)))
+                    addView(kit.text(if (hidden) "•••" else kit.signed(totals[i]), TextStyle.BODY_BOLD, if (hidden) Royal.dim else scoreColor(totals[i])))
+                })
+            }
+            if (shownSides.size < session.sides.size) addView(kit.text("و ${kit.n(session.sides.size - shownSides.size)} بازیکن دیگر", TextStyle.CAPTION, Royal.dim))
+            addView(kit.gap(4))
+            addView(kit.text("${kit.n(GameEngine.playedHands(session))} دست  •  ${timerText(session)}  •  ${sessionSubtitle(session)}", TextStyle.CAPTION, Royal.dim, maxLines = 2))
+            isClickable = true
+            contentDescription = "باز کردن بازی ${session.game.title}"
+            setOnClickListener { kit.tap(it); host.openSession(session) }
+        }
+    }
+}

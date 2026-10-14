@@ -6,9 +6,16 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish a GitHub Release and the web page (only with the owner''s approval)'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 jobs:
   build-release:
@@ -28,34 +35,178 @@ jobs:
         with:
           gradle-version: '8.7'
 
+      - name: Prepare release signing key
+        env:
+          DIVAN_KEYSTORE_BASE64: ${{ secrets.DIVAN_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$DIVAN_KEYSTORE_BASE64" ]; then
+            echo "$DIVAN_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/divan-release.jks"
+            echo "DIVAN_KEYSTORE_FILE=$RUNNER_TEMP/divan-release.jks" >> "$GITHUB_ENV"
+            echo "RELEASE_SIGNED=true" >> "$GITHUB_ENV"
+            echo "Release key found; APK is signed with the fixed release key."
+          else
+            echo "RELEASE_SIGNED=false" >> "$GITHUB_ENV"
+            echo "::warning::No DIVAN_KEYSTORE_BASE64 secret; APK is signed with the runner debug key and is NOT published as a release (Cafe Bazaar rejects debug-signed APKs)."
+          fi
+
       - name: Test and build signed APK
+        env:
+          DIVAN_KEYSTORE_PASSWORD: ${{ secrets.DIVAN_KEYSTORE_PASSWORD }}
+          DIVAN_KEY_ALIAS: ${{ secrets.DIVAN_KEY_ALIAS }}
+          DIVAN_KEY_PASSWORD: ${{ secrets.DIVAN_KEY_PASSWORD }}
+          # Public values for the Pro subscription (none is secret); empty ones keep the feature off.
+          DIVAN_MYKET_RSA_KEY: ${{ vars.DIVAN_MYKET_RSA_KEY || secrets.DIVAN_MYKET_RSA_KEY }}
+          DIVAN_TAPSELL_APP_ID: ${{ vars.DIVAN_TAPSELL_APP_ID || secrets.DIVAN_TAPSELL_APP_ID }}
+          DIVAN_LICENSE_KEY: ${{ vars.DIVAN_LICENSE_KEY || secrets.DIVAN_LICENSE_KEY }}
         run: gradle --no-daemon testReleaseUnitTest assembleRelease
 
-      - name: Prepare release files
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+      - name: Check the server
         run: |
-          cp app/build/outputs/apk/release/app-release.apk Divan-Emtiaz-v2.0.0.apk
-          sha256sum Divan-Emtiaz-v2.0.0.apk > SHA256SUMS.txt
+          sudo systemctl start mysql
+          mysql -uroot -proot -e "CREATE DATABASE divan_test2 CHARACTER SET utf8mb4; CREATE USER 'divan'@'localhost' IDENTIFIED BY 'ci-only'; GRANT ALL ON divan_test2.* TO 'divan'@'localhost';"
+          for f in $(find server payment-bridge -name '*.php'); do php -l "$f" > /dev/null; done
+          php payment-bridge/divan-bridge/tests/run.php
+          DIVAN_TEST_DSN="host=localhost;dbname=divan_test2" DIVAN_TEST_PASS=ci-only php server/tests/run.php
 
-      - name: Publish GitHub Release
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+      - name: Prepare release files
+        run: |
+          VERSION=$(grep -oP "versionName '\K[^']+" app/build.gradle)
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          cp app/build/outputs/apk/bazaar/release/app-bazaar-release.apk "Divan-Emtiaz-Bazaar-v$VERSION.apk"
+          cp app/build/outputs/apk/myket/release/app-myket-release.apk "Divan-Emtiaz-Myket-v$VERSION.apk"
+          cp web/index.html "Divan-Emtiaz-Web-v$VERSION.html"
+          rm -rf pack && mkdir -p pack && cp -r server/public pack/divan && (cd pack && zip -qr ../Divan-Emtiaz-Web-Installer.zip divan)
+          sha256sum Divan-Emtiaz-*-v$VERSION.apk "Divan-Emtiaz-Web-v$VERSION.html" Divan-Emtiaz-Web-Installer.zip > SHA256SUMS.txt
+
+      - name: Use the release-signed APK kept in the repository
+        if: env.RELEASE_SIGNED != 'true'
+        run: |
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          FOUND=0
+          for STORE in Bazaar Myket; do
+            SIGNED="release/Divan-Emtiaz-$STORE-v$VERSION.apk"
+            [ -f "$SIGNED" ] || continue
+            "$APKSIGNER" verify --print-certs "$SIGNED" | tee signed-cert.txt
+            if grep -qi "CN=Android Debug" signed-cert.txt; then echo "::error::$SIGNED is debug-signed"; exit 1; fi
+            cp "$SIGNED" "Divan-Emtiaz-$STORE-v$VERSION.apk"
+            FOUND=$((FOUND+1))
+          done
+          if [ "$FOUND" = "2" ]; then
+            sha256sum Divan-Emtiaz-*-v$VERSION.apk "Divan-Emtiaz-Web-v$VERSION.html" Divan-Emtiaz-Web-Installer.zip > SHA256SUMS.txt
+            echo "RELEASE_SIGNED=true" >> "$GITHUB_ENV"
+            echo "Release-signed APKs found for v$VERSION."
+          fi
+
+      - name: Release notes from README
+        run: |
+          python3 - <<'PY'
+          import os, re
+          v = os.environ["VERSION"].translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))
+          text = open("README.md", encoding="utf-8").read()
+          m = re.search(r"^## نسخهٔ " + re.escape(v) + r"\s*\n(.*?)(?=^## |\Z)", text, re.S | re.M)
+          notes = m.group(1).strip() if m else ""
+          body = f"""نسخهٔ {os.environ['VERSION']}
+
+          دانلود:
+          - `Divan-Emtiaz-Bazaar-v{os.environ['VERSION']}.apk` برای کافه‌بازار (پرداخت با بازار)
+          - `Divan-Emtiaz-Myket-v{os.environ['VERSION']}.apk` برای مایکت (پرداخت با مایکت)
+          - `Divan-Emtiaz-Web-Installer.zip` سرور اشتراک و پنل مدیریت برای هاست
+          هر دو APK امضای انتشار دارند و روی نسخهٔ قبلی نصب می‌شوند؛ داده‌ها حفظ می‌شوند.
+
+          تازه‌ها:
+          {notes}
+          """
+          open("release-notes.md", "w", encoding="utf-8").write("\n".join(l.strip() if l.startswith("          ") else l for l in body.splitlines()) + "\n")
+          PY
+          cat release-notes.md
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Divan-Emtiaz-v${{ env.VERSION }}
+          path: |
+            Divan-Emtiaz-Bazaar-v${{ env.VERSION }}.apk
+            Divan-Emtiaz-Myket-v${{ env.VERSION }}.apk
+            Divan-Emtiaz-Web-v${{ env.VERSION }}.html
+            Divan-Emtiaz-Web-Installer.zip
+            SHA256SUMS.txt
+
+      - name: Verify release signature
+        if: env.RELEASE_SIGNED == 'true'
+        run: |
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          for STORE in Bazaar Myket; do
+            "$APKSIGNER" verify --print-certs "Divan-Emtiaz-$STORE-v$VERSION.apk" | tee cert.txt
+            if grep -qi "CN=Android Debug" cert.txt; then echo "::error::$STORE APK is debug-signed"; exit 1; fi
+          done
+
+      - name: Publish unsigned build for re-signing
+        if: env.RELEASE_SIGNED != 'true' && github.event_name == 'workflow_dispatch' && inputs.publish == true
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.0.0
-          name: دیوان امتیاز سلطنتی v2.0.0
+          tag_name: build-v${{ env.VERSION }}
+          target_commitish: ${{ github.sha }}
+          name: ساخت آزمایشی v${{ env.VERSION }} (امضای دیباگ؛ برای بازار نیست)
+          prerelease: true
+          make_latest: false
           body: |
-            بازطراحی کامل دیوان امتیاز با هویت بصری سلطنتی سه‌بعدی.
-
-            - آواتارها و مدل‌های سه‌بعدی ایرانی از اطلس‌های منتخب پروژه
-            - شلم دو مرحله‌ای با پاس، ۱۰۰ تا ۱۶۰، شلم و دبل‌شلم
-            - محاسبه خودکار ۱۶۵ منهای امتیاز حریف و ثبت شکست تعهد
-            - منفی با اعداد ۳ تا ۱۳ و سه حالت نتیجه قبل از تأیید
-            - ویرایش و حذف هر دست، تاریخچه و ادامه بازی
-            - تنظیمات پیشرفتهٔ شلم بر اساس بررسی APK شلم‌شمار
-            - فونت فارسی Vazirmatn و رابط کاملاً راست‌به‌چپ
-            - Android 5.0 و بالاتر، آفلاین و بدون تبلیغ
+            این فایل با کلید دیباگ امضا شده و برای کافه‌بازار قابل قبول نیست؛ فقط برای امضای مجدد با کلید انتشار است.
           files: |
-            Divan-Emtiaz-v2.0.0.apk
+            Divan-Emtiaz-Bazaar-v${{ env.VERSION }}.apk
+            Divan-Emtiaz-Myket-v${{ env.VERSION }}.apk
+          overwrite_files: true
+
+      - name: Keep the build on the ci-builds branch (no release, nothing published)
+        if: github.event_name == 'workflow_dispatch' && inputs.publish != true
+        run: |
+          mkdir -p "$RUNNER_TEMP/cib"
+          cp Divan-Emtiaz-Bazaar-v$VERSION.apk Divan-Emtiaz-Myket-v$VERSION.apk "$RUNNER_TEMP/cib/"
+          cp app/build/outputs/apk/direct/release/app-direct-release.apk "$RUNNER_TEMP/cib/Divan-Emtiaz-Site-v$VERSION.apk"
+          cd "$RUNNER_TEMP/cib"
+          echo "Build of ${GITHUB_SHA} — debug-signed, NOT a release; re-sign before any distribution." > README.txt
+          git init -q && git checkout -q -b ci-builds && git add . 
+          git -c user.name=ci -c user.email=ci@localhost commit -qm "Build v$VERSION (${GITHUB_SHA}) — not a release"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" ci-builds
+
+      - name: Publish GitHub Release
+        if: env.RELEASE_SIGNED == 'true' && ((github.event_name == 'workflow_dispatch' && inputs.publish == true) || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION }}
+          target_commitish: ${{ github.sha }}
+          name: دیوان امتیاز سلطنتی v${{ env.VERSION }}
+          body_path: release-notes.md
+          files: |
+            Divan-Emtiaz-Bazaar-v${{ env.VERSION }}.apk
+            Divan-Emtiaz-Myket-v${{ env.VERSION }}.apk
+            Divan-Emtiaz-Web-v${{ env.VERSION }}.html
+            Divan-Emtiaz-Web-Installer.zip
             SHA256SUMS.txt
           overwrite_files: true
           make_latest: true
+
+  publish-web:
+    needs: build-release
+    if: (github.event_name == 'workflow_dispatch' && inputs.publish == true) || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Enable GitHub Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Upload web version
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+
+      - name: Deploy web version
+        id: deploy
+        uses: actions/deploy-pages@v4

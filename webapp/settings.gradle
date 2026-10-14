@@ -1,0 +1,12 @@
+// Web runtime of Divan Emtiaz: the Android app's own Kotlin sources, compiled to JavaScript with TeaVM
+// against a browser implementation of the Android classes they use (src/main/java/android/...).
+pluginManagement {
+    repositories {
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositories { mavenCentral() }
+}
+rootProject.name = 'divan-web'

@@ -11,6 +11,15 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // Store billing libraries (Cafe Bazaar Poolakey, Myket billing client) are published on JitPack.
+        maven {
+            url 'https://jitpack.io'
+            content {
+                includeGroup 'com.github.cafebazaar.Poolakey'
+                includeGroup 'com.github.cafebazaar'
+                includeGroup 'com.github.myketstore'
+            }
+        }
     }
 }
 
