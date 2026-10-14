@@ -1,9 +1,9 @@
 name: Build all versions (site APK, web/PWA, Windows, iPhone)
 
 # Manual only. Builds every downloadable version as workflow artifacts. With «publish» it also puts them in the
-# GitHub Release of this version (created or updated). Android APKs are signed with the fixed release key from the
-# repository secrets; without it (the owner's choice while the app is unpublished) they are signed with the runner's
-# temporary key, which the release notes say, and a later build may need a reinstall instead of an update.
+# GitHub Release of this version (created or updated). The Android APKs (Bazaar, Myket, site) are signed only with
+# the fixed release key from the repository secrets and must carry the official certificate; without the key, or with
+# any other certificate, the run stops — a debug or temporary key is never used.
 on:
   workflow_dispatch:
     inputs:
@@ -46,17 +46,26 @@ jobs:
         id: key
         env:
           DIVAN_KEYSTORE_BASE64: ${{ secrets.DIVAN_KEYSTORE_BASE64 }}
+          DIVAN_KEYSTORE_PASSWORD: ${{ secrets.DIVAN_KEYSTORE_PASSWORD }}
+          DIVAN_KEY_ALIAS: ${{ secrets.DIVAN_KEY_ALIAS }}
+          DIVAN_KEY_PASSWORD: ${{ secrets.DIVAN_KEY_PASSWORD }}
         run: |
-          if [ -z "$DIVAN_KEYSTORE_BASE64" ]; then
-            echo "::warning::No DIVAN_KEYSTORE_BASE64 secret: the Android APKs are signed with a temporary key."
-            echo "signed=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          echo "$DIVAN_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/divan-release.jks"
+          for v in DIVAN_KEYSTORE_BASE64 DIVAN_KEYSTORE_PASSWORD DIVAN_KEY_ALIAS DIVAN_KEY_PASSWORD; do
+            if [ -z "${!v}" ]; then echo "::error::Secret $v is missing: Android APKs are only signed with the official release key."; exit 1; fi
+          done
+          echo "$DIVAN_KEYSTORE_BASE64" | tr -d ' \r\n' | base64 -d > "$RUNNER_TEMP/divan-release.jks"
+          # The key itself must open and carry the official certificate before anything is built (nothing secret is printed).
+          FP=$(keytool -list -v -keystore "$RUNNER_TEMP/divan-release.jks" -storepass:env DIVAN_KEYSTORE_PASSWORD -alias "$DIVAN_KEY_ALIAS" 2>/dev/null | grep -m1 'SHA256:' | sed 's/.*SHA256: *//; s/://g' | tr 'a-f' 'A-F')
+          WANT=$(grep -oP "DIVAN_CERT_SHA256'\) \?: '\K[0-9A-F]{64}" app/build.gradle)
+          if [ -z "$FP" ]; then echo "::error::The keystore did not open with the stored password and alias."; exit 1; fi
+          if [ "$FP" != "$WANT" ]; then echo "::error::The stored key is not the official Divan Emtiaz key (certificate $FP)."; exit 1; fi
+          echo "Official release key verified (certificate SHA-256 $FP)."
           echo "DIVAN_KEYSTORE_FILE=$RUNNER_TEMP/divan-release.jks" >> "$GITHUB_ENV"
+          echo "DIVAN_CERT_WANT=$WANT" >> "$GITHUB_ENV"
           echo "signed=true" >> "$GITHUB_OUTPUT"
 
       - name: Test and build the Android APKs (Bazaar, Myket, site)
+        if: steps.key.outputs.signed == 'true'
         env:
           JAVA_HOME: ${{ env.JAVA_HOME_17_X64 }}
           DIVAN_KEYSTORE_PASSWORD: ${{ secrets.DIVAN_KEYSTORE_PASSWORD }}
@@ -68,12 +77,12 @@ jobs:
         run: gradle --no-daemon testReleaseUnitTest assembleRelease
 
       - name: Verify release signature
-        if: steps.key.outputs.signed == 'true'
         run: |
           APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
           for F in bazaar myket direct; do
             "$APKSIGNER" verify --print-certs app/build/outputs/apk/$F/release/app-$F-release.apk | tee cert.txt
-            if grep -qi "CN=Android Debug" cert.txt; then echo "::error::$F APK is debug-signed"; exit 1; fi
+            GOT=$(grep -m1 'certificate SHA-256 digest' cert.txt | sed 's/.*: *//' | tr 'a-f' 'A-F')
+            if [ "$GOT" != "$DIVAN_CERT_WANT" ]; then echo "::error::$F APK is not signed with the official key ($GOT)"; exit 1; fi
           done
 
       - name: Build the web version (PWA) and the iPhone profile
@@ -106,6 +115,13 @@ jobs:
         with:
           name: Divan-Emtiaz-Site-Web-iPhone-v${{ steps.ver.outputs.version }}
           path: out/*
+
+      # R8 mapping files: needed to read crash reports of these exact builds; kept as a private workflow artifact only.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r8-mapping-v${{ steps.ver.outputs.version }}
+          path: app/build/outputs/mapping/**/mapping.txt
+          retention-days: 90
 
       - uses: actions/upload-artifact@v4
         with:
@@ -173,9 +189,7 @@ jobs:
           notes = m.group(1).strip() if m else ""
           android = (f"- `Divan-Emtiaz-Site-v{v}.apk` اندروید، نسخهٔ سایت (پرداخت با درگاه‌های اینترنتی)\n"
                      f"- `Divan-Emtiaz-Bazaar-v{v}.apk` و `Divan-Emtiaz-Myket-v{v}.apk` نسخه‌های کافه‌بازار و مایکت\n"
-                     + ("همهٔ APKها با کلید انتشار ثابت امضا شده‌اند و روی نسخهٔ قبلی نصب می‌شوند."
-                        if os.environ["SIGNED"] == "true" else
-                        "APKهای این نسخه با کلید موقت امضا شده‌اند؛ اگر نسخهٔ دیگری از دیوان نصب است، اول آن را حذف کنید. برای انتشار در کافه‌بازار و مایکت باید با کلید اصلی امضا شوند."))
+                     + "همهٔ APKها با کلید انتشار رسمی امضا شده‌اند (اثر انگشت SHA-256 گواهی در AUTHENTICITY.md) و روی نسخهٔ قبلی همان فروشگاه نصب می‌شوند.")
           body = f"""نسخهٔ {v} — همهٔ نسخه‌ها همان برنامه با همهٔ قابلیت‌ها هستند؛ فقط روش پرداخت فرق دارد.
 
           دریافت:
