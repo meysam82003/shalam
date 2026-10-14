@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="theme-color" content="#050B1A">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="دیوان امتیاز — داور و دفتر امتیاز شلم، منفی، هزارتایی، دولو، مافیا، پانتومیم و جاسوس.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="دیوان امتیاز">
+<meta name="format-detection" content="telephone=no">
+<title>دیوان امتیاز</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/favicon.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preload" href="fonts/Vazirmatn-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/Vazirmatn-Bold.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="play.css?v=__VERSION__">
+<script>window.DIVAN_CONFIG = __CONFIG__;</script>
+</head>
+<body>
+<div id="app"><canvas id="screen" aria-label="دیوان امتیاز"></canvas></div>
+<div id="loading" role="status">
+  <svg viewBox="0 0 48 38" aria-hidden="true"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF3C8"/><stop offset=".55" stop-color="#F0C565"/><stop offset="1" stop-color="#B1832F"/></linearGradient></defs><path fill="url(#g)" d="M4 30 1 8l12 9 11-15 11 15 12-9-3 22z"/><rect x="4" y="31.5" width="40" height="5" rx="2.5" fill="url(#g)"/><circle cx="24" cy="20" r="3.2" fill="#2ED3C6"/><circle cx="13" cy="23" r="2.2" fill="#D0414B"/><circle cx="35" cy="23" r="2.2" fill="#D0414B"/></svg>
+  <b>دیوان امتیاز</b>
+  <span class="dots"><i></i><i></i><i></i></span>
+  <noscript>برای اجرای دیوان امتیاز، جاوااسکریپت مرورگر را روشن کنید.</noscript>
+</div>
+<div id="crash" role="alert"><div class="box"><b>مشکلی پیش آمد</b><p class="msg"></p><p>اطلاعات بازی‌ها روی همین دستگاه ذخیره شده و از بین نرفته است.</p><button onclick="location.reload()">اجرای دوباره</button></div></div>
+<script src="vendor/polygon-clipping.min.js"></script>
+<script src="host.js?v=__VERSION__"></script>
+</body>
+</html>

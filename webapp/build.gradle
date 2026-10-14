@@ -13,6 +13,9 @@ compileKotlin { kotlinOptions.jvmTarget = '11' }
 
 dependencies {
     implementation teavm.libs.jsoApis
+    // TeaVM's own runtime and class library (file system hook, executors); provided by TeaVM when compiling to JS.
+    compileOnly 'org.teavm:teavm-core:0.13.1'
+    compileOnly 'org.teavm:teavm-classlib:0.13.1'
 }
 
 teavm {
@@ -20,5 +23,12 @@ teavm {
         mainClass = 'divan.web.Main'
         targetFileName = 'divan.js'
         obfuscated = false
+    }
+}
+
+// The app's own sources (site version): compiled unchanged against the browser classes above.
+sourceSets {
+    main {
+        kotlin.srcDirs += ['../app/src/main/java', '../app/src/direct/java']
     }
 }

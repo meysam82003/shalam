@@ -671,9 +671,7 @@ public class JSONObject {
      *
      * @hide
      */
-    
-    (client = MODULE_LIBRARIES)
-     public Set< String> keySet() {
+    public Set<String> keySet() {
         return nameValuePairs.keySet();
     }
 

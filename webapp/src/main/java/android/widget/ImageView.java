@@ -41,6 +41,9 @@ public class ImageView extends View {
     public ScaleType getScaleType() { return scaleType; }
     public void setAdjustViewBounds(boolean adjust) { adjustViewBounds = adjust; if (adjust && scaleType == ScaleType.FIT_CENTER) scaleType = ScaleType.FIT_CENTER; requestLayout(); }
     public void setMaxWidth(int w) { maxWidth = w; requestLayout(); }
+    public boolean getAdjustViewBounds() { return adjustViewBounds; }
+    public int getMaxHeight() { return maxHeight; }
+    public int getMaxWidth() { return maxWidth; }
     public void setMaxHeight(int h) { maxHeight = h; requestLayout(); }
     public void setImageAlpha(int a) { alpha = a; invalidate(); }
     public void setColorFilter(int color) {}

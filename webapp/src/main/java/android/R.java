@@ -22,5 +22,6 @@ public final class R {
 
     public static final class style {
         public static final int Theme_Translucent_NoTitleBar = 16973841;
+        public static final int Theme_Black_NoTitleBar_Fullscreen = 16973831;
     }
 }

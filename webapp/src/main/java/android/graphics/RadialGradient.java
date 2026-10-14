@@ -18,5 +18,5 @@ public class RadialGradient extends Shader {
         this(centerX, centerY, radius, new int[] {centerColor, edgeColor}, null, tileMode);
     }
 
-    @Override protected JSObject createStyle() { return divan.web.JS.radialGradient(cx, cy, radius, colors, positions); }
+    @Override protected JSObject createStyle() { return divan.web.JS.radialGradient(cx, cy, radius, colors, positions != null ? positions : new float[0]); }
 }

@@ -138,7 +138,7 @@ public class Canvas {
 
     private void strokeState(Paint p) {
         float w = p.getStrokeWidth();
-        JS.strokeStyle(ctx, p.canvasStyle(), p.canvasAlpha() * alpha, w <= 0 ? 1f : w, p.capCss(), p.joinCss(), p.getStrokeMiter(), p.dash(), p.dashPhase());
+        JS.strokeStyle(ctx, p.canvasStyle(), p.canvasAlpha() * alpha, w <= 0 ? 1f : w, p.capCss(), p.joinCss(), p.getStrokeMiter(), p.dash() != null ? p.dash() : new float[0], p.dashPhase());
     }
 
     /** Gradients cannot carry a matrix: draw in the shader's space with the path mapped back. */

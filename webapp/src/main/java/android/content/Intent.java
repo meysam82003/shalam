@@ -25,6 +25,26 @@ public class Intent implements android.os.Parcelable {
     private ComponentName component;
     private String pkg;
 
+    public static final int URI_INTENT_SCHEME = 1;
+    private Intent selector;
+
+    /** «intent:» links of a web page: only the plain address part is kept (the browser opens it). */
+    public static Intent parseUri(String uri, int flags) throws java.net.URISyntaxException {
+        if (uri == null) throw new java.net.URISyntaxException("null", "no uri");
+        String u = uri;
+        if (u.startsWith("intent:")) {
+            int hash = u.indexOf("#Intent;");
+            String body = hash >= 0 ? u.substring(7, hash) : u.substring(7);
+            String scheme = "https";
+            if (hash >= 0) for (String part : u.substring(hash + 8).split(";")) if (part.startsWith("scheme=")) scheme = part.substring(7);
+            u = scheme + ":" + body;
+        }
+        return new Intent(ACTION_VIEW, android.net.Uri.parse(u));
+    }
+
+    public Intent getSelector() { return selector; }
+    public void setSelector(Intent s) { selector = s; }
+
     public Intent() {}
     public Intent(String action) { this.action = action; }
     public Intent(String action, android.net.Uri uri) { this.action = action; this.data = uri; }

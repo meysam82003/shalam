@@ -174,6 +174,12 @@ public final class JS {
     @JSBody(params = {"key", "bytes"}, script = "DH.decodeLater(key, bytes);")
     public static native void decodeLater(String key, @JSByRef byte[] bytes);
 
+    @org.teavm.jso.JSFunctor
+    public interface Done extends JSObject { void call(); }
+
+    @JSBody(params = {"key", "bytes", "cb"}, script = "DH.decodeThen(key, bytes, cb);")
+    public static native void decodeThen(String key, @JSByRef byte[] bytes, Done cb);
+
     @JSBody(params = {"key", "c"}, script = "DH.rememberDecoded(key, c);")
     public static native void rememberDecoded(String key, JSObject canvas);
 

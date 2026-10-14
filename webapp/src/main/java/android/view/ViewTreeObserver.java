@@ -49,7 +49,7 @@ public final class ViewTreeObserver {
         for (OnGlobalLayoutListener l : new java.util.ArrayList<>(layout)) l.onGlobalLayout();
     }
 
-    /** False when a listener cancelled this frame's draw (it is then tried again next frame, as on Android). */
+    /** True when a listener cancelled this frame's draw (it is then tried again next frame), as on Android. */
     public boolean dispatchOnPreDraw() {
         boolean cancel = false;
         if (preDraw.isEmpty()) return false;

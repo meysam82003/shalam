@@ -283,9 +283,9 @@ public class TextView extends View {
         invalidate();
     }
 
-    @Override void onTextDirectionChanged() { layout = null; hintLayout = null; }
+    @Override protected void onTextDirectionChanged() { layout = null; hintLayout = null; }
 
-    @Override void onRtlPropertiesChangedInternal() { layout = null; hintLayout = null; }
+    @Override protected void onRtlPropertiesChangedInternal() { layout = null; hintLayout = null; }
 
     public int getLineHeight() {
         Paint.FontMetricsInt fm = mTextPaint.getFontMetricsInt();

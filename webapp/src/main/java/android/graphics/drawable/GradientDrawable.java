@@ -45,6 +45,8 @@ public class GradientDrawable extends Drawable {
     public void setShape(int shape) { this.shape = shape; invalidateSelf(); }
     public void setGradientType(int type) { gradient = type; dirty = true; invalidateSelf(); }
     public int getGradientType() { return gradient; }
+    public int getShape() { return shape; }
+    public float getGradientRadius() { return gradientRadius; }
     public void setGradientRadius(float r) { gradientRadius = r; dirty = true; invalidateSelf(); }
     public void setGradientCenter(float x, float y) { centerX = x; centerY = y; dirty = true; invalidateSelf(); }
     public void setOrientation(Orientation o) { orientation = o; dirty = true; invalidateSelf(); }

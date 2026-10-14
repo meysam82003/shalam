@@ -22,7 +22,7 @@ public class ContextWrapper extends Context {
     }
 
     @Override public Object getSystemService(String name) { return divan.web.SystemServices.get(name, this); }
-    @Override public int checkSelfPermission(String permission) { return android.content.pm.PackageManager.PERMISSION_GRANTED; }
+    @Override public int checkSelfPermission(String permission) { return divan.web.Permissions.check(permission); }
     @Override public void startActivity(Intent intent) { divan.web.Intents.start(this, intent, -1); }
     @Override public void sendBroadcast(Intent intent) {}
     @Override public android.content.res.Resources.Theme getTheme() { return new android.content.res.Resources.Theme(); }

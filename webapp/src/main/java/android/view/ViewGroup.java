@@ -210,8 +210,6 @@ public abstract class ViewGroup extends View implements ViewParent {
 
     @Override public void requestLayout() { super.requestLayout(); }
 
-    @Override public ViewParent getParent() { return super.getParent(); }
-
     @Override public void requestChildFocus(View child, View focused) {}
 
     @Override public void focusableViewAvailable(View v) {}

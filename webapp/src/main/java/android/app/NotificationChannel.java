@@ -6,6 +6,7 @@ public final class NotificationChannel {
     private String description;
     public NotificationChannel(String id, CharSequence name, int importance) { this.id = id; this.name = name; }
     public void setDescription(String description) { this.description = description; }
+    public String getDescription() { return description; }
     public String getId() { return id; }
     public void setShowBadge(boolean show) {}
     public void enableVibration(boolean v) {}

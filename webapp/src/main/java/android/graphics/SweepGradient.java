@@ -15,5 +15,5 @@ public class SweepGradient extends Shader {
 
     public SweepGradient(float cx, float cy, int color0, int color1) { this(cx, cy, new int[] {color0, color1}, null); }
 
-    @Override protected JSObject createStyle() { return divan.web.JS.sweepGradient(cx, cy, colors, positions); }
+    @Override protected JSObject createStyle() { return divan.web.JS.sweepGradient(cx, cy, colors, positions != null ? positions : new float[0]); }
 }

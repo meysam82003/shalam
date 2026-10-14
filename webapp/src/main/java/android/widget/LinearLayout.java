@@ -125,6 +125,10 @@ public class LinearLayout extends ViewGroup {
 
     protected boolean hasDividerBeforeChildAt(int childIndex) { return false; }
 
+    private boolean hasDividerAfterChildAt(int childIndex) { return false; }
+
+    /**
+     * Measures the children when the orientation of this LinearLayout is set to {@link #VERTICAL}.
      *
      * @param widthMeasureSpec Horizontal space requirements as imposed by the parent.
      * @param heightMeasureSpec Vertical space requirements as imposed by the parent.

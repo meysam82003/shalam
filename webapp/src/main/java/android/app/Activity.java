@@ -51,6 +51,16 @@ public class Activity extends android.view.ContextThemeWrapper {
     public void onLowMemory() {}
     public void onTrimMemory(int level) {}
 
+    // Called by the browser window, as Android's ActivityThread calls performCreate() and the rest.
+    public final void performCreate(Bundle state) { onCreate(state); }
+    public final void performStart() { onStart(); }
+    public final void performRestart() { onRestart(); }
+    public final void performResume() { onResume(); onPostResume(); }
+    public final void performPause() { onPause(); }
+    public final void performSaveInstanceState(Bundle out) { onSaveInstanceState(out); }
+    public final void performStop() { onStop(); }
+    public final void performNewIntent(Intent intent) { onNewIntent(intent); }
+
     @Deprecated
     public void onBackPressed() { finish(); }
 

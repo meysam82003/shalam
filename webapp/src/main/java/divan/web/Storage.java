@@ -50,6 +50,25 @@ public final class Storage {
         org.teavm.runtime.fs.VirtualFileSystemProvider.setInstance(new StorageFs());
     }
 
+    private static boolean isImage(String p) {
+        String l = p.toLowerCase();
+        return l.endsWith(".jpg") || l.endsWith(".jpeg") || l.endsWith(".png") || l.endsWith(".webp");
+    }
+
+    /** Decodes every stored picture before the app starts, so BitmapFactory finds them synchronously. */
+    public static void decodeStoredImages(Runnable done) {
+        java.util.ArrayList<java.util.Map.Entry<String, Entry>> list = new java.util.ArrayList<>();
+        for (java.util.Map.Entry<String, Entry> e : files.entrySet()) if (isImage(e.getKey())) list.add(e);
+        if (list.isEmpty()) { done.run(); return; }
+        int[] left = {list.size()};
+        for (java.util.Map.Entry<String, Entry> e : list) {
+            byte[] d = e.getValue().data;
+            JS.decodeThen(android.graphics.BitmapFactory.key(d, 0, d.length), d, () -> {
+                if (--left[0] == 0) android.os.Looper.dispatch(done);
+            });
+        }
+    }
+
     static String norm(String path) {
         if (path == null) return "/";
         String p = path.replace('\\', '/');
@@ -77,6 +96,15 @@ public final class Storage {
     public static byte[] readFile(String path) {
         Entry e = files.get(norm(path));
         return e == null ? null : e.data;
+    }
+
+    @JSBody(params = {"key", "d"}, script = "return DH.blobUrl(key, d);")
+    private static native String blob(String key, @JSByRef byte[] data);
+
+    /** A browser address for a stored file (videos of ads). */
+    public static String blobUrl(String path) {
+        Entry e = files.get(norm(path));
+        return e == null ? "" : blob(norm(path) + "@" + e.modified, e.data);
     }
 
     public static boolean exists(String path) { String p = norm(path); return files.containsKey(p) || dirs.contains(p) || p.equals("/"); }

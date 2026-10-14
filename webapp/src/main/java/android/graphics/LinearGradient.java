@@ -17,5 +17,5 @@ public class LinearGradient extends Shader {
         this(x0, y0, x1, y1, new int[] {color0, color1}, null, tile);
     }
 
-    @Override protected JSObject createStyle() { return divan.web.JS.linearGradient(x0, y0, x1, y1, colors, positions); }
+    @Override protected JSObject createStyle() { return divan.web.JS.linearGradient(x0, y0, x1, y1, colors, positions != null ? positions : new float[0]); }
 }

@@ -390,7 +390,7 @@ public class View implements Drawable.Callback {
         }
     }
 
-    void onRtlPropertiesChangedInternal() {}
+    protected void onRtlPropertiesChangedInternal() {}
 
     public int getRawLayoutDirection() { return mLayoutDirection; }
 
@@ -408,7 +408,7 @@ public class View implements Drawable.Callback {
         if (mTextDirection != textDirection) { mTextDirection = textDirection; onTextDirectionChanged(); requestLayout(); invalidate(); }
     }
 
-    void onTextDirectionChanged() {}
+    protected void onTextDirectionChanged() {}
 
     public int getRawTextDirection() { return mTextDirection; }
 
@@ -448,7 +448,8 @@ public class View implements Drawable.Callback {
         do {
             if (current.mViewFlagsVisibility != VISIBLE) return false;
             ViewParent parent = current.mParent;
-            if (parent == null) return false;
+            // the root of an attached window has the window (ViewRootImpl on Android) as its parent
+            if (parent == null) return current.mAttachInfo != null && current.mAttachInfo.rootView() == current;
             if (!(parent instanceof View)) return true;
             current = (View) parent;
         } while (current != null);
@@ -514,8 +515,12 @@ public class View implements Drawable.Callback {
     public int getSystemUiVisibility() { return mSystemUiVisibility; }
     public void setOverScrollMode(int mode) { mOverScrollMode = mode; }
     public int getOverScrollMode() { return mOverScrollMode; }
-    public void setVerticalScrollBarEnabled(boolean enabled) {}
-    public void setHorizontalScrollBarEnabled(boolean enabled) {}
+    // The web runtime draws no scroll bars (as the app turns them off everywhere).
+    private boolean vScrollBar = true, hScrollBar = true;
+    public void setVerticalScrollBarEnabled(boolean enabled) { vScrollBar = enabled; }
+    public void setHorizontalScrollBarEnabled(boolean enabled) { hScrollBar = enabled; }
+    public boolean isVerticalScrollBarEnabled() { return vScrollBar; }
+    public boolean isHorizontalScrollBarEnabled() { return hScrollBar; }
     public void setScrollBarStyle(int style) {}
     public void setVerticalFadingEdgeEnabled(boolean enabled) {}
     public void setHorizontalFadingEdgeEnabled(boolean enabled) {}
