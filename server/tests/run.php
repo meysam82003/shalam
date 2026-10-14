@@ -818,6 +818,96 @@ scenario('payment methods: store rules, panel control, ZarinPal through the Iran
     Http::$allowLocalHttpForTests = false;
 });
 
+scenario('Blupal card-to-card: sandbox/live key rules, server-side check, webhook only triggers a check', function () use ($root) {
+    freshIp();
+    Http::$allowLocalHttpForTests = true;
+    $port = 20000 + random_int(0, 999);
+    $state = "$root/fake-blupal.json";
+    file_put_contents($state, json_encode(['keys' => ['blu_test_KEY12345', 'blu_live_LIVE12345'], 'invoices' => [], 'next' => 1000]));
+    $proc = proc_open([PHP_BINARY, '-S', "127.0.0.1:$port", __DIR__ . '/fake_blupal.php'], [0 => ['pipe', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $pipes, null, ['FAKE_BLUPAL_STATE' => $state] + getenv());
+    for ($i = 0; $i < 50; $i++) { $s = @fsockopen('127.0.0.1', $port, $en, $es, 0.2); if ($s) { fclose($s); break; } usleep(100000); }
+    BlupalAdapter::$testBase = "http://127.0.0.1:$port/api";
+    $simulate = function (string $ref, string $scenario) use ($port) {
+        return Http::request('POST', "http://127.0.0.1:$port/api/v1/sandbox/invoices/$ref/simulate", ['X-API-Key: blu_test_KEY12345', 'Content-Type: application/json'], json_encode(['scenario' => $scenario]));
+    };
+    $ids = fn(string $ch, ?array $plan = null) => array_column(PayRegistry::methodsFor($ch, $plan), 'id');
+    Settings::set('pay_zarinpal', ['enabled' => false]);
+
+    Settings::set('pay_blupal', ['enabled' => true]);
+    check(PayRegistry::status('blupal', 'direct') === 'needs_config' && $ids('direct') === [], 'on without an API key: «needs settings», not shown');
+    Settings::setSecret('pay_blupal_api_key', 'blu_test_KEY12345');
+    check(PayRegistry::status('blupal', 'direct') === 'needs_config', 'a test key with the sandbox switch off is refused (no free Pro from test payments)');
+    check(PayRegistry::get('blupal')->test()[0] === 'warn', 'panel test explains the key/mode mismatch');
+    Settings::set('pay_blupal', ['enabled' => true, 'sandbox' => true]);
+    check($ids('direct') === ['blupal'], 'test key + sandbox on: shown in the site version');
+    check(PayRegistry::status('blupal', 'bazaar') === 'not_allowed' && PayRegistry::status('blupal', 'myket') === 'not_allowed' && $ids('bazaar') === ['bazaar'] && $ids('myket') === ['myket'], 'never in the Bazaar or Myket versions');
+    check(PayRegistry::get('blupal')->test()[0] === 'ok', 'panel connection test reaches Blupal and the key is accepted');
+    Settings::setSecret('pay_blupal_api_key', 'blu_test_WRONG9999');
+    check(PayRegistry::get('blupal')->test()[0] === 'bad', 'panel test reports a wrong key');
+    Settings::setSecret('pay_blupal_api_key', 'blu_live_LIVE12345');
+    check(PayRegistry::status('blupal', 'direct') === 'needs_config', 'a live key with the sandbox switch on is refused');
+    Settings::set('pay_blupal', ['enabled' => true, 'sandbox' => false]);
+    check($ids('direct') === ['blupal'] && PayRegistry::get('blupal')->test()[0] === 'ok', 'live key + sandbox off: ready');
+    Settings::set('pay_blupal', ['enabled' => true, 'sandbox' => true]);
+    Settings::setSecret('pay_blupal_api_key', 'blu_test_KEY12345');
+    $api = apiGet('v1/pay/methods', ['store' => 'direct', 'plan' => 'm1']);
+    check(array_column($api['methods'], 'id') === ['blupal'] && $api['methods'][0]['hosts'] === ['blupal.top'] && strpos(json_encode(apiGet('v1/pay/methods', ['store' => 'myket'])), 'blupal') === false, 'API: listed with its page host for the site version only');
+
+    [$u] = Users::register('blu_buyer', 'secret123');
+    throws(fn() => PayOrders::create($u, 'blupal', 'm1', 'myket'), 'method_unavailable', 'the Myket version cannot open a Blupal payment');
+    $m1 = Plans::byCode('m1');
+    $o = PayOrders::create($u, 'blupal', 'm1', 'direct');
+    $row = PayOrders::byCode($o['order']);
+    $inv = json_decode(file_get_contents($state), true)['invoices'][$row['gateway_ref']];
+    check(strpos($o['url'], 'https://blupal.top/sandbox/payment/') === 0 && $row['status'] === 'pending' && (int)$inv['amount'] === (int)$m1['base_price_toman'] * 10 && (int)$row['amount_rial'] === (int)$inv['amount'], 'order: invoice created with the server price in rials, Blupal page opened');
+    $row = PayOrders::settle($row);
+    check($row['status'] === 'pending' && !Entitlements::summary((int)$u['id'])['pro'], 'not paid yet: stays pending, nothing granted');
+    $r = PayWebhooks::handle('blupal', json_encode(['event' => 'payment.completed', 'invoice_id' => (int)$row['gateway_ref'], 'status' => 'PAID', 'amount' => (int)$row['amount_rial']]), [], '10.9.9.9');
+    check($r[0] === 200 && PayOrders::byCode($o['order'])['status'] === 'pending' && !Entitlements::summary((int)$u['id'])['pro'], 'forged webhook saying PAID: Blupal is asked, still unpaid, nothing granted');
+    touch("$state.down");
+    $row = PayOrders::settle(PayOrders::byCode($o['order']));
+    check($row['status'] === 'pending' && !Entitlements::summary((int)$u['id'])['pro'], 'Blupal down: no change');
+    unlink("$state.down");
+    $simulate($row['gateway_ref'], 'wrong_amount');
+    $row = PayOrders::settle(PayOrders::byCode($o['order']));
+    check($row['status'] === 'pending', 'payer sent a round/different amount: Blupal keeps it pending, so do we');
+    $simulate($row['gateway_ref'], 'success');
+    touch("$state.wrongamount");
+    $row = PayOrders::settle(PayOrders::byCode($o['order']));
+    check($row['status'] === 'failed' && !Entitlements::summary((int)$u['id'])['pro'], 'PAID but for another amount: refused, nothing granted');
+    unlink("$state.wrongamount");
+    touch("$state.wrongmode");
+    $row = PayOrders::settle(array_merge(PayOrders::byCode($o['order']), ['status' => 'pending']));
+    check($row['status'] === 'failed' && !Entitlements::summary((int)$u['id'])['pro'], 'PAID in the other mode (sandbox vs live): refused');
+    unlink("$state.wrongmode");
+    $row = PayOrders::settle(PayOrders::byCode($o['order']));
+    check($row['status'] === 'paid' && strpos((string)$row['ref_id'], 'BLU-') === 0 && Entitlements::summary((int)$u['id'])['expires_at'] === Clock::now() + 30 * 86400, 'paid: one month granted, Blupal transaction kept as the tracking code');
+    $r = PayWebhooks::handle('blupal', json_encode(['event' => 'payment.completed', 'invoice_id' => (int)$row['gateway_ref'], 'status' => 'PAID']), [], '10.9.9.9');
+    PayWebhooks::handle('blupal', json_encode(['event' => 'payment.completed', 'invoice_id' => (int)$row['gateway_ref'], 'status' => 'PAID']), [], '10.9.9.9');
+    PayOrders::settle(array_merge(PayOrders::byCode($o['order']), ['status' => 'pending']));
+    check($r[0] === 200 && (int)Db::value("SELECT COUNT(*) FROM {purchases} WHERE store = 'direct' AND user_id = ?", [$u['id']]) === 1 && Entitlements::summary((int)$u['id'])['expires_at'] === Clock::now() + 30 * 86400, 'repeated webhooks and checks: still one purchase, no extra time');
+    $o2 = PayOrders::create($u, 'blupal', 'm3', 'direct');
+    $r2 = PayOrders::byCode($o2['order']);
+    $w = PayWebhooks::handle('blupal', json_encode(['invoice_id' => (int)$r2['gateway_ref']]), [], '10.9.9.9');
+    check($w[0] === 200 && PayOrders::byCode($o2['order'])['status'] === 'pending', 'webhook before payment: checked, still pending');
+    $simulate($r2['gateway_ref'], 'success');
+    $w = PayWebhooks::handle('blupal', json_encode(['event' => 'payment.completed', 'invoice_id' => (int)$r2['gateway_ref'], 'status' => 'PAID']), [], '10.9.9.9');
+    check($w[0] === 200 && PayOrders::byCode($o2['order'])['status'] === 'paid' && Entitlements::summary((int)$u['id'])['expires_at'] === Clock::now() + 120 * 86400, 'real webhook after payment: settled at once, three months added after the current month');
+    check(PayWebhooks::handle('blupal', 'not json', [], '10.9.9.9')[0] === 400 && PayWebhooks::handle('blupal', json_encode(['invoice_id' => 'x;drop']), [], '10.9.9.9')[0] === 400 && PayWebhooks::handle('blupal', json_encode(['invoice_id' => 99999]), [], '10.9.9.9')[0] === 200, 'bad webhooks are rejected; unknown invoices are acknowledged and ignored');
+    $o3 = PayOrders::create($u, 'blupal', 'm6', 'direct');
+    $simulate(PayOrders::byCode($o3['order'])['gateway_ref'], 'cancel');
+    check(PayOrders::settle(PayOrders::byCode($o3['order']))['status'] === 'failed', 'cancelled invoice: failed');
+    $o4 = PayOrders::create($u, 'blupal', 'm6', 'direct');
+    $simulate(PayOrders::byCode($o4['order'])['gateway_ref'], 'expire');
+    check(PayOrders::settle(PayOrders::byCode($o4['order']))['status'] === 'failed', 'expired invoice: failed');
+    Settings::set('pay_blupal', ['enabled' => true, 'sandbox' => true, 'kill' => true]);
+    check($ids('direct') === [], 'emergency stop removes Blupal at once');
+    Settings::set('pay_blupal', ['enabled' => false]);
+    BlupalAdapter::$testBase = null;
+    proc_terminate($proc); proc_close($proc);
+    Http::$allowLocalHttpForTests = false;
+});
+
 // ---------------------------------------------------------------- report
 echo "\n" . ($failed ? "FAILED " . count($failed) . " of " . ($passed + count($failed)) . " checks\n" . implode("\n", $failed) . "\n" : "ALL $passed CHECKS PASSED\n");
 foreach ($pdo->query("SHOW TABLES LIKE 'dvt\\_%'")->fetchAll(PDO::FETCH_COLUMN) as $t) $pdo->exec("DROP TABLE `$t`");

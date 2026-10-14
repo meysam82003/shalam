@@ -634,7 +634,7 @@ object ProSync {
     class PayMethod(val id: String, val kind: String, val title: String, val description: String, val hosts: Set<String>)
 
     /** Hosts a web payment may ever open, whatever the server says (the server can only narrow this). */
-    val WEB_PAY_HOSTS = setOf("payment.zarinpal.com", "sandbox.zarinpal.com", "www.zarinpal.com")
+    val WEB_PAY_HOSTS = setOf("payment.zarinpal.com", "sandbox.zarinpal.com", "www.zarinpal.com", "blupal.top")
 
     /**
      * Methods to show for a plan. An older server without the list keeps the store's own billing (store builds).

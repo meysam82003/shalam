@@ -54,6 +54,8 @@ interface PayAdapter
     /** Hosts the app may open for this method (mirrored in the app; anything else is refused). */
     public function payHosts(): array;
     public function supportsRefund(): bool;
+    /** Whether the gateway itself accepts this amount (toman); panel limits come on top. */
+    public function accepts(int $toman): bool;
 }
 
 /** The store billing built into the Bazaar and Myket apps (the purchase itself runs through Purchases::verify). */
@@ -73,6 +75,7 @@ final class StorePayAdapter implements PayAdapter
     public function check(array $order): PayCheck { return new PayCheck(PayCheck::UNAVAILABLE, 'store'); }
     public function payHosts(): array { return []; }
     public function supportsRefund(): bool { return false; }
+    public function accepts(int $toman): bool { return true; }
 }
 
 /**
@@ -98,6 +101,7 @@ final class ZarinpalAdapter implements PayAdapter
     }
     public function payHosts(): array { return ['payment.zarinpal.com', 'sandbox.zarinpal.com', 'www.zarinpal.com']; }
     public function supportsRefund(): bool { return false; }
+    public function accepts(int $toman): bool { return $toman >= 1000; }
 
     /** One call along the chosen route; returns the decoded JSON and the HTTP status. */
     private function call(string $what, array $body): array
@@ -150,12 +154,107 @@ final class ZarinpalAdapter implements PayAdapter
     }
 }
 
+/**
+ * Blupal (blupal.top, docs: blupal.top/documentation): card-to-card invoices confirmed by Blupal. The buyer pays the
+ * exact «final amount» shown on Blupal's page (amount + a few rials that identify the payment). The server creates
+ * the invoice with the order's own amount and decides only by asking Blupal again (GET invoice): status PAID, the
+ * same invoice, the same amount and the same mode (a test key never confirms a live order and the reverse).
+ * The webhook is not signed, so it only triggers that same check.
+ */
+final class BlupalAdapter implements PayAdapter
+{
+    /** Tests point the adapter at a local fake Blupal. */
+    public static ?string $testBase = null;
+
+    public function id(): string { return 'blupal'; }
+    public function title(): string { return 'کارت به کارت (بلوپال)'; }
+    public function description(): string { return 'واریز کارت به کارت با شماره کارت و مبلغ دقیقی که صفحهٔ بلوپال نشان می‌دهد؛ تأیید خودکار.'; }
+    public function kind(): string { return 'web'; }
+    public function channels(): array { return ['direct']; }
+    public function fields(): array { return ['api_key' => ['کلید API بلوپال (blu_live_… یا blu_test_…)', true]]; }
+    public function payHosts(): array { return ['blupal.top']; }
+    public function supportsRefund(): bool { return false; }
+    /** Blupal accepts 100,000 to 500,000,000 rials. */
+    public function accepts(int $toman): bool { return $toman * 10 >= 100000 && $toman * 10 <= 500000000; }
+
+    private function key(): string { return trim(Settings::secret('pay_blupal_api_key')); }
+    private function testKey(): bool { return strpos($this->key(), 'blu_test_') === 0; }
+    private function base(): string { return self::$testBase ?? 'https://blupal.top/api'; }
+
+    /** The key's mode must match the panel's sandbox switch, so a test key can never sell real subscriptions. */
+    public function configured(): bool
+    {
+        if (!preg_match('/^blu_(live|test)_[A-Za-z0-9_\-]{6,}$/', $this->key())) return false;
+        return $this->testKey() === (bool)(PayRegistry::cfg('blupal')['sandbox'] ?? false);
+    }
+
+    private function mode(): string { return $this->testKey() ? 'sandbox' : 'live'; }
+
+    private function call(string $method, string $path, ?array $body = null): array
+    {
+        $headers = ['X-API-Key: ' . $this->key(), 'Accept: application/json'];
+        if ($body !== null) $headers[] = 'Content-Type: application/json';
+        $r = Http::request($method, $this->base() . $path, $headers, $body === null ? null : json_encode($body), 20);
+        $j = json_decode($r['body'], true);
+        return [(int)$r['status'], is_array($j) ? $j : null, (string)$r['error']];
+    }
+
+    public function test(): array
+    {
+        if (!preg_match('/^blu_(live|test)_/', $this->key())) return ['warn', 'کلید API بلوپال ثبت نشده است.'];
+        if (!$this->configured()) return ['warn', $this->testKey() ? 'کلید آزمایشی (blu_test) است؛ برای استفاده «حالت آزمایشی» را روشن کنید.' : 'کلید واقعی (blu_live) است؛ «حالت آزمایشی» را خاموش کنید.'];
+        // An invoice that does not exist: «not found» proves the address and the key; «unauthorized» means a wrong key.
+        [$st, $j, $err] = $this->call('GET', '/v1/invoices/999999999');
+        if ($st === 0) return ['bad', 'به بلوپال نرسید: ' . $err];
+        $code = (string)($j['error'] ?? '');
+        if ($st === 401 || $code === 'unauthorized') return ['bad', 'بلوپال کلید API را نپذیرفت.'];
+        if ($st === 403 || $code === 'mode_mismatch') return ['ok', 'ارتباط با بلوپال برقرار است (' . ($this->testKey() ? 'آزمایشی' : 'واقعی') . ').'];
+        if ($st === 404 || $code === 'not_found' || $code === 'invalid_invoice_id') return ['ok', 'ارتباط با بلوپال برقرار است (' . ($this->testKey() ? 'آزمایشی' : 'واقعی') . ').'];
+        return ['bad', 'پاسخ نامشخص بلوپال (HTTP ' . $st . ($code !== '' ? '، ' . $code : '') . ').'];
+    }
+
+    public function create(array $order, array $plan, string $callback): array
+    {
+        $amount = (int)$order['amount_rial'];
+        [$st, $j, $err] = $this->call('POST', '/v1/invoices/create', ['amount' => $amount]);
+        if ($st === 0 || $st >= 500) throw new ApiError('gateway_down', 'درگاه پرداخت در دسترس نیست؛ کمی بعد دوباره تلاش کنید.', 503);
+        $id = $j['invoice_id'] ?? null;
+        $link = (string)($j['payment_link'] ?? '');
+        $ok = ($j['success'] ?? false) === true && is_int($id) && $id > 0 && (int)($j['amount'] ?? -1) === $amount
+            && ($j['mode'] ?? '') === $this->mode() && strtoupper((string)($j['status'] ?? '')) === 'PENDING';
+        if (!$ok) throw new ApiError('gateway_refused', 'درگاه پرداخت درخواست را نپذیرفت' . (isset($j['error']) ? ' (' . preg_replace('/[^a-z_]/', '', (string)$j['error']) . ')' : '') . '.', 502);
+        return ['ref' => (string)$id, 'url' => $link];
+    }
+
+    public function check(array $order): PayCheck
+    {
+        $ref = (string)$order['gateway_ref'];
+        if (!preg_match('/^[1-9][0-9]{0,18}$/', $ref)) return new PayCheck(PayCheck::FAILED, 'شناسهٔ فاکتور بلوپال نامعتبر است.');
+        [$st, $j, $err] = $this->call('GET', '/v1/invoices/' . $ref);
+        if ($st === 0 || $st >= 500 || $st === 429 || $st === 401) return new PayCheck(PayCheck::UNAVAILABLE, 'بلوپال پاسخ نداد: ' . ($err ?: 'HTTP ' . $st));
+        if (!is_array($j) || ($j['success'] ?? false) !== true) {
+            $code = (string)($j['error'] ?? '');
+            return new PayCheck(PayCheck::PENDING, 'پاسخ بلوپال: ' . ($code !== '' ? preg_replace('/[^a-z_]/', '', $code) : 'HTTP ' . $st));
+        }
+        if ((string)($j['invoice_id'] ?? '') !== $ref) return new PayCheck(PayCheck::PENDING, 'فاکتور دیگری برگشت.');
+        if (($j['mode'] ?? '') !== $this->mode()) return new PayCheck(PayCheck::FAILED, 'حالت فاکتور با کلید فعلی یکی نیست.');
+        $status = strtoupper((string)($j['status'] ?? ''));
+        if ($status === 'PAID') {
+            if ((int)($j['amount'] ?? -1) !== (int)$order['amount_rial']) return new PayCheck(PayCheck::FAILED, 'مبلغ فاکتور با سفارش یکی نیست.');
+            $tx = isset($j['transaction_id']) ? (string)$j['transaction_id'] : null;
+            return new PayCheck(PayCheck::PAID, '', $tx !== null && $tx !== '' ? 'BLU-' . preg_replace('/[^0-9A-Za-z_-]/', '', $tx) : 'BLU-INV-' . $ref);
+        }
+        if ($status === 'EXPIRED' || $status === 'CANCELED' || $status === 'CANCELLED') return new PayCheck(PayCheck::FAILED, 'فاکتور بلوپال ' . ($status === 'EXPIRED' ? 'منقضی' : 'لغو') . ' شد.');
+        return new PayCheck(PayCheck::PENDING, 'در انتظار واریز.');
+    }
+}
+
 final class PayRegistry
 {
     /** Order of display when the panel sets none. */
     public static function adapters(): array
     {
-        return ['bazaar' => new StorePayAdapter('bazaar'), 'myket' => new StorePayAdapter('myket'), 'zarinpal' => new ZarinpalAdapter()];
+        return ['bazaar' => new StorePayAdapter('bazaar'), 'myket' => new StorePayAdapter('myket'), 'zarinpal' => new ZarinpalAdapter(), 'blupal' => new BlupalAdapter()];
     }
 
     public static function get(string $id): ?PayAdapter { return self::adapters()[$id] ?? null; }
@@ -193,6 +292,7 @@ final class PayRegistry
             if ($plan !== null) {
                 $price = self::price($plan, $channel);
                 if (($c['min'] !== null && $price < (int)$c['min']) || ($c['max'] !== null && $price > (int)$c['max'])) continue;
+                if (!$a->accepts($price)) continue;
             }
             $out[] = ['id' => $id, 'kind' => $a->kind(), 'title' => $a->title(), 'description' => $a->description(), 'sort' => (int)$c['sort'], 'hosts' => $a->payHosts()];
         }
@@ -317,5 +417,35 @@ final class PayOrders
     public static function publicView(array $o): array
     {
         return ['order' => $o['code'], 'status' => $o['status'], 'method' => $o['method'], 'amount' => (int)$o['amount_toman'], 'ref_id' => $o['ref_id']];
+    }
+}
+
+/** Webhooks of the web gateways: they only point at an invoice; settling always asks the gateway again. */
+final class PayWebhooks
+{
+    /** @return array{0:int,1:array} HTTP status and JSON body. */
+    public static function handle(string $method, string $raw, array $headers, string $ip): array
+    {
+        if (!RateLimit::hit('webhook:' . $ip, 300, 3600)) return [429, ['received' => false]];
+        $j = json_decode($raw, true);
+        if (!is_array($j)) return [400, ['received' => false, 'error' => 'invalid_payload']];
+        switch ($method) {
+            case 'blupal':
+                $ref = $j['invoice_id'] ?? null;
+                if (!is_int($ref) && !(is_string($ref) && ctype_digit($ref))) return [400, ['received' => false, 'error' => 'invalid_payload']];
+                return self::settleByRef('blupal', (string)$ref);
+            default:
+                return [404, ['received' => false]];
+        }
+    }
+
+    private static function settleByRef(string $method, string $ref): array
+    {
+        $o = Db::one('SELECT * FROM {pay_orders} WHERE method = ? AND gateway_ref = ?', [$method, $ref]);
+        if ($o === null) return [200, ['received' => true]];
+        if (in_array($o['status'], ['pending', 'failed', 'expired', 'created'], true) && RateLimit::hit('webhook_order:' . $o['id'], 20, 3600)) {
+            try { PayOrders::settle($o); } catch (Throwable $e) { /* the app and the cron ask again */ }
+        }
+        return [200, ['received' => true]];
     }
 }

@@ -807,7 +807,7 @@ final class ConfigPages
             ?>
             <div class="alert info">
               هر نسخهٔ برنامه فقط روش‌هایی را می‌بیند که <b>هم</b> مجاز باشند <b>هم</b> آماده. طبق قوانین کافه‌بازار و مایکت، فروش اشتراک و قابلیت دیجیتال در نسخه‌های این دو فروشگاه فقط با پرداخت درون‌برنامه‌ای همان فروشگاه است؛
-              درگاه‌های وب (مثل زرین‌پال) فقط در <b>نسخهٔ سایت</b> (APK مستقیم که در هیچ فروشگاهی منتشر نمی‌شود) نمایش داده می‌شوند و این قانون از پنل قابل تغییر نیست.
+              درگاه‌های وب (زرین‌پال، بلوپال و …) فقط در <b>نسخهٔ سایت</b> (APK مستقیم که در هیچ فروشگاهی منتشر نمی‌شود) نمایش داده می‌شوند و این قانون از پنل قابل تغییر نیست.
               <br>روشن کردن یک روش بدون تنظیمات درست، آن را در برنامه نشان نمی‌دهد؛ وضعیتش «نیازمند تنظیمات» می‌ماند. همهٔ تغییرها بدون APK تازه در برنامه اعمال می‌شوند.
             </div>
             <?php foreach ($adapters as $id => $a): $c = PayRegistry::cfg($id); $st = (array)Settings::get('pay_status_' . $id, []); ?>
@@ -830,8 +830,15 @@ final class ConfigPages
                 <?php if ($a->kind() === 'web'): ?>
                   <div class="row">
                     <label class="check" style="flex:0;white-space:nowrap"><input type="checkbox" name="sandbox" <?= $c['sandbox'] ? 'checked' : '' ?>> حالت آزمایشی (Sandbox)</label>
+                    <?php if ($id === 'zarinpal'): ?>
                     <div><label>مسیر ارتباط</label><select name="route"><option value="bridge">از راه واسط ایران (پیشنهادی)</option><option value="direct"<?= $c['route'] === 'direct' ? ' selected' : '' ?>>مستقیم از هلند</option></select></div>
+                    <?php endif; ?>
                   </div>
+                  <?php if ($id === 'blupal'): ?>
+                    <p class="hint">بلوپال از هلند مستقیم در دسترس است. کلید <span class="ltr">blu_test_…</span> فقط با «حالت آزمایشی» و کلید <span class="ltr">blu_live_…</span> فقط بدون آن کار می‌کند.
+                    نشانی Webhook را در پنل بلوپال (مدیریت API Key) ثبت کنید: <b class="ltr"><?= e(App::baseUrl() . '/pay/webhook.php?m=blupal') ?></b> — بدون Webhook هم پرداخت‌ها با استعلام برنامه و Cron تأیید می‌شوند.</p>
+                  <?php endif; ?>
+                  <?php if ($c['sandbox']): ?><div class="alert warn">حالت آزمایشی روشن است: در این حالت پرداخت بدون پول واقعی شبیه‌سازی می‌شود و هر کاربری می‌تواند Pro آزمایشی بگیرد. فقط برای تست؛ پیش از انتشار خاموش کنید.</div><?php endif; ?>
                 <?php endif; ?>
                 <div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap">
                   <div style="flex:3"><input type="text" name="reason" placeholder="یادداشت (اختیاری)"></div>

@@ -25,6 +25,11 @@ class ProTest {
             .put("exp", exp ?: JSONObject.NULL).put("grace", exp ?: JSONObject.NULL).put("iat", now).put("offline_until", offline)
             .put("features", JSONObject().put("cloud_backup", JSONObject().put("mode", "pro").put("allowed", true)))
 
+    @Test fun webPaymentPagesAreLimitedToKnownGateways() {
+        assertTrue("blupal.top" in ProSync.WEB_PAY_HOSTS && "payment.zarinpal.com" in ProSync.WEB_PAY_HOSTS)
+        assertFalse("blupal.top.evil.com" in ProSync.WEB_PAY_HOSTS || "example.com" in ProSync.WEB_PAY_HOSTS)
+    }
+
     @Test fun base64RoundTrip() {
         val data = ByteArray(300) { (it * 37).toByte() }
         assertTrue(data.contentEquals(B64.decode(B64.encode(data))))
