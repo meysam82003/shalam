@@ -162,6 +162,12 @@ interface PayEndpointAdapter
 
     /** Documented domains of the payment page, used while the panel field is empty. */
     public function defaultHosts(): array;
+
+    /** Documented path of each call under the API address ({id} = the invoice), editable in the panel. */
+    public function defaultPaths(): array;
+
+    /** Fields of a new invoice that Divan always sets itself (extra panel fields may not replace them). */
+    public function coreFields(): array;
 }
 
 /**
@@ -203,6 +209,40 @@ final class PayEndpoint
         $v = self::parseHosts((string)(PayRegistry::cfg($a->id())['hosts'] ?? ''));
         return $v ? $v : $a->defaultHosts();
     }
+
+    /** A path under the API address: plain segments, «{id}» for the invoice; nothing that climbs or adds a query. */
+    public static function validPath(string $p, bool $withId): bool
+    {
+        return strlen($p) <= 120 && (bool)preg_match('#^(/([A-Za-z0-9_.-]{1,60}|\{id\})){1,6}$#', $p) && strpos($p, '..') === false
+            && (substr_count($p, '{id}') === ($withId ? 1 : 0));
+    }
+
+    /** The path of one call ({id} filled in, URL-encoded), from the panel or the documented default. */
+    public static function path(PayEndpointAdapter $a, string $op, string $id = ''): string
+    {
+        $d = $a->defaultPaths();
+        $v = trim((string)(((array)(PayRegistry::cfg($a->id())['paths'] ?? []))[$op] ?? ''));
+        $p = $v !== '' && self::validPath($v, strpos($d[$op], '{id}') !== false) ? $v : $d[$op];
+        return str_replace('{id}', rawurlencode($id), $p);
+    }
+
+    /** «key=value» lines → extra fields of a new invoice (max 10; Divan's own fields cannot be replaced), or null if malformed. */
+    public static function parseExtra(string $s, array $core): ?array
+    {
+        $out = [];
+        foreach (preg_split('/\r?\n/', trim($s), -1, PREG_SPLIT_NO_EMPTY) as $line) {
+            $line = trim($line);
+            if ($line === '') continue;
+            if (!preg_match('/^([a-z][a-z0-9_]{0,39})\s*=\s*(.{0,200})$/u', $line, $m) || in_array($m[1], $core, true)) return null;
+            $out[$m[1]] = trim($m[2]);
+        }
+        return count($out) <= 10 ? $out : null;
+    }
+
+    public static function extra(PayEndpointAdapter $a): array
+    {
+        return self::parseExtra((string)(PayRegistry::cfg($a->id())['extra'] ?? ''), $a->coreFields()) ?? [];
+    }
 }
 
 /**
@@ -222,6 +262,8 @@ final class BlupalAdapter implements PayAdapter, PayEndpointAdapter
     public function fields(): array { return ['api_key' => ['کلید API بلوپال (blu_live_… یا blu_test_…)', true]]; }
     public function defaultBase(): string { return 'https://blupal.top/api/v1'; }
     public function defaultHosts(): array { return ['blupal.top']; }
+    public function defaultPaths(): array { return ['create' => '/invoices/create', 'get' => '/invoices/{id}']; }
+    public function coreFields(): array { return ['amount']; }
     public function payHosts(): array { return PayEndpoint::hosts($this); }
     public function supportsRefund(): bool { return false; }
     /** Blupal accepts 100,000 to 500,000,000 rials. */
@@ -254,7 +296,7 @@ final class BlupalAdapter implements PayAdapter, PayEndpointAdapter
         if (!preg_match('/^blu_(live|test)_/', $this->key())) return ['warn', 'کلید API بلوپال ثبت نشده است.'];
         if (!$this->configured()) return ['warn', $this->testKey() ? 'کلید آزمایشی (blu_test) است؛ برای استفاده «حالت آزمایشی» را روشن کنید.' : 'کلید واقعی (blu_live) است؛ «حالت آزمایشی» را خاموش کنید.'];
         // An invoice that does not exist: «not found» proves the address and the key; «unauthorized» means a wrong key.
-        [$st, $j, $err] = $this->call('GET', '/invoices/999999999');
+        [$st, $j, $err] = $this->call('GET', PayEndpoint::path($this, 'get', '999999999'));
         if ($st === 0) return ['bad', 'به بلوپال نرسید: ' . $err];
         $code = (string)($j['error'] ?? '');
         if ($st === 401 || $code === 'unauthorized') return ['bad', 'بلوپال کلید API را نپذیرفت.'];
@@ -266,7 +308,7 @@ final class BlupalAdapter implements PayAdapter, PayEndpointAdapter
     public function create(array $order, array $plan, string $callback): array
     {
         $amount = (int)$order['amount_rial'];
-        [$st, $j, $err] = $this->call('POST', '/invoices/create', ['amount' => $amount]);
+        [$st, $j, $err] = $this->call('POST', PayEndpoint::path($this, 'create'), PayEndpoint::extra($this) + ['amount' => $amount]);
         if ($st === 0 || $st >= 500) throw new ApiError('gateway_down', 'درگاه پرداخت در دسترس نیست؛ کمی بعد دوباره تلاش کنید.', 503);
         $id = $j['invoice_id'] ?? null;
         $link = (string)($j['payment_link'] ?? '');
@@ -280,7 +322,7 @@ final class BlupalAdapter implements PayAdapter, PayEndpointAdapter
     {
         $ref = (string)$order['gateway_ref'];
         if (!preg_match('/^[1-9][0-9]{0,18}$/', $ref)) return new PayCheck(PayCheck::FAILED, 'شناسهٔ فاکتور بلوپال نامعتبر است.');
-        [$st, $j, $err] = $this->call('GET', '/invoices/' . $ref);
+        [$st, $j, $err] = $this->call('GET', PayEndpoint::path($this, 'get', $ref));
         if ($st === 0 || $st >= 500 || $st === 429 || $st === 401) return new PayCheck(PayCheck::UNAVAILABLE, 'بلوپال پاسخ نداد: ' . ($err ?: 'HTTP ' . $st));
         if (!is_array($j) || ($j['success'] ?? false) !== true) {
             $code = (string)($j['error'] ?? '');
@@ -319,6 +361,8 @@ final class AbanAdapter implements PayAdapter, PayEndpointAdapter
     }
     public function defaultBase(): string { return 'https://api.abangateway.ir/api/v1'; }
     public function defaultHosts(): array { return ['abangateway.ir']; }
+    public function defaultPaths(): array { return ['create' => '/invoices', 'get' => '/invoices/{id}', 'verify' => '/invoices/{id}/verify']; }
+    public function coreFields(): array { return ['amount_rial', 'order_id', 'callback_url', 'return_url']; }
     public function payHosts(): array { return PayEndpoint::hosts($this); }
     public function supportsRefund(): bool { return false; }
     public function accepts(int $toman): bool { return $toman >= 1000 && $toman <= 200000000; }
@@ -336,10 +380,11 @@ final class AbanAdapter implements PayAdapter, PayEndpointAdapter
     }
 
     /** One call along the chosen route: [HTTP status (0 = not reached), decoded JSON, error text]. */
-    private function call(string $method, string $path, ?array $body = null): array
+    private function call(string $method, string $op, string $id = '', ?array $body = null): array
     {
+        $path = PayEndpoint::path($this, $op, $id);
         if ($this->route() === 'bridge') {
-            $r = PaymentBridge::call('aban.call', ['base' => PayEndpoint::base($this), 'api_token' => $this->token(), 'method' => $method, 'path' => $path] + ($body !== null ? ['body' => $body] : []));
+            $r = PaymentBridge::call('aban.call', ['base' => PayEndpoint::base($this), 'api_token' => $this->token(), 'op' => $op, 'method' => $method, 'path' => $path] + ($body !== null ? ['body' => $body] : []));
             if ($r['kind'] === 'store') return [(int)$r['status'], is_array($r['body'] ?? null) ? $r['body'] : null, ''];
             if ($r['kind'] === 'bad_request') return [0, null, 'واسط ایران درخواست آبان را نپذیرفت (' . (string)($r['error'] ?? '') . ')؛ اگر واسط قدیمی است، نسخهٔ تازهٔ واسط را نصب کنید.'];
             return [0, null, (string)($r['error'] ?? $r['kind'])];
@@ -359,7 +404,7 @@ final class AbanAdapter implements PayAdapter, PayEndpointAdapter
         if ($this->testToken() !== $this->sandbox()) return ['warn', $this->testToken() ? 'توکن آزمایشی (ag_test) است؛ برای استفاده «حالت آزمایشی» را روشن کنید.' : 'توکن واقعی (ag_live) است؛ «حالت آزمایشی» را خاموش کنید.'];
         if (!$this->configured()) return ['warn', $this->route() === 'bridge' ? 'واسط پرداخت ایران تنظیم نشده است (یا مسیر را «مستقیم» کنید).' : 'توکن آبان معتبر به نظر نمی‌رسد.'];
         // An invoice that does not exist: «not found» proves the address, the route and the token.
-        [$st, $j, $err] = $this->call('GET', '/invoices/inv_divanprobe000000000');
+        [$st, $j, $err] = $this->call('GET', 'get', 'inv_divanprobe000000000');
         if ($st === 0) return ['bad', 'به آبان نرسید: ' . $err];
         if ($st === 401) return ['bad', 'آبان توکن API را نپذیرفت.'];
         if ($st === 404 || $st === 422 || self::code($j) === 'invoice_not_found') return ['ok', 'ارتباط با آبان برقرار است (' . ($this->testToken() ? 'آزمایشی' : 'واقعی') . '، ' . ($this->route() === 'bridge' ? 'از راه واسط ایران' : 'مستقیم') . ').'];
@@ -369,11 +414,10 @@ final class AbanAdapter implements PayAdapter, PayEndpointAdapter
     public function create(array $order, array $plan, string $callback): array
     {
         $amount = (int)$order['amount_rial'];
-        [$st, $j, $err] = $this->call('POST', '/invoices', [
+        [$st, $j, $err] = $this->call('POST', 'create', '', [
             'amount_rial' => $amount, 'order_id' => (string)$order['code'],
             'callback_url' => App::baseUrl() . '/pay/webhook.php?m=aban', 'return_url' => $callback,
-            'description' => 'دیوان امتیاز — ' . $plan['title'], 'expiry_minutes' => 60,
-        ]);
+        ] + PayEndpoint::extra($this) + ['description' => 'دیوان امتیاز — ' . $plan['title'], 'expiry_minutes' => 60]);
         if ($st === 0 || $st >= 500 || $st === 429) throw new ApiError('gateway_down', 'درگاه پرداخت در دسترس نیست؛ کمی بعد دوباره تلاش کنید.', 503);
         $id = (string)($j['invoice_id'] ?? '');
         $ok = ($st === 200 || $st === 201) && preg_match('/^[A-Za-z0-9_-]{4,80}$/', $id) && (int)($j['amount_rial'] ?? -1) === $amount
@@ -387,7 +431,7 @@ final class AbanAdapter implements PayAdapter, PayEndpointAdapter
     {
         $ref = (string)$order['gateway_ref'];
         if (!preg_match('/^[A-Za-z0-9_-]{4,80}$/', $ref)) return new PayCheck(PayCheck::FAILED, 'شناسهٔ فاکتور آبان نامعتبر است.');
-        [$st, $j, $err] = $this->call('GET', '/invoices/' . $ref);
+        [$st, $j, $err] = $this->call('GET', 'get', $ref);
         if ($st === 0 || $st >= 500 || $st === 429 || $st === 401 || $st === 403) return new PayCheck(PayCheck::UNAVAILABLE, 'آبان پاسخ نداد: ' . ($err ?: 'HTTP ' . $st));
         if ($st === 404) return new PayCheck(PayCheck::FAILED, 'فاکتور در آبان پیدا نشد.');
         if ($st !== 200 || !is_array($j) || (string)($j['invoice_id'] ?? '') !== $ref) return new PayCheck(PayCheck::PENDING, 'پاسخ نامشخص آبان (HTTP ' . $st . ').');
@@ -398,7 +442,7 @@ final class AbanAdapter implements PayAdapter, PayEndpointAdapter
         if ($status === 'expired' || $status === 'cancelled' || $status === 'canceled') return new PayCheck(PayCheck::FAILED, 'فاکتور آبان ' . ($status === 'expired' ? 'منقضی' : 'لغو') . ' شد.');
         if ($status !== 'paid') return new PayCheck(PayCheck::PENDING, 'در انتظار واریز.');
         // Paid: the one-shot verify (409 «already verified» means an earlier check of ours verified it).
-        [$vs, $v, $verr] = $this->call('POST', '/invoices/' . $ref . '/verify');
+        [$vs, $v, $verr] = $this->call('POST', 'verify', $ref);
         if ($vs === 0 || $vs >= 500 || $vs === 429) return new PayCheck(PayCheck::UNAVAILABLE, 'تأیید آبان پاسخ نداد: ' . ($verr ?: 'HTTP ' . $vs));
         if ($vs === 409 && self::code($v) === 'already_verified') return new PayCheck(PayCheck::PAID, '', 'ABAN-' . $ref);
         if ($vs === 200 && ($v['verified'] ?? false) === true) {
@@ -424,7 +468,7 @@ final class PayRegistry
     /** Panel settings of one method: enabled, sort, min, max (toman), sandbox, route, kill, api_base and hosts (web gateways). */
     public static function cfg(string $id): array
     {
-        $d = ['enabled' => in_array($id, ['bazaar', 'myket'], true), 'sort' => 0, 'min' => null, 'max' => null, 'sandbox' => false, 'route' => 'bridge', 'kill' => false, 'api_base' => '', 'hosts' => ''];
+        $d = ['enabled' => in_array($id, ['bazaar', 'myket'], true), 'sort' => 0, 'min' => null, 'max' => null, 'sandbox' => false, 'route' => 'bridge', 'kill' => false, 'api_base' => '', 'hosts' => '', 'paths' => [], 'extra' => ''];
         return (array)Settings::get('pay_' . $id, []) + $d;
     }
 
@@ -456,7 +500,11 @@ final class PayRegistry
                 if (($c['min'] !== null && $price < (int)$c['min']) || ($c['max'] !== null && $price > (int)$c['max'])) continue;
                 if (!$a->accepts($price)) continue;
             }
-            $out[] = ['id' => $id, 'kind' => $a->kind(), 'title' => $a->title(), 'description' => $a->description(), 'sort' => (int)$c['sort'], 'hosts' => $a->payHosts()];
+            // Divan's own page before payment (pay/start.php) is on this server.
+            $own = strtolower((string)parse_url(App::baseUrl(), PHP_URL_HOST));
+            $hosts = $a->payHosts();
+            if ($a->kind() === 'web' && $own !== '' && !in_array($own, $hosts, true)) $hosts[] = $own;
+            $out[] = ['id' => $id, 'kind' => $a->kind(), 'title' => $a->title(), 'description' => $a->description(), 'sort' => (int)$c['sort'], 'hosts' => $hosts];
         }
         usort($out, fn($x, $y) => $x['sort'] <=> $y['sort']);
         return $out;
@@ -487,7 +535,11 @@ final class PayOrders
         return Db::one('SELECT * FROM {pay_orders} WHERE code = ?', [$code]);
     }
 
-    public static function create(array $user, string $method, string $planCode, string $channel): array
+    /**
+     * Opens a web payment. With $divanPage the buyer first sees Divan's own page (amount, notes, offers) which then
+     * leads to the gateway; older apps get the gateway's page directly.
+     */
+    public static function create(array $user, string $method, string $planCode, string $channel, bool $divanPage = false): array
     {
         if (!in_array($channel, self::CHANNELS, true)) throw new ApiError('bad_channel', 'نسخهٔ برنامه نامعتبر است.');
         if (!RateLimit::hit('payorder:' . $user['id'], 20, 3600)) throw new ApiError('rate_limited', 'درخواست‌های پرداخت زیاد است؛ کمی بعد.', 429);
@@ -517,10 +569,11 @@ final class PayOrders
         }
         $host = strtolower((string)parse_url($r['url'], PHP_URL_HOST));
         if (stripos($r['url'], 'https://') !== 0 || !in_array($host, $a->payHosts(), true)) throw new ApiError('gateway_url', 'نشانی پرداخت نامعتبر است.', 502);
-        Db::update('pay_orders', ['status' => 'pending', 'gateway_ref' => $r['ref'], 'updated_at' => Clock::sql()], 'id = ?', [$id]);
+        Db::update('pay_orders', ['status' => 'pending', 'gateway_ref' => $r['ref'], 'pay_url' => mb_substr($r['url'], 0, 600), 'updated_at' => Clock::sql()], 'id = ?', [$id]);
         PayRegistry::note($method, true);
         Audit::log('user', (int)$user['id'], 'pay_order_created', 'pay_order', $id, '', null, ['method' => $method, 'plan' => $plan['code'], 'amount' => $toman]);
-        return ['order' => $code, 'url' => $r['url'], 'amount' => $toman, 'method' => $method];
+        $url = $divanPage ? App::baseUrl() . '/pay/start.php?o=' . $code : $r['url'];
+        return ['order' => $code, 'url' => $url, 'return' => App::baseUrl() . '/pay/return.php?o=' . $code, 'amount' => $toman, 'method' => $method];
     }
 
     /**

@@ -17,13 +17,13 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 
 /**
- * The gateway's payment page inside the app (site version): no address bar and no outside browser, so the buyer
- * stays in Divan and never sees a link. Only the first page is checked (HTTPS, a domain the server listed for the
- * method); the gateway may then move through its own and the bank's pages. The page decides nothing: while it is
- * open the server is asked about the order every few seconds, and our return page or a divan:// link closes it.
- * When it closes, the Pro page asks the server once more and shows the result.
+ * The payment inside the app (site version): no address bar and no outside browser, so the buyer stays in Divan and
+ * never sees a link. It starts on Divan's own page before payment (amount, notes), goes on to the gateway and the
+ * bank, and ends on Divan's result page. Only the first page is checked (HTTPS, a domain the server listed). The
+ * pages decide nothing: while they are open the server is asked about the order every few seconds; once it is paid
+ * the result page is shown, and its «back to Divan» link (divan://) closes the view. The Pro page then asks again.
  */
-class PayBrowserScreen(host: MainActivity, private val url: String, private val methodTitle: String) : Screen(host) {
+class PayBrowserScreen(host: MainActivity, private val url: String, private val methodTitle: String, private val back: String? = null) : Screen(host) {
     private var web: WebView? = null
     private var bar: View? = null
     private var closed = false
@@ -92,7 +92,8 @@ class PayBrowserScreen(host: MainActivity, private val url: String, private val 
                 if (request.isForMainFrame) route(request.url.toString()) else false
 
             override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
-                if (isReturn(url)) finish()
+                // An older server without Divan's result page: its plain return page just closes the view.
+                if (back == null && isReturn(url)) finish()
             }
         }
         w.webChromeClient = object : WebChromeClient() {
@@ -113,7 +114,7 @@ class PayBrowserScreen(host: MainActivity, private val url: String, private val 
         val uri = runCatching { Uri.parse(u) }.getOrNull() ?: return true
         return when (uri.scheme?.lowercase()) {
             "divan" -> { finish(); true }
-            "https" -> if (isReturn(u)) { finish(); true } else false
+            "https" -> if (back == null && isReturn(u)) { finish(); true } else false
             // Never a plain-HTTP, local or script page inside the payment view.
             "http", "file", "content", "javascript", "data", "about" -> true
             // Bank apps, a phone number or an intent link of the gateway page.
@@ -146,7 +147,8 @@ class PayBrowserScreen(host: MainActivity, private val url: String, private val 
             polls++
             ProSync.payStatus(order) { status, _ ->
                 when (status) {
-                    "paid" -> finish()
+                    // Paid while still on the gateway's page: show Divan's result page (or close on an older server).
+                    "paid" -> { val w = web; if (back != null && w != null) { if (!isReturn(w.url ?: "")) w.loadUrl(back) } else finish() }
                     "failed", "expired" -> Unit
                     else -> poll()
                 }

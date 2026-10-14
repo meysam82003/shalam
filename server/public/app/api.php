@@ -115,7 +115,7 @@ final class Api
             case 'v1/pay/order': {
                 self::post($method);
                 $u = self::user();
-                return PayOrders::create($u, (string)($in['method'] ?? ''), (string)($in['plan'] ?? ''), self::store($in));
+                return PayOrders::create($u, (string)($in['method'] ?? ''), (string)($in['plan'] ?? ''), self::store($in), ($in['page'] ?? '') === 'divan');
             }
 
             case 'v1/pay/status': {

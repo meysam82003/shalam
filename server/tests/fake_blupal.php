@@ -23,8 +23,11 @@ $view = function (array $inv) use ($state) {
         'amount' => $amount, 'final_amount' => $amount + $inv['rand'], 'mode' => $m, 'expires_at' => $m === 'sandbox' ? '2026-10-14T12:30:00+03:30' : null,
         'payer_name' => $paid ? 'خریدار آزمایشی' : null, 'payer_card' => $paid ? '6037991234567890' : null, 'payer_bank_name' => $paid ? 'بانک ملی' : null];
 };
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && $path === '/api/v1/invoices/create') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($path === '/api/v1/invoices/create' || $path === '/api/v1/bills/new')) {
     $in = json_decode(file_get_contents('php://input'), true) ?: [];
+    $db['last_create'] = $in;
+    $db['last_path'] = $path;
+    $save();
     if (!isset($in['amount'])) return $out(400, ['success' => false, 'error' => 'amount_required']);
     $a = (int)$in['amount'];
     if ($a < 100000) return $out(400, ['success' => false, 'error' => 'amount_too_low', 'message' => 'مبلغ باید حداقل 100,000 ریال باشد']);

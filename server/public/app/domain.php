@@ -702,6 +702,9 @@ final class Ads
             ['rewarded_offer', 'ویدئوی جایزه‌ای (اختیاری)', 'offer', 'rewarded', 'rewarded', 'rewarded'],
             ['sticky_bottom', 'نوار ثابت پایین صفحه', 'any', 'sticky', 'banner_small,banner_wide,text,image,native', 'banner'],
             ['sticky_top', 'نوار ثابت بالای صفحه', 'any', 'sticky', 'banner_small,banner_wide,text,image,native', 'banner'],
+            // Divan's own pages around a web payment (site version, web, Windows, iPhone).
+            ['pay_before', 'صفحهٔ پیش از پرداخت (نسخهٔ سایت)', 'pay', 'inline', 'card,image,text,sponsor', ''],
+            ['pay_after', 'صفحهٔ پس از پرداخت (نسخهٔ سایت)', 'pay', 'inline', 'card,image,text,sponsor', ''],
         ];
     }
 

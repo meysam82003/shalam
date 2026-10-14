@@ -7,7 +7,7 @@
  * each mapped to one official endpoint of Myket, Cafe Bazaar or ZarinPal: no URL ever comes from the caller.
  * Aban Gateway is the one exception: its API address is set in the Divan panel (so a domain change needs no
  * new bridge), but it must be a plain HTTPS domain, may be pinned by «aban_api_hosts» here, and only the
- * four invoice calls with checked fields can be sent to it.
+ * four invoice calls (create, read, verify, cancel) with checked fields can be sent to it.
  * The response is signed too, bound to the request nonce, so the caller can trust it.
  *
  * Store credentials live only in config.php outside the public folder. Logs never hold tokens or keys.
@@ -260,11 +260,15 @@ final class Bridge
         if ($pinned && !in_array(strtolower((string)parse_url($base, PHP_URL_HOST)), $pinned, true)) throw new BadRequest('base');
         $token = (string)($p['api_token'] ?? '');
         if (!preg_match('/^ag_(live|test)_[A-Za-z0-9]{16,128}$/', $token)) throw new BadRequest('api_token');
-        $method = (string)($p['method'] ?? '');
+        // The call is named by «op»; its path (editable in the Divan panel) must be plain segments under the address.
+        $op = (string)($p['op'] ?? '');
         $path = (string)($p['path'] ?? '');
-        $id = '[A-Za-z0-9_-]{4,80}';
+        $method = ['create' => 'POST', 'get' => 'GET', 'verify' => 'POST', 'cancel' => 'POST'][$op] ?? '';
+        if ($method === '') throw new BadRequest('op');
+        if (strlen($path) > 160 || !preg_match('#^(/[A-Za-z0-9_.~%-]{1,90}){1,6}$#', $path) || strpos($path, '..') !== false || stripos($path, '%2f') !== false || stripos($path, '%2e') !== false) throw new BadRequest('path');
+        if (isset($p['method']) && $p['method'] !== $method) throw new BadRequest('method');
         $body = null;
-        if ($method === 'POST' && $path === '/invoices') {
+        if ($op === 'create') {
             $in = is_array($p['body'] ?? null) ? $p['body'] : [];
             $amount = $in['amount_rial'] ?? null;
             if (!is_int($amount) || $amount < 10000 || $amount > 2000000000) throw new BadRequest('amount_rial');
@@ -284,13 +288,16 @@ final class Bridge
                 if (!is_int($in['expiry_minutes']) || $in['expiry_minutes'] < 1 || $in['expiry_minutes'] > 1440) throw new BadRequest('expiry_minutes');
                 $out['expiry_minutes'] = $in['expiry_minutes'];
             }
+            // Extra fields set in the panel: short plain text under simple names, never replacing the fields above.
+            $extra = 0;
+            foreach ($in as $k => $v) {
+                if (isset($out[$k]) || in_array($k, ['amount_rial', 'order_id', 'callback_url', 'return_url', 'description', 'expiry_minutes'], true)) continue;
+                if (!is_string($k) || !preg_match('/^[a-z][a-z0-9_]{0,39}$/', $k) || !is_string($v) || mb_strlen($v) > 200 || ++$extra > 10) throw new BadRequest('extra');
+                $out[$k] = strip_tags($v);
+            }
             $body = json_encode($out, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        } elseif ($method === 'GET' && preg_match('#^/invoices/' . $id . '$#', $path)) {
-            $body = null;
-        } elseif ($method === 'POST' && preg_match('#^/invoices/' . $id . '/(verify|cancel)$#', $path)) {
+        } elseif ($op === 'verify' || $op === 'cancel') {
             $body = '{}';
-        } else {
-            throw new BadRequest('path');
         }
         $headers = ['Authorization: Bearer ' . $token, 'Accept: application/json'];
         if ($body !== null) $headers[] = 'Content-Type: application/json';

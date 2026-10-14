@@ -427,6 +427,10 @@ final class Migrations
                     KEY k_status (status, created_at)
                 ) $e",
             ],
+            // 5.5: the gateway's page of each order, opened from Divan's own page before payment (pay/start.php).
+            7 => [
+                "ALTER TABLE {pay_orders} ADD COLUMN pay_url VARCHAR(600) NULL",
+            ],
         ];
     }
 

@@ -210,9 +210,9 @@ class ProScreen(host: MainActivity, private val reason: String? = null, private 
         if (m.kind == "web") {
             busy = true
             kit.toast("در حال باز کردن صفحهٔ امن پرداخت…")
-            ProSync.webPay(m, p) { url, e ->
+            ProSync.webPay(m, p) { url, back, e ->
                 busy = false
-                if (url != null) host.push(PayBrowserScreen(host, url, m.title))
+                if (url != null) host.push(PayBrowserScreen(host, url, m.title, back))
                 else kit.dialog("خرید انجام نشد", e?.message ?: "ارتباط با سرور برقرار نشد.", null, listOf(DialogAction("باشه", ButtonKind.PRIMARY))).show()
             }
             return

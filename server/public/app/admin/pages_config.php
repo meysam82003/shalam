@@ -771,6 +771,16 @@ final class ConfigPages
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             self::managerOnly();
             $reason = Admin::requireReason();
+            if (($_POST['action'] ?? '') === 'pages') {
+                $old = PayPages::cfg();
+                $new = ['before_title' => mb_substr(trim(self::post('before_title')), 0, 80) ?: PayPages::defaults()['before_title'],
+                    'before_notes' => mb_substr(trim(self::post('before_notes')), 0, 2000), 'card_note' => mb_substr(trim(self::post('card_note')), 0, 500),
+                    'after_note' => mb_substr(trim(self::post('after_note')), 0, 500), 'show_ads' => isset($_POST['show_ads'])];
+                Settings::set('pay_pages', $new);
+                Admin::audit('pay_pages_save', 'settings', 'pay_pages', $reason, $old, $new);
+                Admin::flash('صفحه‌های پیش و پس از پرداخت ذخیره شد.');
+                Admin::redirect('p=paymethods#pay-pages');
+            }
             $id = (string)($_POST['id'] ?? '');
             $a = $adapters[$id] ?? null;
             if ($a === null) throw new ApiError('method', 'روش پرداخت پیدا نشد.');
@@ -799,6 +809,18 @@ final class ConfigPages
                 if ($list === null) { Admin::flash('دامنهٔ صفحهٔ پرداخت معتبر نیست: فقط نام دامنه، جدا با ویرگول. چیزی ذخیره نشد.', 'bad'); Admin::redirect('p=paymethods#m-' . $id); }
                 $new['api_base'] = $base === $a->defaultBase() ? '' : $base;
                 $new['hosts'] = $list === $a->defaultHosts() ? '' : implode(', ', $list);
+                // Path of each call (empty = documented) and extra fields of a new invoice.
+                $paths = [];
+                foreach ($a->defaultPaths() as $op => $def) {
+                    $v = trim(self::post('path_' . $op));
+                    if ($v === '' || $v === $def) continue;
+                    if (!PayEndpoint::validPath($v, strpos($def, '{id}') !== false)) { Admin::flash('مسیر «' . $op . '» معتبر نیست: با / شروع شود، فقط حروف لاتین، رقم، - _ . و ' . (strpos($def, '{id}') !== false ? 'دقیقاً یک {id}' : 'بدون {id}') . '. چیزی ذخیره نشد.', 'bad'); Admin::redirect('p=paymethods#m-' . $id); }
+                    $paths[$op] = $v;
+                }
+                $extra = trim(self::post('extra'));
+                if (PayEndpoint::parseExtra($extra, $a->coreFields()) === null) { Admin::flash('فیلدهای اضافه معتبر نیست: هر خط «نام=مقدار»، نام با حرف کوچک لاتین، حداکثر ۱۰ خط، بدون فیلدهای اصلی (' . implode('، ', $a->coreFields()) . '). چیزی ذخیره نشد.', 'bad'); Admin::redirect('p=paymethods#m-' . $id); }
+                $new['paths'] = $paths;
+                $new['extra'] = $extra;
             }
             Settings::set('pay_' . $id, $new);
             foreach ($a->fields() as $k => [$label, $secret]) {
@@ -814,14 +836,16 @@ final class ConfigPages
         $result = $_SESSION['pay_result'] ?? null; unset($_SESSION['pay_result']);
         $orders = Db::all('SELECT o.*, u.username, p.title plan_title FROM {pay_orders} o JOIN {users} u ON u.id = o.user_id JOIN {plans} p ON p.id = o.plan_id ORDER BY o.id DESC LIMIT 40');
         Admin::layout('روش‌های پرداخت', function () use ($adapters, $result, $orders) {
+            $pp = PayPages::cfg();
             ?>
+            <div class="card" style="padding:12px 16px"><input type="search" id="pm-search" placeholder="جست‌وجو در درگاه‌ها و تنظیمات API (مثلاً webhook، verify، بلوپال، مسیر، دامنه)…" autocomplete="off"><div class="hint" id="pm-search-n"></div></div>
             <div class="alert info">
               هر نسخهٔ برنامه فقط روش‌هایی را می‌بیند که <b>هم</b> مجاز باشند <b>هم</b> آماده. طبق قوانین کافه‌بازار و مایکت، فروش اشتراک و قابلیت دیجیتال در نسخه‌های این دو فروشگاه فقط با پرداخت درون‌برنامه‌ای همان فروشگاه است؛
               درگاه‌های وب (زرین‌پال، بلوپال، آبان گیت‌وی و …) فقط در <b>نسخهٔ سایت</b> (APK مستقیم که در هیچ فروشگاهی منتشر نمی‌شود) نمایش داده می‌شوند و این قانون از پنل قابل تغییر نیست.
               <br>روشن کردن یک روش بدون تنظیمات درست، آن را در برنامه نشان نمی‌دهد؛ وضعیتش «نیازمند تنظیمات» می‌ماند. همهٔ تغییرها بدون APK تازه در برنامه اعمال می‌شوند.
             </div>
             <?php foreach ($adapters as $id => $a): $c = PayRegistry::cfg($id); $st = (array)Settings::get('pay_status_' . $id, []); ?>
-            <div class="card" id="m-<?= e($id) ?>">
+            <div class="card pm-card" id="m-<?= e($id) ?>">
               <h3><?= e($a->title()) ?> <?= self::payBadge(PayRegistry::status($id)) ?> <?= $c['kill'] ? '<span class="badge bad">قطع اضطراری</span>' : '' ?></h3>
               <p class="muted"><?= e($a->description()) ?> — نوع: <?= $a->kind() === 'store' ? 'پرداخت فروشگاه' : 'درگاه وب' ?> — نسخه‌های مجاز: <b><?= e(implode('، ', array_map(fn($ch) => Notices::STORES[$ch] ?? $ch, $a->channels()))) ?></b> — بازپرداخت از API: <?= $a->supportsRefund() ? 'دارد' : 'ندارد (دستی از پنل درگاه)' ?></p>
               <?php if ($result && $result[0] === $id) echo '<div class="alert ' . e($result[1][0]) . '">' . e($result[1][1]) . '</div>'; ?>
@@ -850,10 +874,36 @@ final class ConfigPages
                       <div><label>دامنهٔ صفحهٔ پرداخت <small class="muted">(خالی = پیش‌فرض؛ چند دامنه با ویرگول)</small></label><input type="text" name="hosts" class="ltr" value="<?= e($c['hosts']) ?>" placeholder="<?= e(implode(', ', $a->defaultHosts())) ?>"></div>
                     </div>
                     <p class="hint">اگر <?= e($a->title()) ?> دامنه یا نسخهٔ API را عوض کرد، نشانی تازه را اینجا بنویسید و «آزمایش اتصال» بزنید؛ APK یا نصب تازه لازم نیست. نشانی فعلی: <b class="ltr"><?= e(PayEndpoint::base($a)) ?></b> — صفحهٔ پرداخت: <b class="ltr"><?= e(implode('، ', PayEndpoint::hosts($a))) ?></b></p>
+                    <?php $hook = App::baseUrl() . '/pay/webhook.php?m=' . $id; $cb = App::baseUrl() . '/pay/return.php?m=' . $id; ?>
+                    <div class="alert info" style="margin-top:10px">
+                      <b><?= $id === 'blupal' ? 'این دو نشانی را در پنل بلوپال (مدیریت درگاه ← ساخت API درگاه جدید) وارد کنید:' : 'این دو نشانی را دیوان با هر فاکتور خودکار به آبان می‌فرستد؛ برای اطلاع:' ?></b>
+                      <div class="row" style="margin-top:8px;align-items:flex-end">
+                        <div><label>Webhook URL</label><input type="text" class="ltr" readonly value="<?= e($hook) ?>"></div>
+                        <div style="flex:0"><button type="button" class="btn sm ghost" data-copy="<?= e($hook) ?>">کپی</button></div>
+                      </div>
+                      <div class="row" style="align-items:flex-end">
+                        <div><label><?= $id === 'blupal' ? 'Callback page (صفحهٔ بازگشت)' : 'return_url (صفحهٔ بازگشت)' ?></label><input type="text" class="ltr" readonly value="<?= e($id === 'blupal' ? $cb : App::baseUrl() . '/pay/return.php?o=…') ?>"></div>
+                        <?php if ($id === 'blupal'): ?><div style="flex:0"><button type="button" class="btn sm ghost" data-copy="<?= e($cb) ?>">کپی</button></div><?php endif; ?>
+                      </div>
+                      <?php if ($id === 'blupal'): ?><div class="hint">«نام نمایشی در درگاه پرداخت» را «دیوان امتیاز» بگذارید. صفحهٔ بازگشت خودش سفارش خریدار را پیدا می‌کند و نتیجهٔ واقعی را از بلوپال می‌پرسد.</div><?php endif; ?>
+                    </div>
+                    <details style="margin-top:10px">
+                      <summary><b>تنظیمات پیشرفتهٔ API و مرجع فراخوانی‌ها</b> <small class="muted">— برای وقتی که درگاه مسیر یا فیلد تازه‌ای اضافه کرد</small></summary>
+                      <div class="table-wrap" style="margin-top:8px"><table><thead><tr><th>کار</th><th>روش</th><th>مسیر (خالی = پیش‌فرض)</th><th>نشانی کامل فعلی</th></tr></thead><tbody>
+                      <?php $opNames = ['create' => 'ساخت فاکتور', 'get' => 'استعلام فاکتور', 'verify' => 'تأیید یک‌باره', 'cancel' => 'لغو'];
+                      foreach ($a->defaultPaths() as $op => $def): $cur = (string)(((array)$c['paths'])[$op] ?? ''); ?>
+                        <tr><td><?= e($opNames[$op] ?? $op) ?> <small class="muted ltr"><?= e($op) ?></small></td><td class="ltr"><?= $op === 'get' ? 'GET' : 'POST' ?></td>
+                          <td><input type="text" name="path_<?= e($op) ?>" class="ltr" value="<?= e($cur) ?>" placeholder="<?= e($def) ?>"></td>
+                          <td class="ltr"><small><?= e(str_replace('%7Bid%7D', '{id}', PayEndpoint::base($a) . PayEndpoint::path($a, $op, '{id}'))) ?></small></td></tr>
+                      <?php endforeach; ?>
+                      </tbody></table></div>
+                      <label style="margin-top:8px">فیلدهای اضافهٔ فاکتور تازه <small class="muted">(هر خط: نام=مقدار — فیلدهای اصلی <span class="ltr"><?= e(implode(', ', $a->coreFields())) ?></span> را خود دیوان می‌گذارد)</small></label>
+                      <textarea name="extra" class="ltr" rows="3" placeholder="shop_name=Divan Emtiaz"><?= e((string)$c['extra']) ?></textarea>
+                      <p class="hint">مسیرها فقط بخش‌های ساده می‌پذیرند (بدون ?، .. یا دامنهٔ دیگر)؛ «{id}» جای شمارهٔ فاکتور است. بعد از تغییر، «آزمایش اتصال» بزنید.</p>
+                    </details>
                   <?php endif; ?>
                   <?php if ($id === 'blupal'): ?>
-                    <p class="hint">بلوپال از هلند مستقیم در دسترس است. کلید <span class="ltr">blu_test_…</span> فقط با «حالت آزمایشی» و کلید <span class="ltr">blu_live_…</span> فقط بدون آن کار می‌کند.
-                    نشانی Webhook را در پنل بلوپال (مدیریت API Key) ثبت کنید: <b class="ltr"><?= e(App::baseUrl() . '/pay/webhook.php?m=blupal') ?></b> — بدون Webhook هم پرداخت‌ها با استعلام برنامه و Cron تأیید می‌شوند.</p>
+                    <p class="hint">بلوپال از هلند مستقیم در دسترس است. کلید <span class="ltr">blu_test_…</span> فقط با «حالت آزمایشی» و کلید <span class="ltr">blu_live_…</span> فقط بدون آن کار می‌کند. بدون Webhook هم پرداخت‌ها با استعلام برنامه، صفحهٔ بازگشت و Cron تأیید می‌شوند.</p>
                   <?php endif; ?>
                   <?php if ($id === 'aban'): ?>
                     <p class="hint">سرورهای آبان در ایران‌اند؛ مسیر «واسط ایران» را نگه دارید (نسخهٔ ۱٫۱ واسط لازم است). توکن <span class="ltr">ag_test_…</span> فقط با «حالت آزمایشی» و <span class="ltr">ag_live_…</span> فقط بدون آن کار می‌کند.
@@ -870,7 +920,23 @@ final class ConfigPages
               </form>
             </div>
             <?php endforeach; ?>
-            <div class="card"><h3>آخرین سفارش‌های پرداخت وب</h3>
+            <div class="card pm-card" id="pay-pages"><h3>صفحه‌های پیش و پس از پرداخت</h3>
+              <p class="muted">خریدار نسخهٔ سایت (و وب، ویندوز و آیفون) پیش از درگاه صفحهٔ دیوان را می‌بیند: پلن، مبلغ دقیق، این نکته‌ها و یک پیشنهاد؛ بعد از پرداخت هم به صفحهٔ نتیجهٔ دیوان برمی‌گردد که نتیجهٔ واقعی را از درگاه می‌پرسد و خودکار به‌روز می‌شود.
+                پیشنهادها از «تبلیغات» با جایگاه‌های «صفحهٔ پیش از پرداخت» و «صفحهٔ پس از پرداخت» می‌آیند.</p>
+              <p><a class="btn sm ghost" href="../pay/start.php?demo=1" target="_blank" rel="noopener">نمونهٔ صفحهٔ پیش از پرداخت</a>
+                <a class="btn sm ghost" href="../pay/return.php?demo=paid" target="_blank" rel="noopener">نمونهٔ پرداخت موفق</a>
+                <a class="btn sm ghost" href="../pay/return.php?demo=pending" target="_blank" rel="noopener">نمونهٔ در حال بررسی</a>
+                <a class="btn sm ghost" href="../pay/return.php?demo=failed" target="_blank" rel="noopener">نمونهٔ ناموفق</a></p>
+              <form method="post"><?= Admin::csrfField() ?><input type="hidden" name="action" value="pages">
+                <label>عنوان صفحهٔ پیش از پرداخت</label><input type="text" name="before_title" maxlength="80" value="<?= e($pp['before_title']) ?>">
+                <label>نکته‌های پیش از پرداخت <small class="muted">(هر خط یک نکته)</small></label><textarea name="before_notes" rows="4"><?= e($pp['before_notes']) ?></textarea>
+                <label>نکتهٔ کارت به کارت <small class="muted">(فقط برای بلوپال و آبان)</small></label><textarea name="card_note" rows="2"><?= e($pp['card_note']) ?></textarea>
+                <label>پیام پس از پرداخت موفق</label><textarea name="after_note" rows="2"><?= e($pp['after_note']) ?></textarea>
+                <label class="check"><input type="checkbox" name="show_ads" <?= $pp['show_ads'] ? 'checked' : '' ?>> نمایش پیشنهاد (تبلیغ) در این دو صفحه</label>
+                <div class="row" style="margin-top:8px"><div style="flex:3"><input type="text" name="reason" placeholder="یادداشت (اختیاری)"></div><button class="btn gold">ذخیره</button></div>
+              </form>
+            </div>
+            <div class="card pm-card"><h3>آخرین سفارش‌های پرداخت وب</h3>
               <div class="table-wrap"><table><thead><tr><th>سفارش</th><th>حساب</th><th>پلن</th><th>روش</th><th>مبلغ</th><th>وضعیت</th><th>کد پیگیری</th><th>زمان</th></tr></thead><tbody>
               <?php foreach ($orders as $o): ?>
                 <tr><td class="ltr"><?= e($o['code']) ?></td><td class="ltr"><?= e($o['username']) ?></td><td><?= e($o['plan_title']) ?></td><td><?= e($o['method']) ?></td><td><?= money((int)$o['amount_toman']) ?></td>

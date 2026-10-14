@@ -155,4 +155,39 @@
   form.addEventListener('input', render);
   form.addEventListener('change', render);
   render();
+
+})();
+
+/* Payment methods page: copy buttons and search (own scope: the ad-preview code above returns early on other pages). */
+(function () {
+  'use strict';
+  // Copy buttons (webhook and return addresses for the gateway panels).
+  document.addEventListener('click', function (ev) {
+    var b = ev.target.closest('[data-copy]');
+    if (!b) return;
+    var v = b.getAttribute('data-copy'), done = function () { var t = b.textContent; b.textContent = 'کپی شد'; setTimeout(function () { b.textContent = t; }, 1400); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(v).then(done, function () {});
+    else { var i = document.createElement('textarea'); i.value = v; document.body.appendChild(i); i.select(); try { document.execCommand('copy'); done(); } catch (e) {} i.remove(); }
+  });
+  // Search on the payment-methods page: cards, their settings and the API reference.
+  var pms = document.getElementById('pm-search');
+  if (pms) {
+    var cards = Array.prototype.slice.call(document.querySelectorAll('.pm-card'));
+    var fold = function (t) { return (t || '').toLowerCase().replace(/[يى]/g, 'ی').replace(/ك/g, 'ک').replace(/‌/g, ' '); };
+    var text = function (el) {
+      var t = el.textContent;
+      Array.prototype.forEach.call(el.querySelectorAll('input,textarea'), function (i) { t += ' ' + (i.value || '') + ' ' + (i.placeholder || '') + ' ' + (i.name || ''); });
+      return fold(t);
+    };
+    pms.addEventListener('input', function () {
+      var q = fold(pms.value.trim()), n = 0;
+      cards.forEach(function (c) {
+        var hit = q === '' || text(c).indexOf(q) !== -1;
+        c.style.display = hit ? '' : 'none';
+        if (hit) n++;
+        if (q !== '' && hit) Array.prototype.forEach.call(c.querySelectorAll('details'), function (d) { if (text(d).indexOf(q) !== -1) d.open = true; });
+      });
+      document.getElementById('pm-search-n').textContent = q === '' ? '' : (n ? n + ' مورد پیدا شد' : 'چیزی پیدا نشد');
+    });
+  }
 })();

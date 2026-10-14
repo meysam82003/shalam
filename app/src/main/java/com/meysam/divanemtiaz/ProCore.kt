@@ -668,13 +668,15 @@ object ProSync {
      * Starts a web payment: the order and its price come from the server, and only a page on a domain the server
      * listed for the method is accepted. The page is shown inside the app ([PayBrowserScreen]), not in a browser.
      */
-    fun webPay(method: PayMethod, plan: PlanOffer, done: (String?, ApiError?) -> Unit) {
-        Api.call("POST", "v1/pay/order", JSONObject().put("method", method.id).put("plan", plan.code).put("store", StoreInfo.storeId), ProState.token) { data, err ->
-            if (data == null) { done(null, err); return@call }
+    fun webPay(method: PayMethod, plan: PlanOffer, done: (url: String?, back: String?, err: ApiError?) -> Unit) {
+        // «page: divan»: the buyer first sees Divan's own page (amount, notes), then the gateway; afterwards Divan's result page.
+        val body = JSONObject().put("method", method.id).put("plan", plan.code).put("store", StoreInfo.storeId).put("page", "divan")
+        Api.call("POST", "v1/pay/order", body, ProState.token) { data, err ->
+            if (data == null) { done(null, null, err); return@call }
             val url = data.optString("url")
-            if (!isPayUrl(url, method.hosts)) { done(null, ApiError("bad_url", "نشانی پرداخت معتبر نیست.")); return@call }
+            if (!isPayUrl(url, method.hosts)) { done(null, null, ApiError("bad_url", "نشانی پرداخت معتبر نیست.")); return@call }
             ProState.pendingOrder = data.optString("order")
-            done(url, null)
+            done(url, data.optString("return").takeIf { isPayUrl(it, method.hosts) }, null)
         }
     }
 

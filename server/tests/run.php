@@ -18,6 +18,7 @@ require $src . '/app/catalog.php';
 require $src . '/app/domain.php';
 require $src . '/app/markets.php';
 require $src . '/app/payments.php';
+require $src . '/app/paypages.php';
 require $src . '/app/backup.php';
 require $src . '/app/installer.php';
 require $src . '/app/api.php';
@@ -852,7 +853,7 @@ scenario('Blupal card-to-card: sandbox/live key rules, server-side check, webhoo
     $bset(['enabled' => true, 'sandbox' => true]);
     Settings::setSecret('pay_blupal_api_key', 'blu_test_KEY12345');
     $api = apiGet('v1/pay/methods', ['store' => 'direct', 'plan' => 'm1']);
-    check(array_column($api['methods'], 'id') === ['blupal'] && $api['methods'][0]['hosts'] === ['blupal.top'] && strpos(json_encode(apiGet('v1/pay/methods', ['store' => 'myket'])), 'blupal') === false, 'API: listed with its page host for the site version only');
+    check(array_column($api['methods'], 'id') === ['blupal'] && $api['methods'][0]['hosts'][0] === 'blupal.top' && strpos(json_encode(apiGet('v1/pay/methods', ['store' => 'myket'])), 'blupal') === false, 'API: listed with its page host for the site version only');
 
     [$u] = Users::register('blu_buyer', 'secret123');
     throws(fn() => PayOrders::create($u, 'blupal', 'm1', 'myket'), 'method_unavailable', 'the Myket version cannot open a Blupal payment');
@@ -906,7 +907,7 @@ scenario('Blupal card-to-card: sandbox/live key rules, server-side check, webhoo
     Settings::set('pay_blupal', ['enabled' => true, 'sandbox' => true, 'api_base' => 'https://10.0.0.1/api']);
     check(PayEndpoint::base(PayRegistry::get('blupal')) === 'https://blupal.top/api/v1', 'an unsafe stored address falls back to the documented one');
     $bset(['enabled' => true, 'sandbox' => true, 'hosts' => 'pay.blupal-new.ir']);
-    check(apiGet('v1/pay/methods', ['store' => 'direct'])['methods'][0]['hosts'] === ['pay.blupal-new.ir'], 'payment-page domain changed in the panel: sent to the app');
+    check(apiGet('v1/pay/methods', ['store' => 'direct'])['methods'][0]['hosts'][0] === 'pay.blupal-new.ir', 'payment-page domain changed in the panel: sent to the app');
     throws(fn() => PayOrders::create($u, 'blupal', 'm1', 'direct'), 'gateway_url', 'a payment page outside the panel domains is never opened');
     $bset(['enabled' => true, 'sandbox' => true]);
     check(PayRegistry::get('blupal')->test()[0] === 'ok' && PayRegistry::get('blupal')->payHosts() === ['blupal.top'], 'back to the right address: works again');
@@ -954,7 +955,7 @@ scenario('Aban Gateway: token/mode rules, Iran bridge and direct routes, one-sho
     check($ids('direct') === ['aban'] && $a->test()[0] === 'ok', 'test token + sandbox, through the Iran bridge: ready, panel test reaches Aban');
     check(PayRegistry::status('aban', 'bazaar') === 'not_allowed' && PayRegistry::status('aban', 'myket') === 'not_allowed' && $ids('bazaar') === ['bazaar'] && $ids('myket') === ['myket'], 'never in the Bazaar or Myket versions');
     $api = apiGet('v1/pay/methods', ['store' => 'direct', 'plan' => 'm1']);
-    check(array_column($api['methods'], 'id') === ['aban'] && $api['methods'][0]['hosts'] === ['abangateway.ir'] && strpos(json_encode(apiGet('v1/pay/methods', ['store' => 'bazaar'])), 'aban') === false, 'API: listed with its page domain for the site version only');
+    check(array_column($api['methods'], 'id') === ['aban'] && $api['methods'][0]['hosts'] === ['abangateway.ir', 'example.test'] && strpos(json_encode(apiGet('v1/pay/methods', ['store' => 'bazaar'])), 'aban') === false, 'API: listed with its page domain for the site version only');
     Settings::setSecret('pay_aban_token', 'ag_test_' . str_repeat('W9z', 16));
     check($a->test()[0] === 'bad', 'panel test reports a wrong token');
     Settings::setSecret('pay_aban_token', $LT);
@@ -1027,7 +1028,7 @@ scenario('Aban Gateway: token/mode rules, Iran bridge and direct routes, one-sho
     throws(fn() => PayOrders::create($u, 'aban', 'm1', 'direct'), 'gateway_url', 'payment page moved but the panel still lists the old domain: never opened');
     Settings::set('pay_aban', ['enabled' => true, 'sandbox' => true, 'api_base' => 'https://api.aban-new-domain.ir/api/v1', 'hosts' => 'pay.aban-new-domain.ir']);
     $o5 = PayOrders::create($u, 'aban', 'm1', 'direct');
-    check(strpos($o5['url'], 'https://pay.aban-new-domain.ir/pay/') === 0 && apiGet('v1/pay/methods', ['store' => 'direct'])['methods'][0]['hosts'] === ['pay.aban-new-domain.ir'], 'payment-page domain changed in the panel: orders work and the app gets the new domain');
+    check(strpos($o5['url'], 'https://pay.aban-new-domain.ir/pay/') === 0 && apiGet('v1/pay/methods', ['store' => 'direct'])['methods'][0]['hosts'] === ['pay.aban-new-domain.ir', 'example.test'], 'payment-page domain changed in the panel: orders work and the app gets the new domain');
     unlink("$state.payhost");
     check(PayEndpoint::parseHosts('a.ir, b.ir،c.ir') === ['a.ir', 'b.ir', 'c.ir'] && PayEndpoint::parseHosts('evil.ir/x') === null && PayEndpoint::parseHosts('10.0.0.1') === null
         && !PayEndpoint::validBase('https://127.0.0.1/api') && !PayEndpoint::validBase('https://u@x.ir/') && !PayEndpoint::validBase('https://x.ir:8443/') && !PayEndpoint::validBase('ftp://x.ir') && PayEndpoint::validBase('https://api.x.ir/api/v2'), 'panel address checks: HTTPS domains only');
@@ -1037,6 +1038,73 @@ scenario('Aban Gateway: token/mode rules, Iran bridge and direct routes, one-sho
     Settings::setSecret('pay_aban_webhook_secret', '');
     App::$config['base_url'] = $base;
     proc_terminate($fake); proc_close($fake); proc_terminate($bridge); proc_close($bridge);
+    Http::$allowLocalHttpForTests = false;
+});
+
+scenario('pages around a web payment: Divan page first, result page, panel texts and offers, editable API paths', function () use ($root) {
+    freshIp();
+    Http::$allowLocalHttpForTests = true;
+    $port = 23000 + random_int(0, 999);
+    $state = "$root/fake-blupal-pages.json";
+    file_put_contents($state, json_encode(['keys' => ['blu_test_KEY12345'], 'invoices' => [], 'next' => 5000]));
+    $proc = proc_open([PHP_BINARY, '-S', "127.0.0.1:$port", __DIR__ . '/fake_blupal.php'], [0 => ['pipe', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $pipes, null, ['FAKE_BLUPAL_STATE' => $state] + getenv());
+    for ($i = 0; $i < 50; $i++) { $sk = @fsockopen('127.0.0.1', $port, $en, $es, 0.2); if ($sk) { fclose($sk); break; } usleep(100000); }
+    $base = App::$config['base_url'];
+    App::$config['base_url'] = 'https://example.test/divan';
+    $api = "http://127.0.0.1:$port/api/v1";
+    Settings::set('pay_zarinpal', ['enabled' => false]);
+    Settings::set('pay_aban', ['enabled' => false]);
+    Settings::set('pay_blupal', ['enabled' => true, 'sandbox' => true, 'api_base' => $api]);
+    Settings::setSecret('pay_blupal_api_key', 'blu_test_KEY12345');
+    $methods = apiGet('v1/pay/methods', ['store' => 'direct']);
+    check($methods['methods'][0]['hosts'] === ['blupal.top', 'example.test'], 'the app may open Divan\'s own page (this server) and the gateway page, nothing else');
+    [$u] = Users::register('pages_buyer', 'secret123');
+    $o = PayOrders::create($u, 'blupal', 'm1', 'direct', true);
+    $row = PayOrders::byCode($o['order']);
+    check($o['url'] === 'https://example.test/divan/pay/start.php?o=' . $o['order'] && $o['return'] === 'https://example.test/divan/pay/return.php?o=' . $o['order'] && strpos((string)$row['pay_url'], 'https://blupal.top/sandbox/payment/') === 0, 'new app: Divan\'s page first; the gateway page is kept on the order');
+    $old = PayOrders::create($u, 'blupal', 'm1', 'direct');
+    check(strpos($old['url'], 'https://blupal.top/') === 0, 'older app: the gateway page directly, as before');
+    $m1 = Plans::byCode('m1');
+    $html = PayPages::renderStart($row);
+    check(strpos($html, fa_digits(number_format((int)$m1['base_price_toman']))) !== false && strpos($html, e($m1['title'])) !== false && strpos($html, 'href="' . e($row['pay_url']) . '"') !== false
+        && strpos($html, 'کارت به کارت، دقیقاً') !== false && strpos($html, 'divan://pay/' . $o['order']) !== false, 'page before payment: plan, exact amount, card-to-card note, continue to the gateway, back to the app');
+    check(strpos(PayPages::renderStart(array_merge($row, ['status' => 'expired'])), 'href="' . e($row['pay_url']) . '"') === false && strpos(PayPages::renderStart(null), 'سفارش پیدا نشد') !== false, 'expired or unknown order: no way to the gateway');
+    Settings::set('pay_pages', ['before_title' => 'عنوان آزمایشی', 'before_notes' => "نکتهٔ یک\nنکتهٔ دو", 'card_note' => '', 'after_note' => 'پیام پایانی', 'show_ads' => true]);
+    $html = PayPages::renderStart($row);
+    check(strpos($html, 'عنوان آزمایشی') !== false && strpos($html, '<li>نکتهٔ دو</li>') !== false && strpos($html, 'کارت به کارت، دقیقاً') === false, 'texts of the page come from the panel');
+    $adId = Db::insert('ads', ['name' => 'pay-test', 'title' => 'پیشنهاد <ویژه>', 'body' => 'متن', 'format' => 'card', 'placements' => 'pay_before', 'stores' => 'direct', 'target_url' => 'https://example.org/x', 'cta_text' => 'دیدن', 'active' => 1, 'priority' => 5, 'closable' => 1, 'min_interval_sec' => 0, 'impressions_total' => 0, 'style_json' => '{}', 'created_at' => Clock::sql(), 'updated_at' => Clock::sql()]);
+    $html = PayPages::renderStart($row);
+    check(strpos($html, 'پیشنهاد &lt;ویژه&gt;') !== false && strpos($html, 'https://example.org/x') !== false && (int)Db::value('SELECT impressions_total FROM {ads} WHERE id = ?', [$adId]) === 1, 'an offer for the «before payment» slot is shown (escaped) and counted');
+    check(strpos(PayPages::renderReturn(PayOrders::byCode($o['order'])), 'پیشنهاد &lt;ویژه&gt;') === false, 'the offer stays in its own slot');
+    Settings::set('pay_pages', ['show_ads' => false] + PayPages::cfg());
+    check(strpos(PayPages::renderStart($row), 'پیشنهاد &lt;ویژه&gt;') === false, 'offers switched off in the panel');
+    Db::update('ads', ['active' => 0], 'id = ?', [$adId]);
+
+    check(PayPages::findOrder(['o' => $o['order']], [])['id'] === $row['id'] && PayPages::findOrder(['m' => 'blupal', 'invoice_id' => $row['gateway_ref']], [])['id'] === $row['id']
+        && PayPages::findOrder(['m' => 'blupal'], [PayPages::COOKIE => $o['order']])['id'] === $row['id'] && PayPages::findOrder(['m' => 'blupal', 'invoice_id' => '../1'], []) === null && PayPages::findOrder([], []) === null, 'result page finds the order: our address, the gateway invoice id, or the remembered order');
+    $html = PayPages::renderReturn($row);
+    check(strpos($html, 'در حال بررسی پرداخت') !== false && strpos($html, 'data-order="' . $o['order'] . '"') !== false && preg_match('/<script nonce="[A-Za-z0-9_-]{20,}">/', $html) === 1, 'not paid yet: the result page checks again by itself');
+    Http::request('POST', "http://127.0.0.1:$port/api/v1/sandbox/invoices/{$row['gateway_ref']}/simulate", ['X-API-Key: blu_test_KEY12345', 'Content-Type: application/json'], '{"scenario":"success"}');
+    $paid = PayOrders::settle($row);
+    $html = PayPages::renderReturn($paid);
+    check($paid['status'] === 'paid' && strpos($html, 'پرداخت با موفقیت انجام شد') !== false && strpos($html, e($paid['ref_id'])) !== false && strpos($html, 'اعتبار Pro تا') !== false && strpos($html, 'پیام پایانی') !== false && strpos($html, '<script') === false, 'paid: success, tracking code, Pro end date, panel message; no more checking');
+    check(strpos(PayPages::renderReturn(array_merge($row, ['status' => 'failed'])), 'پرداخت انجام نشد') !== false, 'failed: clear message');
+    check(strpos(PayPages::renderStart(null, true), 'نمونهٔ نمایشی') !== false && strpos(PayPages::renderReturn(null, true, 'paid'), 'نمونهٔ نمایشی') !== false, 'panel previews are marked as samples');
+
+    // Editable API: a new path and an extra field of a new invoice, from the panel only.
+    Settings::set('pay_blupal', ['enabled' => true, 'sandbox' => true, 'api_base' => $api, 'paths' => ['create' => '/bills/new'], 'extra' => "shop=divan\nnote=hello"]);
+    PayOrders::create($u, 'blupal', 'm3', 'direct', true);
+    $fs = json_decode(file_get_contents($state), true);
+    check($fs['last_path'] === '/api/v1/bills/new' && $fs['last_create']['shop'] === 'divan' && $fs['last_create']['note'] === 'hello' && $fs['last_create']['amount'] === (int)Plans::byCode('m3')['base_price_toman'] * 10, 'a path and extra fields set in the panel are used');
+    Settings::set('pay_blupal', ['enabled' => true, 'sandbox' => true, 'api_base' => $api, 'paths' => ['get' => '/../admin/{id}', 'create' => 'https://evil.example/x'], 'extra' => "amount=1"]);
+    $b = PayRegistry::get('blupal');
+    check(PayEndpoint::path($b, 'get', '7') === '/invoices/7' && PayEndpoint::path($b, 'create') === '/invoices/create' && PayEndpoint::extra($b) === [], 'unsafe stored paths and extra fields replacing Divan\'s own are ignored');
+    check(PayEndpoint::validPath('/v2/invoices/{id}/status', true) && !PayEndpoint::validPath('/v2/invoices', true) && !PayEndpoint::validPath('/a/{id}/{id}', true) && !PayEndpoint::validPath('/a?b=1', false)
+        && PayEndpoint::parseExtra("a=1\nb_c = متن", ['amount']) === ['a' => '1', 'b_c' => 'متن'] && PayEndpoint::parseExtra('amount=5', ['amount']) === null && PayEndpoint::parseExtra('Bad=1', []) === null, 'path and extra-field rules');
+    Settings::set('pay_blupal', ['enabled' => false]);
+    Settings::set('pay_pages', []);
+    App::$config['base_url'] = $base;
+    proc_terminate($proc); proc_close($proc);
     Http::$allowLocalHttpForTests = false;
 });
 
