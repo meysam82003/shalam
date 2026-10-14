@@ -5,9 +5,9 @@ body { font-family: Vazir, Tahoma, sans-serif; color: #F8F0DC; direction: rtl;
   background: radial-gradient(900px 600px at 50% -10%, rgba(29, 59, 124, .55), transparent 70%), url(icons/backdrop.webp) center / cover no-repeat, #050B1A; }
 #app { position: fixed; inset: 0; overflow: hidden; background: #050B1A; }
 #screen { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; touch-action: none; user-select: none; -webkit-user-select: none; outline: none; }
-/* Desktop and tablets in landscape: the app keeps its phone layout in a framed column, exactly as on a phone. */
+/* Desktop browsers: the app in a framed column. The Windows app (html.app-window) always fills its whole, wide window. */
 @media (min-width: 640px) and (min-height: 560px) {
-  #app { inset: 24px auto 24px 50%; width: min(460px, 100vw - 48px); transform: translateX(-50%); border-radius: 34px;
+  html:not(.app-window) #app { inset: 24px auto 24px 50%; width: min(460px, 100vw - 48px); transform: translateX(-50%); border-radius: 34px;
     box-shadow: 0 0 0 1px rgba(230, 190, 106, .55), 0 0 0 7px #0A1530, 0 0 0 8px rgba(230, 190, 106, .45), 0 40px 90px rgba(0, 0, 0, .6), 0 0 80px rgba(230, 190, 106, .18); }
 }
 .field { position: absolute; z-index: 5; border: 0; outline: 0; background: transparent; padding: 0; margin: 0; resize: none; overflow: hidden; -webkit-appearance: none; appearance: none; white-space: pre; }

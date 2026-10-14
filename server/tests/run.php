@@ -1087,7 +1087,7 @@ scenario('pages around a web payment: Divan page first, result page, panel texts
     Http::request('POST', "http://127.0.0.1:$port/api/v1/sandbox/invoices/{$row['gateway_ref']}/simulate", ['X-API-Key: blu_test_KEY12345', 'Content-Type: application/json'], '{"scenario":"success"}');
     $paid = PayOrders::settle($row);
     $html = PayPages::renderReturn($paid);
-    check($paid['status'] === 'paid' && strpos($html, 'پرداخت با موفقیت انجام شد') !== false && strpos($html, e($paid['ref_id'])) !== false && strpos($html, 'اعتبار Pro تا') !== false && strpos($html, 'پیام پایانی') !== false && strpos($html, '<script') === false, 'paid: success, tracking code, Pro end date, panel message; no more checking');
+    check($paid['status'] === 'paid' && strpos($html, 'پرداخت با موفقیت انجام شد') !== false && strpos($html, e($paid['ref_id'])) !== false && strpos($html, 'اعتبار Pro تا') !== false && strpos($html, 'پیام پایانی') !== false && strpos($html, 'state.php') === false, 'paid: success, tracking code, Pro end date, panel message; no more checking');
     check(strpos(PayPages::renderReturn(array_merge($row, ['status' => 'failed'])), 'پرداخت انجام نشد') !== false, 'failed: clear message');
     check(strpos(PayPages::renderStart(null, true), 'نمونهٔ نمایشی') !== false && strpos(PayPages::renderReturn(null, true, 'paid'), 'نمونهٔ نمایشی') !== false, 'panel previews are marked as samples');
 

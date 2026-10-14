@@ -106,6 +106,13 @@ final class PayPages
         return '<svg viewBox="0 0 48 48" aria-hidden="true">' . $p . '</svg>';
     }
 
+    /**
+     * «Back to Divan» in the web, Windows and iPhone versions, where this page is a separate window: tells the app's
+     * window (which asks the server for the result) and closes this one. Inside the Android app the divan:// link
+     * itself closes the payment view.
+     */
+    private const BACK_SCRIPT = "document.addEventListener('click',function(e){var a=e.target.closest&&e.target.closest('a[href^=\"divan://\"]');if(!a||!window.opener)return;e.preventDefault();try{window.opener.postMessage({divan:'back',href:a.getAttribute('href')},'*');}catch(x){}window.close();});";
+
     private static function page(string $title, string $body, bool $demo, string $extraBodyAttr = '', string $script = ''): string
     {
         $css = App::baseUrl() . '/assets/css/pay.css?v=1';
@@ -116,7 +123,7 @@ final class PayPages
             . ($demo ? '<div class="ribbon">نمونهٔ نمایشی — پرداختی انجام نمی‌شود</div>' : '')
             . $body
             . '<p class="foot"><span class="lock">' . self::icon('lock') . 'پرداخت امن · اطلاعات کارت هرگز در دیوان امتیاز ذخیره نمی‌شود</span></p>'
-            . '</main>' . ($script !== '' ? '<script nonce="' . self::nonce() . '">' . $script . '</script>' : '') . '</body></html>';
+            . '</main><script nonce="' . self::nonce() . '">' . self::BACK_SCRIPT . $script . '</script></body></html>';
     }
 
     private static function adBlock(?array $ad): string

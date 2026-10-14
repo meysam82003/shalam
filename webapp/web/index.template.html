@@ -1,7 +1,8 @@
 <!doctype html>
-<html lang="fa" dir="rtl">
+<html lang="fa" dir="rtl" class="__HTMLCLASS__">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https:; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="theme-color" content="#050B1A">
 <meta name="color-scheme" content="dark">
@@ -18,7 +19,7 @@
 <link rel="preload" href="fonts/Vazirmatn-Regular.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/Vazirmatn-Bold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="play.css?v=__VERSION__">
-<script>window.DIVAN_CONFIG = __CONFIG__;</script>
+<script id="divan-config" type="application/json">__CONFIG__</script>
 </head>
 <body>
 <div id="app"><canvas id="screen" aria-label="دیوان امتیاز"></canvas></div>
@@ -28,7 +29,7 @@
   <span class="dots"><i></i><i></i><i></i></span>
   <noscript>برای اجرای دیوان امتیاز، جاوااسکریپت مرورگر را روشن کنید.</noscript>
 </div>
-<div id="crash" role="alert"><div class="box"><b>مشکلی پیش آمد</b><p class="msg"></p><p>اطلاعات بازی‌ها روی همین دستگاه ذخیره شده و از بین نرفته است.</p><button onclick="location.reload()">اجرای دوباره</button></div></div>
+<div id="crash" role="alert"><div class="box"><b>مشکلی پیش آمد</b><p class="msg"></p><p>اطلاعات بازی‌ها روی همین دستگاه ذخیره شده و از بین نرفته است.</p><button id="crash-reload">اجرای دوباره</button></div></div>
 <script src="vendor/polygon-clipping.min.js"></script>
 <script src="host.js?v=__VERSION__"></script>
 </body>

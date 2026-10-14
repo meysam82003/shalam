@@ -65,7 +65,7 @@ for f in sorted(os.listdir(src_raw)):
 config = {'package': 'com.meysam.divanemtiaz.site', 'versionName': version, 'versionCode': code, 'channel': args.channel,
           'store': 'direct', 'api': args.api, 'assets': sorted(assets), 'raw': raw}
 html = open(os.path.join(web, 'index.template.html'), encoding='utf-8').read()
-html = html.replace('__CONFIG__', json.dumps(config, ensure_ascii=False)).replace('__VERSION__', version)
+html = html.replace('__CONFIG__', json.dumps(config, ensure_ascii=False)).replace('__VERSION__', version).replace('__HTMLCLASS__', 'app-window' if args.channel == 'windows' else '')
 open(os.path.join(out, 'index.html'), 'w', encoding='utf-8').write(html)
 copy(os.path.join(web, 'manifest.template.webmanifest'), os.path.join(out, 'manifest.webmanifest'))
 

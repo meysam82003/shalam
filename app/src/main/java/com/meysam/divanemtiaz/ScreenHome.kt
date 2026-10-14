@@ -7,8 +7,8 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 
-const val APP_VERSION_NAME = "5.4.0"
-const val APP_VERSION_LABEL = "نسخهٔ ۵.۴.۰"
+const val APP_VERSION_NAME = "5.5.0"
+const val APP_VERSION_LABEL = "نسخهٔ ۵.۵.۰"
 
 class SplashScreen(host: MainActivity) : Screen(host) {
     override fun build(): View = FrameLayout(host).apply {

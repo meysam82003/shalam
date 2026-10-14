@@ -7,7 +7,10 @@
 (function () {
   'use strict';
   var DH = window.DH = {};
-  var cfg = window.DIVAN_CONFIG || {};
+  var cfgEl = document.getElementById('divan-config');
+  var cfg = window.DIVAN_CONFIG = cfgEl ? JSON.parse(cfgEl.textContent) : (window.DIVAN_CONFIG || {});
+  var reloadBtn = document.getElementById('crash-reload');
+  if (reloadBtn) reloadBtn.addEventListener('click', function () { location.reload(); });
   var frame = document.getElementById('app');
   var canvas = document.getElementById('screen');
   var ctx = canvas.getContext('2d', { alpha: false });
@@ -17,7 +20,7 @@
   // ------------------------------------------------------------------ screen size
   var phone = window.matchMedia('(max-width: 639px), (max-height: 559px)');
   function measureScreen() {
-    frame.classList.toggle('full', phone.matches);
+    frame.classList.toggle('full', phone.matches || document.documentElement.classList.contains('app-window'));
     var r = frame.getBoundingClientRect();
     var dpr = window.devicePixelRatio || 1;
     var w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr));
