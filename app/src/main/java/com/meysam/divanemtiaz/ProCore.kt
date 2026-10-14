@@ -76,6 +76,17 @@ object StoreInfo {
         sigs.orEmpty().map { sig -> MessageDigest.getInstance("SHA-256").digest(sig.toByteArray()).joinToString("") { "%02X".format(it) } }
     }.getOrDefault(emptyList())
 
+    /**
+     * The store's public RSA key for checking purchase signatures on the phone: the one set in the panel (sent with the
+     * app's config) when it is a valid RSA key, otherwise the one built into this APK. The server checks every receipt
+     * again before Pro is given, so this check only adds to it.
+     */
+    fun storeKey(builtIn: String): String {
+        val k = runCatching { ProState.config.optString("store_key") }.getOrNull().orEmpty().trim()
+        if (k.isNotEmpty() && runCatching { KeyFactory.getInstance("RSA").generatePublic(X509EncodedKeySpec(B64.decode(k))) }.isSuccess) return k
+        return builtIn
+    }
+
     /** Tests choose the store and server directly. */
     fun configure(store: String, api: String = DEFAULT_API) { storeId = store; apiBase = api; loaded = true }
 }
@@ -606,6 +617,9 @@ object ProSync {
         if (t != null) Api.call("POST", "v1/auth/logout", JSONObject(), t) { _, _ -> done() } else done()
     }
 
+    /** Shows why this device left the account (set by the main screen to its themed toast). */
+    var signedOutElsewhere: ((String) -> Unit)? = null
+
     /** Full account (certificate, purchases, devices). A dead token signs the device out. */
     fun refreshAccount(done: ((ApiError?) -> Unit)? = null) {
         val t = ProState.token ?: run { done?.invoke(null); return }
@@ -615,7 +629,7 @@ object ProSync {
                 ProState.logout()
                 // Signed in on another device: the server says so; tell the user why this device left the account.
                 val why = err.message.orEmpty()
-                if (why.contains("دستگاه دیگری")) Tls.context?.let { android.widget.Toast.makeText(it, why, android.widget.Toast.LENGTH_LONG).show() }
+                if (why.contains("دستگاه دیگری")) signedOutElsewhere?.invoke(why) ?: Tls.context?.let { android.widget.Toast.makeText(it, why, android.widget.Toast.LENGTH_LONG).show() }
             }
             done?.invoke(err)
         }

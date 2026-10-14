@@ -591,6 +591,7 @@ scenario('API end to end', function () use ($storeKey, $myket) {
     freshIp();
     $cfg = apiGet('v1/config', ['store' => 'myket']);
     check(count($cfg['plans']) === 4 && $cfg['ads'] === ['enabled' => false], 'config without account');
+    check($cfg['store_key'] === trim((string)(Settings::get('myket', [])['public_key'] ?? '')) && apiGet('v1/config', ['store' => 'direct'])['store_key'] === '', 'config carries the store RSA key from the panel (none for the site version)');
     $reg = apiPost('v1/auth/register', ['username' => 'api_user', 'password' => 'secret123', 'device' => 'Pixel', 'store' => 'myket']);
     check(isset($reg['token'], $reg['recovery_key'], $reg['certificate']) && $reg['entitlement']['pro'] === false, 'register returns token, key and certificate');
     $tok = $reg['token'];

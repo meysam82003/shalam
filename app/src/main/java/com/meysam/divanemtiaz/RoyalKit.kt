@@ -477,8 +477,11 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
         dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
     }
 
-    fun toast(message: String) {
-        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+    /** A short message in the style of the theme (falls back to the system toast outside the main screen). */
+    fun toast(message: String, long: Boolean = false) {
+        val host = context as? MainActivity
+        if (host != null) host.showToast(message, long)
+        else Toast.makeText(context, message, if (long) Toast.LENGTH_LONG else Toast.LENGTH_SHORT).show()
     }
 }
 

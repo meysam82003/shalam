@@ -100,6 +100,9 @@ final class Api
                     'features' => Features::forUser($u === null ? null : (int)$u['id'], $pro),
                     'ads' => Ads::configFor($store, $pro),
                     'cross_store' => (bool)Settings::get('cross_store', true),
+                    // The store's public RSA key from the panel (public by design): the app checks each purchase's
+                    // signature with it too, so a key changed in the panel reaches installed apps without a new APK.
+                    'store_key' => in_array($store, Plans::STORES, true) ? trim((string)(Settings::get($store, [])['public_key'] ?? '')) : '',
                     'support_text' => Settings::get('support_text', ''),
                     'privacy_url' => App::baseUrl() . '/index.php?p=privacy',
                 ];

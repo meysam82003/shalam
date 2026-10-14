@@ -18,7 +18,7 @@ class FlavorBilling : StoreBilling {
 
     private fun helper(context: Context, fail: (String) -> Unit, ready: (IabHelper) -> Unit) {
         availability(context)?.let { fail(it); return }
-        val h = IabHelper(context, StoreInfo.myketKey)
+        val h = IabHelper(context, StoreInfo.storeKey(StoreInfo.myketKey))
         runCatching {
             h.startSetup { r -> if (r.isSuccess) ready(h) else { fail("اتصال به مایکت برقرار نشد: ${r.message}"); runCatching { h.dispose() } } }
         }.onFailure { fail("اتصال به مایکت برقرار نشد.") }

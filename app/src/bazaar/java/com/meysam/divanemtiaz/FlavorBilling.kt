@@ -87,7 +87,7 @@ class FlavorBilling : StoreBilling {
             val key = runCatching {
                 @Suppress("DEPRECATION")
                 context.packageManager.getApplicationInfo(context.packageName, android.content.pm.PackageManager.GET_META_DATA).metaData?.getString("divan.bazaarKey")
-            }.getOrNull().orEmpty().trim()
+            }.getOrNull().orEmpty().trim().let { StoreInfo.storeKey(it) }
             return PaymentConfiguration(if (key.isNotEmpty()) SecurityCheck.Enable(key) else SecurityCheck.Disable, true)
         }
 

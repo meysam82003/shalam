@@ -719,7 +719,7 @@ final class ConfigPages
               <label class="check"><input type="checkbox" name="bazaar_enabled" <?= !empty($b['enabled']) ? 'checked' : '' ?>> فروش در نسخهٔ بازار فعال است</label>
               <label>نام بستهٔ برنامه</label><input type="text" name="bazaar_package" value="<?= e($b['package'] ?? 'com.meysam.divanemtiaz') ?>" class="ltr">
               <label>کلید عمومی RSA پرداخت درون‌برنامه‌ای</label><textarea name="bazaar_public_key" class="ltr" style="min-height:70px" placeholder="MIHNMA0GCSqGSIb3DQEBAQUAA..."><?= e($b['public_key'] ?? '') ?></textarea>
-              <div class="hint">پنل توسعه‌دهندگان بازار ← برنامه ← پرداخت درون‌برنامه‌ای ← کلید RSA</div>
+              <div class="hint">پنل توسعه‌دهندگان بازار ← برنامه ← پرداخت درون‌برنامه‌ای ← کلید RSA. سرور امضای هر رسید را با آن بررسی می‌کند و همین کلید به برنامه‌های نصب‌شده هم فرستاده می‌شود؛ تغییرش بدون نسخهٔ تازه اعمال می‌شود.</div>
               <?php if (PaymentBridge::route('bazaar') === 'bridge'): ?><div class="alert ok">بازار از راه <a href="index.php?p=bridge">واسط پرداخت ایران</a> بررسی می‌شود؛ کلید API فقط در config.php سرور ایران لازم است.</div><?php endif; ?>
               <label>کلید API پیشخوان (CAFEBAZAAR-PISHKHAN-API-SECRET) <?= $has('bazaar_api_secret') ?></label><input type="password" name="bazaar_api_secret" class="ltr" autocomplete="new-password" placeholder="خالی = بدون تغییر، - = پاک کردن">
               <details><summary class="muted">روش قدیمی OAuth (فقط اگر کلید API ندارید)</summary>
@@ -735,7 +735,7 @@ final class ConfigPages
               <label class="check"><input type="checkbox" name="myket_enabled" <?= !empty($m['enabled']) ? 'checked' : '' ?>> فروش در نسخهٔ مایکت فعال است</label>
               <label>نام بستهٔ برنامه</label><input type="text" name="myket_package" value="<?= e($m['package'] ?? 'com.meysam.divanemtiaz') ?>" class="ltr">
               <label>کلید عمومی RSA</label><textarea name="myket_public_key" class="ltr" style="min-height:70px"><?= e($m['public_key'] ?? '') ?></textarea>
-              <div class="hint">پنل توسعه‌دهندگان مایکت ← برنامه ← پرداخت درون‌برنامه‌ای</div>
+              <div class="hint">پنل توسعه‌دهندگان مایکت ← برنامه ← پرداخت درون‌برنامه‌ای. سرور امضای هر رسید را با آن بررسی می‌کند و همین کلید به برنامه‌های نصب‌شده هم فرستاده می‌شود؛ تغییرش بدون نسخهٔ تازه اعمال می‌شود.</div>
               <?php if (PaymentBridge::route('myket') === 'bridge'): ?><div class="alert ok">مایکت از راه <a href="index.php?p=bridge">واسط پرداخت ایران</a> بررسی می‌شود؛ توکن API فقط در config.php سرور ایران لازم است و این فیلد را می‌توانید خالی بگذارید (با «-» پاک کنید).</div><?php endif; ?>
               <label>روش صحت‌سنجی مستقیم مایکت</label><select name="myket_verify"><option value="tokens">مستند: GET …/purchases/products/{sku}/tokens/{token}</option><option value="partners"<?= ($m['verify'] ?? 'tokens') === 'partners' ? ' selected' : '' ?>>قدیمی: POST …/partners/…/verify</option></select>
               <label>توکن دسترسی API (X-Access-Token) <?= $has('myket_access_token') ?></label><input type="password" name="myket_access_token" class="ltr" autocomplete="new-password" placeholder="خالی = بدون تغییر، - = پاک کردن">
