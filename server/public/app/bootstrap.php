@@ -12,6 +12,7 @@ require_once __DIR__ . '/domain.php';
 require_once __DIR__ . '/markets.php';
 require_once __DIR__ . '/payments.php';
 require_once __DIR__ . '/paypages.php';
+require_once __DIR__ . '/site.php';
 require_once __DIR__ . '/backup.php';
 require_once __DIR__ . '/installer.php';
 require_once __DIR__ . '/api.php';

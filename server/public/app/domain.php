@@ -539,6 +539,24 @@ final class Promo
         return $store === 'bazaar' && Settings::secret('bazaar_discount_key') !== '';
     }
 
+    /** A discount code for a purchase on the site (web gateways charge the lowered price directly). */
+    public static function forSite(string $code, ?array $user, string $planCode): array
+    {
+        if (!RateLimit::hit('promo-site:' . Http::ip(), 20, 3600)) throw new ApiError('rate_limited', 'تلاش زیاد است؛ کمی بعد دوباره امتحان کنید.', 429);
+        $p = Db::one('SELECT * FROM {promo_codes} WHERE code = ?', [self::normalize($code)]);
+        if ($p === null || !$p['active']) throw new ApiError('promo_invalid', 'این کد تخفیف معتبر نیست.', 404);
+        if ($p['kind'] !== 'discount') throw new ApiError('promo_is_gift', 'این کد هدیه است، نه تخفیف؛ آن را در برنامه، بخش «دیوان Pro ← کد تخفیف یا هدیه» وارد کنید.', 409);
+        $now = Clock::now();
+        if ($p['starts_at'] !== null && Clock::ts($p['starts_at']) > $now) throw new ApiError('promo_not_started', 'زمان استفاده از این کد هنوز نرسیده است.', 409);
+        if ($p['ends_at'] !== null && Clock::ts($p['ends_at']) <= $now) throw new ApiError('promo_expired', 'مهلت این کد تمام شده است.', 409);
+        if ($p['max_uses'] !== null && (int)$p['uses'] >= (int)$p['max_uses']) throw new ApiError('promo_used_up', 'ظرفیت این کد پر شده است.', 409);
+        if ($p['plan_code'] && $p['plan_code'] !== $planCode) throw new ApiError('promo_plan', 'این کد فقط برای «' . (Plans::byCode($p['plan_code'])['title'] ?? $p['plan_code']) . '» است.', 409);
+        $users = array_filter(explode(',', (string)$p['users']));
+        if ($users && ($user === null || !in_array((string)$user['id'], $users, true))) throw new ApiError('promo_not_yours', 'این کد برای حساب مشخصی است؛ نام کاربری همان حساب را بنویسید.', 403);
+        if ($user !== null && Db::value('SELECT id FROM {promo_redemptions} WHERE code_id = ? AND user_id = ?', [$p['id'], $user['id']]) !== null) throw new ApiError('promo_used', 'این حساب قبلاً از این کد استفاده کرده است.', 409);
+        return $p;
+    }
+
     public static function discountedPrice(int $price, int $percent): int
     {
         $v = (int)(round($price * (100 - max(1, min(90, $percent))) / 100 / 100) * 100);
@@ -705,10 +723,33 @@ final class Ads
             // Divan's own pages around a web payment (site version, web, Windows, iPhone).
             ['pay_before', 'صفحهٔ پیش از پرداخت (نسخهٔ سایت)', 'pay', 'inline', 'card,image,text,sponsor', ''],
             ['pay_after', 'صفحهٔ پس از پرداخت (نسخهٔ سایت)', 'pay', 'inline', 'card,image,text,sponsor', ''],
+            // The introduction site (httpuser87890.ir); shown only while «تبلیغات سایت» is on in «مدیریت سایت».
+            ['site_top', 'سایت — زیر معرفی بالای صفحهٔ اصلی', 'site', 'inline', 'card,image,text,sponsor,banner_wide', ''],
+            ['site_middle', 'سایت — میان بخش‌های صفحهٔ اصلی', 'site', 'inline', 'card,image,text,sponsor,banner_wide', ''],
+            ['site_bottom', 'سایت — پیش از بخش دریافت', 'site', 'inline', 'card,image,text,sponsor,banner_wide', ''],
+            ['site_pages', 'سایت — بالای صفحه‌های دیگر (Pro، دریافت، …)', 'site', 'inline', 'card,image,text,sponsor,banner_wide', ''],
         ];
     }
 
     public static function placements(): array { return Db::all('SELECT * FROM {placements} ORDER BY sort, k'); }
+
+    /** One direct ad for a web page (Divan's payment pages, the site): text, image and an https link only. */
+    public static function pick(string $placement, bool $count = true): ?array
+    {
+        if ((int)(Db::value('SELECT active FROM {placements} WHERE k = ?', [$placement]) ?? 0) !== 1) return null;
+        $now = Clock::sql();
+        foreach (Db::all('SELECT * FROM {ads} WHERE active = 1 AND (starts_at IS NULL OR starts_at <= ?) AND (ends_at IS NULL OR ends_at > ?) ORDER BY priority DESC, id', [$now, $now]) as $a) {
+            if (!in_array($placement, explode(',', (string)$a['placements']), true)) continue;
+            if ($a['total_cap'] !== null && (int)$a['impressions_total'] >= (int)$a['total_cap']) continue;
+            $media = self::mediaUrl($a['media_id'] === null ? null : (int)$a['media_id']);
+            $target = (string)$a['target_url'];
+            if ($count) self::record([['event' => 'impression', 'source' => 'direct', 'placement' => $placement, 'ad_id' => (int)$a['id']]]);
+            return ['title' => (string)$a['title'], 'body' => (string)$a['body'], 'cta' => (string)($a['cta_text'] ?? ''),
+                'image' => $media !== null && $media['kind'] === 'image' ? $media['url'] : null,
+                'url' => preg_match('#^https://#i', $target) && safe_target_url($target) ? $target : null];
+        }
+        return null;
+    }
 
     public static function mediaUrl(?int $mediaId): ?array
     {

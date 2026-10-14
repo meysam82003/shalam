@@ -557,21 +557,22 @@ final class PayOrders
      * («کد تخفیف یا هدیه»), which then adds the plan to whichever account redeems it, exactly once.
      * @return array{order:string, gateway_url:string, amount:int}
      */
-    public static function createSite(string $method, string $planCode, string $username = ''): array
+    public static function createSite(string $method, string $planCode, string $username = '', string $promo = ''): array
     {
         if (!RateLimit::hit('siteorder:' . Http::ip(), 15, 3600)) throw new ApiError('rate_limited', 'درخواست‌های خرید از این شبکه زیاد است؛ کمی بعد دوباره تلاش کنید.', 429);
         $username = trim($username);
+        $u = null;
         if ($username !== '') {
             $u = Users::byName($username);
             if ($u === null || $u['status'] !== 'active') throw new ApiError('no_account', 'حسابی با این نام کاربری پیدا نشد. نام کاربری را همان‌طور که در برنامه ساخته‌اید بنویسید، یا خالی بگذارید تا کد فعال‌سازی بگیرید.', 404);
-            return self::open((int)$u['id'], $method, $planCode, 'direct', 'site', null);
         }
-        $code = Crypto::recoveryKey();
-        return self::open(0, $method, $planCode, 'direct', 'code', $code);
+        $discount = trim($promo) === '' ? null : Promo::forSite($promo, $u, $planCode);
+        if ($u !== null) return self::open((int)$u['id'], $method, $planCode, 'direct', 'site', null, $discount);
+        return self::open(0, $method, $planCode, 'direct', 'code', Crypto::recoveryKey(), $discount);
     }
 
     /** Creates the order and the gateway invoice (shared by the app, the site by username and activation codes). */
-    private static function open(int $userId, string $method, string $planCode, string $channel, string $buyer, ?string $activation): array
+    private static function open(int $userId, string $method, string $planCode, string $channel, string $buyer, ?string $activation, ?array $promo = null): array
     {
         $a = PayRegistry::get($method);
         if ($a === null || $a->kind() !== 'web' || PayRegistry::status($method, $channel) !== 'ready') throw new ApiError('method_unavailable', 'امکان خرید موقتاً در دسترس نیست.', 409);
@@ -581,6 +582,8 @@ final class PayOrders
         if ($userId > 0 && Entitlements::summary($userId)['lifetime']) throw new ApiError('already_lifetime', 'این حساب اشتراک مادام‌العمر دارد؛ خرید دوباره لازم نیست.', 409);
         $toman = PayRegistry::price($plan, $channel);
         if ($toman < 1000) throw new ApiError('bad_price', 'قیمت این پلن ثبت نشده است.', 409);
+        $list = $toman;
+        if ($promo !== null) $toman = Promo::discountedPrice($toman, (int)$promo['percent']);
         $code = substr(strtolower(preg_replace('/[^a-z0-9]/i', '', Crypto::token(24))), 0, 20);
         $now = Clock::sql();
         $row = [
@@ -589,6 +592,7 @@ final class PayOrders
             'expires_at' => Clock::sql(Clock::now() + 3600), 'created_at' => $now, 'updated_at' => $now,
         ];
         if ($buyer !== 'app') $row['buyer'] = $buyer;
+        if ($promo !== null) { $row['promo_id'] = (int)$promo['id']; $row['list_toman'] = $list; }
         if ($activation !== null) { $row['activation_hash'] = Crypto::hash('activation|' . Crypto::normalizeRecovery($activation)); $row['activation_enc'] = Crypto::encrypt($activation); }
         $id = Db::insert('pay_orders', $row);
         $order = Db::one('SELECT * FROM {pay_orders} WHERE id = ?', [$id]);
@@ -696,6 +700,11 @@ final class PayOrders
                     [$c->refId, $now, $now, $order['id']])->rowCount();
                 if ($n !== 1) return;
                 Audit::log('system', null, 'pay_order_paid', 'pay_order', $order['id'], '', null, ['ref' => $c->refId]);
+                // A discount code counts once its order is paid (and once per account when the buyer is known).
+                if (!empty($order['promo_id'])) {
+                    Db::run('UPDATE {promo_codes} SET uses = uses + 1 WHERE id = ?', [(int)$order['promo_id']]);
+                    if ((int)$order['user_id'] > 0) Db::run('INSERT IGNORE INTO {promo_redemptions} (code_id, user_id, created_at) VALUES (?, ?, ?)', [(int)$order['promo_id'], (int)$order['user_id'], $now]);
+                }
                 // An activation-code order waits for the account that types the code; the others are granted now.
                 if ((int)$order['user_id'] > 0 && ($order['buyer'] ?? 'app') !== 'code') self::grant($order, (int)$order['user_id'], $c->refId, $now);
             });

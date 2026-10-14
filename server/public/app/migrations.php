@@ -437,6 +437,10 @@ final class Migrations
                     ADD COLUMN activation_enc TEXT NULL, ADD COLUMN redeemed_by BIGINT UNSIGNED NULL, ADD COLUMN redeemed_at DATETIME NULL,
                     ADD UNIQUE KEY uq_activation (activation_hash)",
             ],
+            // Discount codes on purchases from the site.
+            9 => [
+                "ALTER TABLE {pay_orders} ADD COLUMN promo_id INT UNSIGNED NULL, ADD COLUMN list_toman INT UNSIGNED NULL",
+            ],
         ];
     }
 

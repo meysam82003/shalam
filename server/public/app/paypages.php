@@ -49,7 +49,7 @@ final class PayPages
     /** Orders started on the site (not in the app): no app to go back to. */
     private static function fromSite(array $order): bool { return in_array($order['buyer'] ?? 'app', ['site', 'code'], true); }
 
-    private static function siteHome(): string
+    public static function siteHome(): string
     {
         $p = (string)parse_url(App::baseUrl(), PHP_URL_PATH);
         return rtrim(substr(App::baseUrl(), 0, strlen(App::baseUrl()) - strlen($p)), '/') . '/';
@@ -79,20 +79,7 @@ final class PayPages
     /** One active offer for a payment-page slot (panel → ads, slot «pay_before» / «pay_after»). */
     public static function ad(string $placement, bool $count = true): ?array
     {
-        if (!self::cfg()['show_ads']) return null;
-        if ((int)(Db::value('SELECT active FROM {placements} WHERE k = ?', [$placement]) ?? 0) !== 1) return null;
-        $now = Clock::sql();
-        foreach (Db::all('SELECT * FROM {ads} WHERE active = 1 AND (starts_at IS NULL OR starts_at <= ?) AND (ends_at IS NULL OR ends_at > ?) ORDER BY priority DESC, id', [$now, $now]) as $a) {
-            if (!in_array($placement, explode(',', (string)$a['placements']), true)) continue;
-            if ($a['total_cap'] !== null && (int)$a['impressions_total'] >= (int)$a['total_cap']) continue;
-            $media = Ads::mediaUrl($a['media_id'] === null ? null : (int)$a['media_id']);
-            $target = (string)$a['target_url'];
-            if ($count) Ads::record([['event' => 'impression', 'source' => 'direct', 'placement' => $placement, 'ad_id' => (int)$a['id']]]);
-            return ['title' => (string)$a['title'], 'body' => (string)$a['body'], 'cta' => (string)($a['cta_text'] ?? ''),
-                'image' => $media !== null && $media['kind'] === 'image' ? $media['url'] : null,
-                'url' => preg_match('#^https://#i', $target) && safe_target_url($target) ? $target : null];
-        }
-        return null;
+        return self::cfg()['show_ads'] ? Ads::pick($placement, $count) : null;
     }
 
     // ------------------------------------------------------------ pieces
@@ -171,6 +158,7 @@ final class PayPages
         $body = '<section class="card hero"><div class="medal crown">' . self::crown() . '</div>'
             . '<h1>' . e($c['before_title']) . '</h1><p class="sub">' . e($plan['title'] ?? '') . '</p>'
             . '<div class="amount"><span class="label">مبلغ قابل پرداخت</span><b>' . fa_digits(number_format((int)$order['amount_toman'])) . '</b><span class="unit">تومان</span></div>'
+            . ((int)($order['list_toman'] ?? 0) > (int)$order['amount_toman'] ? '<p class="discount"><s>' . e(money((int)$order['list_toman'])) . '</s> <b>' . fa_digits((string)(int)round(((int)$order['list_toman'] - (int)$order['amount_toman']) * 100 / (int)$order['list_toman'])) . '٪ تخفیف</b> با کد تخفیف</p>' : '')
             . '<div class="meta"><div><span>پلن</span><b>' . e($plan['title'] ?? '') . '</b></div><div><span>مدت</span><b>' . e($plan ? self::duration($plan) : '') . '</b></div><div><span>روش پرداخت</span><b>' . e(preg_replace('/\s*\(.*\)$/u', '', $methodTitle)) . '</b></div></div></section>';
         if (!$open) {
             $body .= '<div class="note">' . self::icon('info') . '<div>' . ($order['status'] === 'paid' ? 'این سفارش پرداخت شده است.' : 'مهلت این سفارش تمام شده؛ از برنامه دوباره «خرید» را بزنید. اگر مبلغی کم شده، بانک طبق قانون ظرف ۷۲ ساعت آن را برمی‌گرداند.') . '</div></div>';
@@ -299,6 +287,8 @@ final class PayPages
         $body .= '</div></section><section class="card"><h2>برای کدام حساب؟</h2>'
             . '<p class="sub" style="text-align:right">اگر در برنامه حساب دارید، نام کاربری‌اش را بنویسید تا اشتراک مستقیم به همان حساب اضافه شود (رمز لازم نیست). خالی بگذارید تا پس از پرداخت یک <b>کد فعال‌سازی</b> بگیرید و در برنامه، روی هر حسابی که خواستید، فعالش کنید.</p>'
             . '<input class="field-in" type="text" name="username" maxlength="40" placeholder="نام کاربری (اختیاری)" value="' . e((string)($old['username'] ?? '')) . '" spellcheck="false" autocapitalize="off"></section>'
+            . '<section class="card"><h2>کد تخفیف</h2><p class="sub" style="text-align:right">اگر کد تخفیف دارید اینجا بنویسید؛ مبلغ کم‌شده در صفحهٔ بعد، پیش از پرداخت نشان داده می‌شود.</p>'
+            . '<input class="field-in ltr" type="text" name="promo" maxlength="40" placeholder="کد تخفیف (اختیاری)" value="' . e((string)($old['promo'] ?? '')) . '" spellcheck="false" autocapitalize="characters"></section>'
             . '<label class="agree"><input type="checkbox" name="agree" value="1" required' . (!empty($old['agree']) ? ' checked' : '') . '> <span><a href="' . e(self::siteHome() . 'pro.html') . '" target="_blank" rel="noopener">شرایط خرید اشتراک</a> و <a href="' . e(self::siteHome() . 'refund.html') . '" target="_blank" rel="noopener">قوانین بازپرداخت</a> را خوانده‌ام و می‌پذیرم.</span></label>'
             . '<div class="actions"><button class="btn gold" type="submit">' . self::icon('lock') . 'ادامه و پرداخت امن</button><a class="btn ghost" href="' . e(self::siteHome()) . '">بازگشت به سایت</a></div></form>';
         return self::page('خرید اشتراک', $body, false);

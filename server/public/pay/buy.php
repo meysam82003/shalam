@@ -11,11 +11,11 @@ Db::pdo();
 Migrations::ensure();
 PayPages::headers();
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
-    $old = ['plan' => (string)($_POST['plan'] ?? ''), 'method' => (string)($_POST['method'] ?? ''), 'username' => trim((string)($_POST['username'] ?? '')), 'agree' => !empty($_POST['agree'])];
+    $old = ['plan' => (string)($_POST['plan'] ?? ''), 'method' => (string)($_POST['method'] ?? ''), 'username' => trim((string)($_POST['username'] ?? '')), 'agree' => !empty($_POST['agree']), 'promo' => trim((string)($_POST['promo'] ?? ''))];
     try {
         if (!PayPages::validFormToken((string)($_POST['t'] ?? ''))) throw new ApiError('form', 'مهلت این صفحه تمام شده بود؛ دوباره «ادامه» را بزنید.');
         if (!$old['agree']) throw new ApiError('agree', 'برای ادامه، شرایط خرید را بپذیرید.');
-        $r = PayOrders::createSite($old['method'], $old['plan'], $old['username']);
+        $r = PayOrders::createSite($old['method'], $old['plan'], $old['username'], $old['promo']);
         header('Location: start.php?o=' . $r['order'], true, 303);
         exit;
     } catch (ApiError $e) {
@@ -24,4 +24,5 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         exit;
     }
 }
-echo PayPages::renderBuy();
+// A link from the site's discount banner fills the code in.
+echo PayPages::renderBuy(null, ['promo' => mb_substr(Promo::normalize((string)($_GET['promo'] ?? '')), 0, 40)]);

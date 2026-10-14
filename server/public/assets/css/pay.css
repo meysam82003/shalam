@@ -136,3 +136,8 @@ h2::before { content: ''; width: 18px; height: 2px; border-radius: 2px; backgrou
 .agree { display: flex; gap: 8px; align-items: flex-start; color: var(--muted); font-size: .86rem; margin-top: 4px; }
 .agree a { color: var(--gold2); }
 button.btn { width: 100%; }
+
+/* Discount code on the page before payment. */
+.discount { margin: -4px 0 12px; text-align: center; color: var(--muted); font-size: .9rem; }
+.discount s { opacity: .7; }
+.discount b { color: var(--teal); margin-inline: 4px; }

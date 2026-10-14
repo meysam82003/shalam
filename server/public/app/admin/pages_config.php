@@ -984,6 +984,133 @@ final class ConfigPages
     }
 
     // ================================================================ promotional notifications
+    /** «مدیریت سایت»: the introduction site's notice bar, discount banner, ads, sections, texts, details and downloads. */
+    public static function site(): void
+    {
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            self::managerOnly();
+            $reason = Admin::requireReason();
+            $part = (string)($_POST['action'] ?? '');
+            SiteSettings::save($part, $_POST);
+            Admin::audit('site_' . $part, 'settings', null, $reason);
+            Admin::flash('ذخیره شد. سایت حداکثر تا یک دقیقهٔ دیگر تغییر را نشان می‌دهد.');
+            Admin::redirect('p=site#' . $part);
+        }
+        $c = SiteSettings::get();
+        $codes = Db::all("SELECT code, percent, plan_code, ends_at, active, max_uses, uses, users FROM {promo_codes} WHERE kind = 'discount' ORDER BY id DESC LIMIT 200");
+        $slots = [];
+        foreach (SiteSettings::AD_SLOTS as $k) {
+            $pl = Db::one('SELECT * FROM {placements} WHERE k = ?', [$k]);
+            $n = (int)Db::value("SELECT COUNT(*) FROM {ads} WHERE active = 1 AND FIND_IN_SET(?, placements)", [$k]);
+            $slots[] = [$k, $pl['title'] ?? $k, (int)($pl['active'] ?? 0), $n];
+        }
+        $home = PayPages::siteHome();
+        $note = fn() => '<div class="row" style="margin-top:10px"><div style="flex:3"><input type="text" name="reason" placeholder="یادداشت (اختیاری)"></div><div style="flex:0"><button class="btn gold">ذخیره</button></div></div>';
+        $form = fn(string $part) => '<form method="post" action="index.php?p=site">' . Admin::csrfField() . '<input type="hidden" name="action" value="' . $part . '">';
+        Admin::layout('مدیریت سایت', function () use ($c, $codes, $slots, $home, $note, $form) {
+            ?>
+            <div class="alert info">
+              هر چه اینجا ذخیره کنید، بدون آپلود دوبارهٔ فایل‌ها روی <a href="<?= e($home) ?>" target="_blank" rel="noopener">سایت</a> اعمال می‌شود (حداکثر پس از یک دقیقه).
+              خانه‌های خالی همان متن و مقدار فایل‌های خود سایت را نگه می‌دارند. کد رسمی اینماد عوض نمی‌شود.
+              <br><input type="search" id="pm-search" placeholder="جست‌وجو در تنظیمات سایت…" style="margin-top:8px"> <span id="pm-search-n" class="hint"></span>
+            </div>
+            <div class="grid g2 site-cards">
+
+            <div class="card pm-card" id="announce"><h3>نوار اعلان بالای سایت</h3>
+              <?= $form('announce') ?>
+                <label class="check"><input type="checkbox" name="on" <?= $c['announce']['on'] ? 'checked' : '' ?>> نمایش داده شود</label>
+                <label>متن اعلان</label><textarea name="text" maxlength="300" placeholder="مثلاً: نسخهٔ ویندوز دیوان امتیاز منتشر شد!"><?= e($c['announce']['text']) ?></textarea>
+                <div class="row">
+                  <div><label>پیوند (اختیاری)</label><input type="text" name="link" class="ltr" value="<?= e($c['announce']['link']) ?>" placeholder="/download.html یا https://…"></div>
+                  <div><label>متن دکمهٔ پیوند</label><input type="text" name="link_text" maxlength="40" value="<?= e($c['announce']['link_text']) ?>" placeholder="مشاهده"></div>
+                </div>
+                <div class="row">
+                  <div><label>رنگ</label><select name="tone"><?php foreach (SiteSettings::TONES as $k => $l) echo '<option value="' . e($k) . '"' . ($c['announce']['tone'] === $k ? ' selected' : '') . '>' . e($l) . '</option>'; ?></select></div>
+                  <div><label class="check" style="margin-top:30px"><input type="checkbox" name="home_only" <?= $c['announce']['home_only'] ? 'checked' : '' ?>> فقط در صفحهٔ اصلی</label></div>
+                </div>
+                <?= $note() ?>
+              </form>
+            </div>
+
+            <div class="card pm-card" id="promo"><h3>بنر کد تخفیف</h3>
+              <p class="hint">یک کد «تخفیف خرید» را روی سایت نشان می‌دهد؛ دکمهٔ آن صفحهٔ خرید از سایت را با همین کد پرشده باز می‌کند. با پایان مهلت یا ظرفیت کد، بنر خودکار پنهان می‌شود. کدها را در <a href="index.php?p=promos">کد تخفیف و کد هدیه</a> بسازید.</p>
+              <?= $form('promo') ?>
+                <label class="check"><input type="checkbox" name="on" <?= $c['promo']['on'] ? 'checked' : '' ?>> نمایش داده شود</label>
+                <label>کد تخفیف</label><select name="code"><option value="">— انتخاب کنید —</option><?php foreach ($codes as $p) {
+                    $tag = (int)$p['percent'] . '٪' . ($p['plan_code'] ? ' — ' . $p['plan_code'] : '') . (!$p['active'] ? ' (غیرفعال)' : '') . ($p['ends_at'] ? ' — تا ' . jdate($p['ends_at'], false) : '') . (trim((string)$p['users']) !== '' ? ' (ویژهٔ حساب‌های خاص؛ روی سایت نمایش داده نمی‌شود)' : '');
+                    echo '<option value="' . e($p['code']) . '"' . ($c['promo']['code'] === $p['code'] ? ' selected' : '') . '>' . e($p['code'] . ' — ' . $tag) . '</option>'; } ?></select>
+                <label>عنوان بنر (اختیاری)</label><input type="text" name="title" maxlength="80" value="<?= e($c['promo']['title']) ?>" placeholder="جشنوارهٔ پاییزهٔ دیوان">
+                <label>توضیح (اختیاری)</label><textarea name="text" maxlength="300" placeholder="با این کد، اشتراک Pro را ارزان‌تر بخرید."><?= e($c['promo']['text']) ?></textarea>
+                <?= $note() ?>
+              </form>
+            </div>
+
+            <div class="card pm-card" id="ads"><h3>تبلیغات سایت</h3>
+              <p class="hint">تبلیغ‌ها همان تبلیغ‌های بخش <a href="index.php?p=ads">تبلیغات</a> هستند: برای هر تبلیغ، جایگاه‌های «سایت — …» را تیک بزنید. فقط تصویر، متن و پیوند https نمایش داده می‌شود؛ هر جایگاه را در <a href="index.php?p=placements">جایگاه‌های تبلیغ</a> روشن یا خاموش کنید.</p>
+              <?= $form('ads') ?>
+                <label class="check"><input type="checkbox" name="on" <?= $c['ads']['on'] ? 'checked' : '' ?>> تبلیغات روی سایت نمایش داده شود</label>
+                <div class="table-wrap"><table><thead><tr><th>جایگاه</th><th>وضعیت</th><th>تبلیغ فعال</th></tr></thead><tbody>
+                <?php foreach ($slots as [$k, $t, $on, $n]) echo '<tr><td>' . e($t) . '<br><code>' . e($k) . '</code></td><td>' . Admin::statusBadge($on ? 'active' : 'disabled') . '</td><td>' . fa_digits((string)$n) . '</td></tr>'; ?>
+                </tbody></table></div>
+                <?= $note() ?>
+              </form>
+            </div>
+
+            <div class="card pm-card" id="sections"><h3>بخش‌های صفحهٔ اصلی</h3>
+              <p class="hint">ترتیب (عدد کوچک‌تر بالاتر) و نمایش هر بخش. بخش معرفی بالای صفحه همیشه اول است.</p>
+              <?= $form('sections') ?>
+                <div class="table-wrap"><table><thead><tr><th>بخش</th><th>ترتیب</th><th>نمایش</th></tr></thead><tbody>
+                <?php foreach (SiteSettings::SECTIONS as $k => $t) echo '<tr><td>' . e($t) . '</td><td><input type="number" min="1" max="99" name="order[' . e($k) . ']" value="' . (int)$c['sections'][$k]['order'] . '" style="width:80px"></td><td><label class="check"><input type="checkbox" name="show[' . e($k) . ']" ' . ($c['sections'][$k]['show'] ? 'checked' : '') . '> نمایش</label></td></tr>'; ?>
+                </tbody></table></div>
+                <?= $note() ?>
+              </form>
+            </div>
+
+            <div class="card pm-card" id="texts"><h3>متن‌های صفحهٔ اصلی</h3>
+              <p class="hint">خالی بماند = متن فعلی سایت.</p>
+              <?= $form('texts') ?>
+                <?php foreach (SiteSettings::TEXTS as $k => [$label, $max]) {
+                    echo '<label>' . e($label) . '</label>';
+                    echo $max > 120 ? '<textarea name="' . e($k) . '" maxlength="' . $max . '">' . e($c['texts'][$k]) . '</textarea>' : '<input type="text" name="' . e($k) . '" maxlength="' . $max . '" value="' . e($c['texts'][$k]) . '">';
+                } ?>
+                <?= $note() ?>
+              </form>
+            </div>
+
+            <div class="card pm-card" id="business"><h3>اطلاعات کسب‌وکار و تماس</h3>
+              <p class="hint">فقط اطلاعات واقعی و ثبت‌شده، دقیقاً مطابق پروندهٔ اینماد. خالی بماند = مقدار فایل تنظیمات سایت.</p>
+              <?= $form('business') ?>
+                <div class="row" style="flex-wrap:wrap">
+                <?php foreach (SiteSettings::BUSINESS as $k => [$label, $max]) echo '<div style="min-width:45%"><label>' . e($label) . '</label><input type="text" name="business[' . e($k) . ']" maxlength="' . $max . '" value="' . e($c['business'][$k]) . '"></div>'; ?>
+                <?php foreach (SiteSettings::CONTACT as $k => [$label, $max]) echo '<div style="min-width:45%"><label>' . e($label) . '</label><input type="text" name="contact[' . e($k) . ']" maxlength="' . $max . '" value="' . e($c['contact'][$k]) . '"' . (in_array($k, ['email', 'phone', 'mobile', 'postalCode', 'telegram', 'eitaa', 'bale'], true) ? ' class="ltr"' : '') . '></div>'; ?>
+                </div>
+                <?= $note() ?>
+              </form>
+            </div>
+
+            <div class="card pm-card" id="downloads"><h3>لینک‌های دانلود</h3>
+              <p class="hint">پس از هر انتشار تأییدشده، نشانی فایل، حجم و SHA-256 را اینجا به‌روز کنید. خالی بماند = مقدار فایل تنظیمات سایت. نسخهٔ وب و PWA همیشه <code>/play/</code> است.</p>
+              <?= $form('downloads') ?>
+                <div class="row">
+                  <div><label>شمارهٔ نسخه</label><input type="text" name="version" class="ltr" maxlength="20" value="<?= e($c['downloads']['version']) ?>" placeholder="5.5.0"></div>
+                  <div><label>صفحهٔ انتشار گیت‌هاب</label><input type="text" name="github" class="ltr" value="<?= e($c['downloads']['github']) ?>" placeholder="https://github.com/…/releases/latest"></div>
+                </div>
+                <?php foreach (SiteSettings::DOWNLOADS as [$k, $t, $size, $sha]) { $d = $c['downloads'][$k]; ?>
+                  <fieldset style="margin-top:10px"><legend><?= e($t) ?></legend>
+                    <label>نشانی</label><input type="text" name="<?= e($k) ?>[url]" class="ltr" value="<?= e($d['url']) ?>" placeholder="<?= in_array($k, ['bazaar', 'myket'], true) ? 'https://…' : '/downloads/…' ?>">
+                    <?php if ($size): ?><label>حجم</label><input type="text" name="<?= e($k) ?>[size]" maxlength="30" value="<?= e($d['size']) ?>" placeholder="مثلاً ۱۲ مگابایت"><?php endif; ?>
+                    <?php if ($sha): ?><label>SHA-256</label><input type="text" name="<?= e($k) ?>[sha256]" class="ltr" maxlength="64" value="<?= e($d['sha256']) ?>"><?php endif; ?>
+                  </fieldset>
+                <?php } ?>
+                <?= $note() ?>
+              </form>
+            </div>
+
+            </div>
+            <?php
+        }, 'site', ['<a class="btn ghost sm" href="' . e($home) . '" target="_blank" rel="noopener">مشاهدهٔ سایت</a>']);
+    }
+
     public static function notices(): void
     {
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {

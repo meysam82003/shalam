@@ -158,7 +158,7 @@
 
 })();
 
-/* Payment methods page: copy buttons and search (own scope: the ad-preview code above returns early on other pages). */
+/* Payment methods and site pages: copy buttons and search (own scope: the ad-preview code above returns early on other pages). */
 (function () {
   'use strict';
   // Copy buttons (webhook and return addresses for the gateway panels).
@@ -169,7 +169,7 @@
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(v).then(done, function () {});
     else { var i = document.createElement('textarea'); i.value = v; document.body.appendChild(i); i.select(); try { document.execCommand('copy'); done(); } catch (e) {} i.remove(); }
   });
-  // Search on the payment-methods page: cards, their settings and the API reference.
+  // Search on the payment-methods and site pages: cards, their settings and the API reference.
   var pms = document.getElementById('pm-search');
   if (pms) {
     var cards = Array.prototype.slice.call(document.querySelectorAll('.pm-card'));

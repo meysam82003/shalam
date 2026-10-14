@@ -4,7 +4,7 @@ declare(strict_types=1);
 define('DIVAN', true);
 define('DIVAN_TEST', true);
 $src = dirname(__DIR__) . '/public';
-foreach (['lib', 'migrations', 'catalog', 'domain', 'markets', 'payments', 'paypages', 'backup', 'installer', 'api'] as $f) require "$src/app/$f.php";
+foreach (['lib', 'migrations', 'catalog', 'domain', 'markets', 'payments', 'paypages', 'site', 'backup', 'installer', 'api'] as $f) require "$src/app/$f.php";
 App::$root = $argv[1];
 App::$config = require $argv[1] . '/storage/config.php';
 $dsn = 'mysql:' . (getenv('DIVAN_TEST_DSN') ?: 'host=127.0.0.1;port=3306;dbname=divan_test2') . ';charset=utf8mb4';
