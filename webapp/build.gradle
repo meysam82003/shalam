@@ -1,0 +1,24 @@
+plugins {
+    id 'java'
+    id 'org.jetbrains.kotlin.jvm' version '1.9.24'
+    id 'org.teavm' version '0.13.1'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+}
+kotlin { jvmToolchain(21) }
+compileKotlin { kotlinOptions.jvmTarget = '11' }
+
+dependencies {
+    implementation teavm.libs.jsoApis
+}
+
+teavm {
+    js {
+        mainClass = 'divan.web.Main'
+        targetFileName = 'divan.js'
+        obfuscated = false
+    }
+}
