@@ -1090,6 +1090,15 @@ final class ConfigPages
               </form>
             </div>
 
+            <div class="card pm-card" id="enamad"><h3>نماد اعتماد الکترونیکی (اینماد)</h3>
+              <p class="hint">کد کامل نماد را همان‌طور که در پنل enamad.ir داده شده اینجا بچسبانید؛ شناسه و Code از آن برداشته می‌شود و نماد در همهٔ صفحه‌های سایت با همان ساختار رسمی نمایش داده می‌شود. خالی = کد فعلی فایل‌های سایت.</p>
+              <?= $form('enamad') ?>
+                <textarea name="enamad" class="ltr" style="min-height:90px" placeholder="&lt;a referrerpolicy='origin' target='_blank' href='https://trustseal.enamad.ir/?id=…&amp;Code=…'&gt;…&lt;/a&gt;"><?= $c['enamad']['id'] !== '' ? e("https://trustseal.enamad.ir/?id={$c['enamad']['id']}&Code={$c['enamad']['code']}") : '' ?></textarea>
+                <?php if ($c['enamad']['id'] !== ''): ?><p class="hint">نماد فعلی: شناسهٔ <b class="ltr"><?= e($c['enamad']['id']) ?></b></p><?php endif; ?>
+                <?= $note() ?>
+              </form>
+            </div>
+
             <div class="card pm-card" id="downloads"><h3>لینک‌های دانلود</h3>
               <p class="hint">پس از هر انتشار تأییدشده، نشانی فایل، حجم و SHA-256 را اینجا به‌روز کنید. خالی بماند = مقدار فایل تنظیمات سایت. نسخهٔ وب و PWA همیشه <code>/play/</code> است.</p>
               <?= $form('downloads') ?>

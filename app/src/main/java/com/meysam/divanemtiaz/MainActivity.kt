@@ -559,8 +559,13 @@ class MainActivity : Activity() {
 
     private var transition = 0
 
+    /** The running fade-in of the newest page (stopped when another page replaces it mid-way). */
+    private var pageFade: android.animation.ValueAnimator? = null
+
     private fun render(animate: Boolean = true, forward: Boolean = true, notify: Boolean = true) {
         val screen = current ?: return
+        pageFade?.cancel()
+        pageFade = null
         val view = screen.build()
         restoreScroll(view, screen.savedScroll)
         if (!animate || !settings.general.animations) {
@@ -590,7 +595,14 @@ class MainActivity : Activity() {
                     old.animate().alpha(0f).translationX(if (forward) shift * 0.6f else -shift * 0.6f).setDuration(Motion.PAGE_OUT)
                         .setInterpolator(Motion.EASE_IN_OUT).withLayer().withEndAction { container.removeView(old) }.start()
                 }
-                view.animate().alpha(1f).translationX(0f).setDuration(Motion.PAGE_IN).setInterpolator(Motion.EASE_OUT).withLayer().start()
+                // The new page slides in on a soft spring (a little past its place, then settles); it fades in quickly.
+                view.animate().translationX(0f).setDuration(Motion.SPRING_PAGE).setInterpolator(Motion.SPRING).withLayer().start()
+                pageFade = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+                    duration = Motion.PAGE_IN
+                    interpolator = Motion.EASE_OUT
+                    addUpdateListener { view.alpha = it.animatedValue as Float }
+                    start()
+                }
                 Entrance.play(entrance)
             }
             view.viewTreeObserver.addOnPreDrawListener(object : android.view.ViewTreeObserver.OnPreDrawListener {

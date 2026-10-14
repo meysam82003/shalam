@@ -172,6 +172,22 @@
       });
     }
 
+    // e-Namad seal set in the panel: the same markup as the official snippet, in every seal box of the page.
+    var en = live.enamad;
+    if (en && /^\d{1,12}$/.test(en.id) && /^[A-Za-z0-9]{8,64}$/.test(en.code)) {
+      var q = '?id=' + en.id + '&Code=' + en.code;
+      document.querySelectorAll('.trust[id^="enamad"]').forEach(function (box) {
+        var a = document.createElement('a');
+        a.setAttribute('referrerpolicy', 'origin'); a.target = '_blank'; a.href = 'https://trustseal.enamad.ir/' + q;
+        var img = document.createElement('img');
+        img.setAttribute('referrerpolicy', 'origin'); img.src = 'https://trustseal.enamad.ir/logo.aspx' + q;
+        img.alt = ''; img.style.cursor = 'pointer'; img.setAttribute('code', en.code);
+        a.appendChild(img);
+        var old = box.querySelector('a');
+        if (old) box.replaceChild(a, old); else box.insertBefore(a, box.firstChild);
+      });
+    }
+
     // Notice bar at the very top.
     var an = live.announce;
     if (an && an.text && (!an.home_only || home)) {

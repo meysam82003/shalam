@@ -45,7 +45,18 @@ final class SiteSettings
             'business' => array_fill_keys(array_keys(self::BUSINESS), ''),
             'contact' => array_fill_keys(array_keys(self::CONTACT), ''),
             'downloads' => $dl,
+            'enamad' => ['id' => '', 'code' => ''],
         ];
+    }
+
+    /** The e-Namad seal's id and Code from the official snippet (or from «id» and «Code» typed alone). */
+    public static function parseEnamad(string $in): array
+    {
+        $in = trim($in);
+        if ($in === '') return ['id' => '', 'code' => ''];
+        if (preg_match('/[?&]id=(\d{1,12})/i', $in, $m) && preg_match('/[?&]Code=([A-Za-z0-9]{8,64})/', $in, $c)) return ['id' => $m[1], 'code' => $c[1]];
+        if (preg_match('/^(\d{1,12})\s*[,\s]\s*([A-Za-z0-9]{8,64})$/', $in, $m)) return ['id' => $m[1], 'code' => $m[2]];
+        throw new ApiError('enamad', 'کد نماد اعتماد شناخته نشد؛ کد کامل را همان‌طور که enamad.ir داده بچسبانید.');
     }
 
     public static function get(): array
@@ -125,6 +136,9 @@ final class SiteSettings
                     $c['downloads'][$k] = ['url' => self::link($in[$k]['url'] ?? ''), 'size' => $size ? self::text($in[$k]['size'] ?? '', 30) : '', 'sha256' => $sha ? $sum : ''];
                 }
                 break;
+            case 'enamad':
+                $c['enamad'] = self::parseEnamad((string)($in['enamad'] ?? ''));
+                break;
             default:
                 throw new ApiError('bad_part', 'بخش نامعتبر.');
         }
@@ -159,6 +173,7 @@ final class SiteSettings
         }
         $out['downloads'] = $dl;
         $out['buyUrl'] = App::baseUrl() . '/pay/buy.php';
+        if ($c['enamad']['id'] !== '' && $c['enamad']['code'] !== '') $out['enamad'] = $c['enamad'];
         if ($c['ads']['on']) {
             $ads = [];
             foreach (self::AD_SLOTS as $slot) { $a = Ads::pick($slot, $countAds); if ($a !== null) $ads[$slot] = $a; }

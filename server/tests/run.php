@@ -1294,6 +1294,12 @@ scenario('buying on the site: for an account by username, or an activation code 
     $v = SiteSettings::publicView(true);
     check($v['ads']['site_top']['title'] === 'آگهی سایت' && $v['ads']['site_pages']['url'] === 'https://example.org/x' && !isset($v['ads']['site_middle']), 'site ads in their own slots');
     check((int)Db::value('SELECT impressions_total FROM {ads} WHERE id = ?', [$adId]) >= 1, 'site ad impressions are counted');
+    $snippet = "<a referrerpolicy='origin' target='_blank' href='https://trustseal.enamad.ir/?id=748495&Code=1q8oH3l8tJc3DhuMm6AjvkL61HKKctbu'><img referrerpolicy='origin' src='https://trustseal.enamad.ir/logo.aspx?id=748495&Code=1q8oH3l8tJc3DhuMm6AjvkL61HKKctbu' alt='' style='cursor:pointer' code='1q8oH3l8tJc3DhuMm6AjvkL61HKKctbu'></a>";
+    SiteSettings::save('enamad', ['enamad' => $snippet]);
+    check(SiteSettings::publicView(false)['enamad'] === ['id' => '748495', 'code' => '1q8oH3l8tJc3DhuMm6AjvkL61HKKctbu'], 'e-Namad: id and Code taken from the official snippet');
+    throws(fn() => SiteSettings::save('enamad', ['enamad' => '<script>alert(1)</script>']), 'enamad', 'anything but an e-Namad snippet is refused');
+    SiteSettings::save('enamad', ['enamad' => '']);
+    check(!isset(SiteSettings::publicView(false)['enamad']), 'empty e-Namad keeps the seal in the site files');
     Db::run('DELETE FROM {ads} WHERE id = ?', [$adId]);
     Settings::set('site_cfg', []);
     Settings::set('pay_blupal', ['enabled' => false]);
