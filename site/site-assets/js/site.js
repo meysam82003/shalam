@@ -80,18 +80,34 @@
   // Official store logos (or the store's full badge when the owner uploaded it) on the «دریافت از …» buttons.
   document.querySelectorAll('[data-store]').forEach(function (a) {
     var st = (cfg.downloads || {})[a.getAttribute('data-store')] || {};
-    if (st.url) a.href = st.url;
-    if (st.badge) {
+    var link = a.tagName === 'A';
+    if (st.url && link) a.href = st.url;
+    if (st.badge && link) {
       var b = document.createElement('img'); b.src = st.badge; b.alt = a.textContent.trim();
       a.classList.add('badge'); a.textContent = ''; a.appendChild(b);
       return;
     }
-    var slot = a.querySelector('.store-logo');
+    // The official logo replaces the plain bag icon once it has loaded; if the store's site is unreachable the icon stays.
+    var slot = a.querySelector('.store-logo, .dl-ico');
     if (!slot || !st.logo) return;
     var img = new Image();
     img.alt = ''; img.referrerPolicy = 'no-referrer';
-    img.onload = function () { slot.appendChild(img); slot.hidden = false; };
+    img.onload = function () { slot.textContent = ''; slot.appendChild(img); slot.hidden = false; };
     img.src = st.logo;
   });
+
+  // Home page buttons: straight to the file once it is published; until then to its card on the download page.
+  document.querySelectorAll('[data-direct]').forEach(function (a) {
+    var item = (cfg.downloads || {})[a.getAttribute('data-direct')] || {};
+    if (item.url) a.href = item.url;
+  });
+
+  // download.html#iphone etc. opens that install guide.
+  function openHash() {
+    var d = location.hash && document.getElementById(location.hash.slice(1));
+    if (d && d.tagName === 'DETAILS') d.open = true;
+  }
+  openHash();
+  window.addEventListener('hashchange', openHash);
   if (cfg.buyUrl) document.querySelectorAll('[data-site-buy]').forEach(function (a) { a.href = cfg.buyUrl; });
 })();

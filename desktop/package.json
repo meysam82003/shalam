@@ -41,7 +41,7 @@
       ],
       "icon": "build/icon.ico",
       "signAndEditExecutable": false,
-      "artifactName": "DivanEmtiaz-Setup-${version}.${ext}"
+      "artifactName": "Divan-Emtiaz-Setup-v${version}.${ext}"
     },
     "nsis": {
       "oneClick": false,

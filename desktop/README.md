@@ -7,4 +7,4 @@
     cd webapp && python3 build-play.py --channel windows --out ../desktop/play
     cd ../desktop && npm ci && npm run dist
 
-خروجی: `desktop/dist/DivanEmtiaz-Setup-<version>.exe` — ویندوز ۱۰ و ۱۱ (۶۴ بیتی).
+خروجی: `desktop/dist/Divan-Emtiaz-Setup-v<version>.exe` — ویندوز ۱۰ و ۱۱ (۶۴ بیتی).

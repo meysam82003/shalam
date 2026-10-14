@@ -158,7 +158,7 @@ details p { padding: 0 22px 18px; color: var(--muted); }
 .store span { text-align: right; line-height: 1.4; } .store small { display: block; color: var(--dim); font-size: .78rem; }
 .store b { color: var(--gold2); }
 .store-logo { flex: 0 0 40px; width: 40px; height: 40px; border-radius: 11px; overflow: hidden; background: #fff; box-shadow: 0 0 0 1px rgba(227, 194, 122, .35); display: flex; align-items: center; justify-content: center; }
-.store-logo img { width: 32px; height: 32px; object-fit: contain; }
+.store-logo img { width: 28px; height: 28px; object-fit: contain; }
 .store.badge { padding: 6px 10px; min-width: 0; } .store.badge img { height: 52px; width: auto; display: block; }
 
 /* footer */
@@ -214,6 +214,7 @@ footer a:hover { color: var(--gold2); }
 .dl { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
 .dl .dl-ico { width: 58px; height: 58px; border-radius: 18px; display: grid; place-items: center; font-size: 28px; margin-bottom: 6px;
   background: radial-gradient(circle at 35% 30%, rgba(251, 227, 166, .35), rgba(177, 131, 47, .18) 70%); border: 1px solid var(--line); }
+.dl .dl-ico img { width: 40px; height: 40px; padding: 7px; border-radius: 12px; background: #fff; box-shadow: 0 0 0 1px rgba(227, 194, 122, .45); object-fit: contain; }
 .dl p { flex: 1; }
 .dl .btn { margin-top: 10px; }
 .btn.off { opacity: .5; cursor: default; pointer-events: none; filter: grayscale(.4); }

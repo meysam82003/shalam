@@ -17,6 +17,13 @@
   DH.ctx = ctx;
   DH.noDash = [];
 
+  // Browsers set User-Agent themselves; the app's own header would only log a refusal on every request.
+  var setHeader = XMLHttpRequest.prototype.setRequestHeader;
+  XMLHttpRequest.prototype.setRequestHeader = function (name, value) {
+    if (String(name).toLowerCase() === 'user-agent') return;
+    return setHeader.call(this, name, value);
+  };
+
   // ------------------------------------------------------------------ screen size
   var phone = window.matchMedia('(max-width: 639px), (max-height: 559px)');
   function measureScreen() {

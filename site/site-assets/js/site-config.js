@@ -45,15 +45,17 @@ window.DIVAN_SITE = {
   downloads: {
     version: '5.5.0',
     date: '',
-    android: { url: '', size: '', sha256: '' },
+    // Files go in public_html/downloads/ next to the site (the package from the «Build all versions» workflow).
+    android: { url: '/downloads/Divan-Emtiaz-Site-v5.5.0.apk', size: '', sha256: '' },
     // logo: the store's own official icon, loaded from the store's site when the page opens.
     // badge: if you download the official «دریافت از …» badge from the store's developer panel, upload it to
     // site-assets/img/ and put its address here; the whole button then shows that badge.
     bazaar: { url: 'https://cafebazaar.ir/app/com.meysam.divanemtiaz', logo: 'https://cafebazaar.ir/favicon.ico', badge: '' },
     myket: { url: 'https://myket.ir/app/com.meysam.divanemtiaz', logo: 'https://myket.ir/favicon.ico', badge: '' },
-    windows: { url: '', size: '', sha256: '' },
-    iphone: { url: '', size: '' },
+    windows: { url: '/downloads/Divan-Emtiaz-Setup-v5.5.0.exe', size: '115 مگابایت', sha256: 'b27ed2f1b6a0a5735bad9197d76d78d0ade52d4f966260a770ae8841890180aa' },
+    iphone: { url: '/downloads/iPhone.mobileconfig', size: '97 کیلوبایت' },
     web: { url: '/play/' },
+    pwa: { url: '/play/' },
     github: 'https://github.com/meysam82003/shalam/releases/latest'
   }
 };
