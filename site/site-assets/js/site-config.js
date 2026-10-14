@@ -54,7 +54,7 @@ window.DIVAN_SITE = {
     // site-assets/img/ and put its address here; the whole button then shows that badge.
     bazaar: { url: 'https://cafebazaar.ir/app/com.meysam.divanemtiaz', logo: '', badge: '' },
     myket: { url: 'https://myket.ir/app/com.meysam.divanemtiaz', logo: '', badge: '' },
-    windows: { url: '/downloads/Divan-Emtiaz-Setup-v5.5.0.exe', size: '115 مگابایت', sha256: 'b27ed2f1b6a0a5735bad9197d76d78d0ade52d4f966260a770ae8841890180aa' },
+    windows: { url: '/downloads/Divan-Emtiaz-Setup-v5.5.0.exe', size: '115 مگابایت', sha256: '09ffb61b13824a6e5a24e372a04c0baf1d5a51556a714bd47fbb26a35deee83c' },
     iphone: { url: '/downloads/iPhone.mobileconfig', size: '97 کیلوبایت' },
     web: { url: '/play/' },
     pwa: { url: '/play/' },
