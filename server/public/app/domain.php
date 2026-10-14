@@ -434,10 +434,18 @@ final class Entitlements
     }
 }
 
-// ================================================================ one phone per subscription
+// ================================================================ the devices of a subscription
+/**
+ * One account works on all of its owner's devices and versions (Bazaar, Myket, the site's APK, web, Windows, iPhone):
+ * each version keeps its own payment method for buying and renewing, but Pro follows the account. The panel sets how
+ * many devices may hold Pro at the same time («pro_devices_limit», 0 = no limit); a new device beyond it may take the
+ * place of the one used longest ago with the password («انتقال»), a few times a month.
+ */
 final class Devices
 {
     public static function enabled(): bool { return (bool)Settings::get('single_device', true); }
+
+    public static function limit(): int { return max(0, (int)Settings::get('pro_devices_limit', 5)); }
 
     /** The app sends a SHA-256 of its stable device identifier; nothing else is accepted. */
     public static function clean($id): ?string
@@ -446,32 +454,66 @@ final class Devices
         return preg_match('/^[0-9a-f]{32,64}$/', $id) ? $id : null;
     }
 
-    /** Binds the subscription to this phone when it is not bound yet; tells whether this phone holds it. */
-    public static function boundTo(array $user, ?string $device, ?string $name): array
+    public static function list(int $userId): array
     {
-        $u = Db::one('SELECT pro_device, pro_device_name, pro_device_at FROM {users} WHERE id = ?', [$user['id']]);
-        if ($u === null) return ['here' => false, 'name' => null, 'since' => null];
-        if ($u['pro_device'] === null && $device !== null) {
-            self::bind((int)$user['id'], $device, $name, 'first_use');
-            return ['here' => true, 'name' => $name, 'since' => Clock::now()];
-        }
-        return ['here' => $device !== null && hash_equals((string)$u['pro_device'], $device), 'name' => $u['pro_device_name'], 'since' => Clock::ts($u['pro_device_at'])];
+        return Db::all('SELECT * FROM {pro_devices} WHERE user_id = ? ORDER BY seen_at DESC', [$userId]);
     }
 
+    /** Adds this device while there is room; tells whether this device holds Pro. */
+    public static function boundTo(array $user, ?string $device, ?string $name): array
+    {
+        $uid = (int)$user['id'];
+        if ($device === null) {
+            $last = Db::one('SELECT name, bound_at FROM {pro_devices} WHERE user_id = ? ORDER BY seen_at DESC LIMIT 1', [$uid]);
+            return ['here' => false, 'name' => $last['name'] ?? null, 'since' => $last ? Clock::ts($last['bound_at']) : null];
+        }
+        $row = Db::one('SELECT * FROM {pro_devices} WHERE user_id = ? AND device = ?', [$uid, $device]);
+        if ($row !== null) {
+            if (Clock::ts($row['seen_at']) < Clock::now() - 3600) Db::update('pro_devices', ['seen_at' => Clock::sql()] + ($name ? ['name' => mb_substr($name, 0, 80)] : []), 'id = ?', [$row['id']]);
+            return ['here' => true, 'name' => $row['name'], 'since' => Clock::ts($row['bound_at'])];
+        }
+        $limit = self::limit();
+        $count = (int)Db::value('SELECT COUNT(*) FROM {pro_devices} WHERE user_id = ?', [$uid]);
+        if ($limit === 0 || $count < $limit) {
+            self::bind($uid, $device, $name, 'first_use');
+            return ['here' => true, 'name' => $name, 'since' => Clock::now()];
+        }
+        $last = Db::one('SELECT name, bound_at FROM {pro_devices} WHERE user_id = ? ORDER BY seen_at DESC LIMIT 1', [$uid]);
+        return ['here' => false, 'name' => $last['name'] ?? null, 'since' => $last ? Clock::ts($last['bound_at']) : null];
+    }
+
+    /** Adds a device to the account; beyond the limit, the device used longest ago gives its place. */
     public static function bind(int $userId, string $device, ?string $name, string $why): void
     {
-        Db::update('users', ['pro_device' => $device, 'pro_device_name' => mb_substr((string)$name, 0, 80) ?: null, 'pro_device_at' => Clock::sql()], 'id = ?', [$userId]);
+        $now = Clock::sql();
+        $name = mb_substr((string)$name, 0, 80) ?: null;
+        Db::run('INSERT INTO {pro_devices} (user_id, device, name, bound_at, seen_at) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE seen_at = VALUES(seen_at), name = COALESCE(VALUES(name), name)',
+            [$userId, $device, $name, $now, $now]);
+        $limit = self::limit();
+        if ($limit > 0) {
+            $extra = Db::all('SELECT id FROM {pro_devices} WHERE user_id = ? AND device <> ? ORDER BY seen_at DESC, id DESC LIMIT 1000 OFFSET ' . ($limit - 1), [$userId, $device]);
+            foreach ($extra as $x) Db::run('DELETE FROM {pro_devices} WHERE id = ?', [$x['id']]);
+        }
+        // The latest device, for the panel's user page and older reports.
+        Db::update('users', ['pro_device' => $device, 'pro_device_name' => $name, 'pro_device_at' => $now], 'id = ?', [$userId]);
         Audit::log('system', null, 'device_bound', 'user', $userId, $why, null, ['device' => substr($device, 0, 12), 'name' => $name]);
     }
 
-    /** «انتقال اشتراک به این گوشی»: needs the password; limited per 30 days. */
+    /** Frees every device of an account (panel); the next devices that sign in are added again. */
+    public static function release(int $userId): void
+    {
+        Db::run('DELETE FROM {pro_devices} WHERE user_id = ?', [$userId]);
+        Db::update('users', ['pro_device' => null, 'pro_device_name' => null, 'pro_device_at' => null], 'id = ?', [$userId]);
+    }
+
+    /** «انتقال اشتراک به این دستگاه» when the limit is full: needs the password; limited per 30 days. */
     public static function transfer(array $user, array $session, string $password): void
     {
         if (!password_verify($password, $user['password_hash'])) throw new ApiError('bad_credentials', 'رمز عبور درست نیست.', 401);
         $device = $session['device_id'] ?? null;
-        if ($device === null) throw new ApiError('no_device', 'شناسهٔ این گوشی دریافت نشد؛ برنامه را به‌روز کنید.');
+        if ($device === null) throw new ApiError('no_device', 'شناسهٔ این دستگاه دریافت نشد؛ برنامه را به‌روز کنید.');
         $u = Users::byId((int)$user['id']);
-        if ($u['pro_device'] !== null && hash_equals((string)$u['pro_device'], $device)) return;
+        if (Db::value('SELECT id FROM {pro_devices} WHERE user_id = ? AND device = ?', [$u['id'], $device]) !== null) return;
         $since = Clock::ts($u['device_moves_since']);
         $moves = ($since !== null && $since > Clock::now() - 30 * 86400) ? (int)$u['device_moves'] : 0;
         $limit = (int)Settings::get('device_moves_limit', 3);

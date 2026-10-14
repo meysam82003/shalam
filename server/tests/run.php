@@ -334,8 +334,9 @@ scenario('offline certificate', function () use ($storeKey) {
     Settings::set('single_device', true);
 });
 
-scenario('one phone per subscription', function () use ($storeKey) {
+scenario('one phone per subscription (device limit set to 1 in the panel)', function () use ($storeKey) {
     freshIp();
+    Settings::set('pro_devices_limit', 1);
     $phoneA = hash('sha256', 'phone-a'); $phoneB = hash('sha256', 'phone-b');
     [$u] = Users::register('one_phone', 'secret123');
     $tA = Sessions::create((int)$u['id'], ['device' => 'Samsung A54', 'device_id' => $phoneA]);
@@ -362,7 +363,7 @@ scenario('one phone per subscription', function () use ($storeKey) {
     check(Users::byId((int)$u['id'])['pro_device'] === $phoneA, 'transfer limit resets after 30 days');
     Clock::$fixed -= 31 * 86400;
     // Support releases the phone: the next phone that syncs takes the subscription.
-    Db::update('users', ['pro_device' => null], 'id = ?', [$u['id']]);
+    Devices::release((int)$u['id']);
     check($cert($sB)['pro'] === true && $cert($sA)['pro'] === false, 'released subscription binds to the next phone');
     // Buying on a phone moves the subscription there.
     [$w] = Users::register('two_phone', 'secret123');
@@ -383,6 +384,47 @@ scenario('one phone per subscription', function () use ($storeKey) {
     check(apiGet('v1/me')['entitlement']['this_device'] === true, 'rule can be switched off in the panel');
     unset($_SERVER['HTTP_AUTHORIZATION']);
     Settings::set('single_device', true);
+});
+
+scenario('one account on every device and version; each version renews with its own payment', function () use ($storeKey) {
+    freshIp();
+    Settings::set('pro_devices_limit', 5);
+    Settings::set('single_device', true);
+    [$u] = Users::register('every_device', 'secret123');
+    $mk = function (string $name, string $id) use ($u) {
+        $t = Sessions::create((int)$u['id'], ['device' => $name, 'device_id' => hash('sha256', $id)]);
+        return Db::one('SELECT * FROM {sessions} WHERE token_hash = ?', [Crypto::hash($t)]);
+    };
+    // Same phone, two installs: the store build and the site's APK have different package names, so different ids.
+    $bazaarPhone = $mk('Samsung (بازار)', 'phone|com.meysam.divanemtiaz');
+    $sitePhone = $mk('Samsung (سایت)', 'phone|com.meysam.divanemtiaz.site');
+    $web = $mk('Chrome', 'web');
+    $win = $mk('Windows', 'windows');
+    $iphone = $mk('iPhone', 'iphone');
+    buy($u, 'm3', 'bazaar', 'tok-every-1', $storeKey);
+    $cert = fn(array $s, string $store) => json_decode(Crypto::b64uDecode(explode('.', Entitlements::certificate(Users::byId((int)$u['id']), $store, $s)['certificate'])[0]), true);
+    check($cert($bazaarPhone, 'bazaar')['pro'] && $cert($sitePhone, 'direct')['pro'] && $cert($web, 'direct')['pro'] && $cert($win, 'direct')['pro'] && $cert($iphone, 'direct')['pro'],
+        'bought in Bazaar: Pro on the site APK of the same phone, the web, Windows and iPhone with the same account');
+    check(count(Devices::list((int)$u['id'])) === 5, 'five devices listed for the account');
+    $sixth = $mk('Tablet', 'tablet');
+    $c6 = $cert($sixth, 'direct');
+    check($c6['pro'] === false && $c6['device_conflict'] !== null, 'beyond the panel limit a new device is told the limit is full');
+    Clock::$fixed += 7200;
+    foreach ([$sitePhone, $web, $win, $iphone] as $s) $cert($s, 'direct');
+    Clock::$fixed += 7200;
+    Devices::transfer(Users::byId((int)$u['id']), $sixth, 'secret123');
+    check($cert($sixth, 'direct')['pro'] === true && $cert($bazaarPhone, 'bazaar')['pro'] === false && $cert($web, 'direct')['pro'] === true, 'a transfer takes the place of the device used longest ago only');
+    Clock::$fixed -= 14400;
+    // Renewing: each version shows only its own way to pay.
+    Settings::set('pay_blupal', ['enabled' => true, 'sandbox' => true]);
+    Settings::setSecret('pay_blupal_api_key', 'blu_test_KEY12345');
+    $ids = fn(string $st) => array_column(PayRegistry::methodsFor($st), 'id');
+    $bz = array_column(Plans::offers('bazaar'), 'sku', 'code');
+    $dr = array_column(Plans::offers('direct'), 'sku', 'code');
+    check(!in_array('blupal', $ids('bazaar'), true) && !in_array('blupal', $ids('myket'), true) && in_array('blupal', $ids('direct'), true)
+        && $bz['m1'] === 'divan_pro_1m' && $dr['m1'] === 'web', 'renewal: Bazaar and Myket versions pay through their store, the site, web, Windows and iPhone versions through the site gateways');
+    Settings::set('pay_blupal', ['enabled' => false]);
+    Settings::set('pro_devices_limit', 5);
 });
 
 scenario('cross-store setting', function () use ($storeKey) {

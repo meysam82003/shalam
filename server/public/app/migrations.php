@@ -441,6 +441,22 @@ final class Migrations
             9 => [
                 "ALTER TABLE {pay_orders} ADD COLUMN promo_id INT UNSIGNED NULL, ADD COLUMN list_toman INT UNSIGNED NULL",
             ],
+            // One account on all of its owner's devices and versions (Bazaar, Myket, site, web, Windows, iPhone), up to a
+            // limit set in the panel. The phone each account was bound to so far is kept as its first device.
+            10 => [
+                "CREATE TABLE IF NOT EXISTS {pro_devices} (
+                    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                    user_id BIGINT UNSIGNED NOT NULL,
+                    device VARCHAR(64) NOT NULL,
+                    name VARCHAR(80) NULL,
+                    bound_at DATETIME NOT NULL,
+                    seen_at DATETIME NOT NULL,
+                    UNIQUE KEY uq_user_device (user_id, device),
+                    KEY k_user (user_id)
+                ) $e",
+                "INSERT IGNORE INTO {pro_devices} (user_id, device, name, bound_at, seen_at)
+                    SELECT id, pro_device, pro_device_name, COALESCE(pro_device_at, UTC_TIMESTAMP()), COALESCE(pro_device_at, UTC_TIMESTAMP()) FROM {users} WHERE pro_device IS NOT NULL",
+            ],
         ];
     }
 
@@ -522,6 +538,7 @@ final class Seed
             'cross_store' => true,
             'single_device' => true,
             'device_moves_limit' => 3,
+            'pro_devices_limit' => 5,
             'ads_enabled' => false,
             'ads_priority' => 'direct_first',
             'ads_interstitial_min_minutes' => 10,

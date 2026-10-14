@@ -700,6 +700,7 @@ final class ConfigPages
             Settings::set('renew_grace_days', max(0, min(14, (int)self::post('renew_grace_days', '3'))));
             Settings::set('single_device', isset($_POST['single_device']));
             Settings::set('device_moves_limit', max(0, min(50, (int)self::post('device_moves_limit', '3'))));
+            Settings::set('pro_devices_limit', max(0, min(50, (int)self::post('pro_devices_limit', '5'))));
             Settings::set('device_offline_days', max(1, min(90, (int)self::post('device_offline_days', '7'))));
             Settings::set('support_text', mb_substr(self::post('support_text'), 0, 500));
             Admin::audit('store_settings', 'settings', 'stores', $reason, $before, ['bazaar' => Settings::get('bazaar'), 'myket' => Settings::get('myket'), 'cross_store' => Settings::get('cross_store'), 'offline_days' => Settings::get('offline_days'), 'secrets_changed' => array_values(array_filter(['bazaar_api_secret', 'bazaar_client_secret', 'bazaar_refresh_token', 'bazaar_discount_key', 'myket_access_token'], fn($s) => self::post($s) !== ''))]);
@@ -748,12 +749,13 @@ final class ConfigPages
                 <div><label>اعتبار آفلاین گواهی (روز)</label><input type="number" name="offline_days" value="<?= (int)Settings::get('offline_days', 21) ?>" min="1" max="90"></div>
                 <div><label>مهلت تمدید اشتراک فروشگاه (روز)</label><input type="number" name="renew_grace_days" value="<?= (int)Settings::get('renew_grace_days', 3) ?>" min="0" max="14"></div>
               </div>
-              <label class="check"><input type="checkbox" name="single_device" <?= Settings::get('single_device', true) ? 'checked' : '' ?>> هر اشتراک فقط روی یک گوشی فعال باشد</label>
+              <label class="check"><input type="checkbox" name="single_device" <?= Settings::get('single_device', true) ? 'checked' : '' ?>> تعداد دستگاه‌های هم‌زمان هر اشتراک محدود باشد</label>
               <div class="row">
-                <div><label>سقف انتقال به گوشی دیگر (در ۳۰ روز)</label><input type="number" name="device_moves_limit" value="<?= (int)Settings::get('device_moves_limit', 3) ?>" min="0" max="50"></div>
-                <div><label>اعتبار آفلاین با قانون تک‌گوشی (روز)</label><input type="number" name="device_offline_days" value="<?= (int)Settings::get('device_offline_days', 7) ?>" min="1" max="90"></div>
+                <div><label>سقف دستگاه‌های هم‌زمان هر حساب (۰ = بی‌سقف)</label><input type="number" name="pro_devices_limit" value="<?= Devices::limit() ?>" min="0" max="50"></div>
+                <div><label>سقف انتقال به دستگاه دیگر (در ۳۰ روز)</label><input type="number" name="device_moves_limit" value="<?= (int)Settings::get('device_moves_limit', 3) ?>" min="0" max="50"></div>
+                <div><label>اعتبار آفلاین با سقف دستگاه (روز)</label><input type="number" name="device_offline_days" value="<?= (int)Settings::get('device_offline_days', 7) ?>" min="1" max="90"></div>
               </div>
-              <p class="hint">اشتراک روی گوشی خرید (یا اولین گوشی‌ای که Pro را می‌گیرد) فعال می‌شود. روی گوشی دیگر کاربر می‌تواند با رمز عبور، اشتراک را منتقل کند؛ گوشی قبلی در اولین اتصال یا حداکثر پس از پایان اعتبار آفلاین، Pro را از دست می‌دهد. هرچه اعتبار آفلاین کوتاه‌تر باشد، استفادهٔ هم‌زمان کمتر ممکن است.</p>
+              <p class="hint">هر حساب روی همهٔ دستگاه‌ها و نسخه‌های صاحبش (بازار، مایکت، APK سایت، وب، ویندوز و آیفون) با همان نام کاربری کار می‌کند و Pro آن همه‌جا فعال است؛ خرید و تمدید در هر نسخه با روش پرداخت همان نسخه انجام می‌شود. هر دستگاه تازه تا رسیدن به سقف خودکار اضافه می‌شود؛ پس از آن، کاربر با رمز عبور اشتراک را به دستگاه تازه منتقل می‌کند و دستگاهی که مدت بیشتری استفاده نشده، در اولین اتصال یا پس از پایان اعتبار آفلاین، Pro را از دست می‌دهد. اگر تیک بالا برداشته شود، تعداد دستگاه‌ها بی‌سقف است.</p>
               <p class="hint">اگر کاربر تا این مدت اینترنت نداشته باشد هم Pro او کار می‌کند؛ پس از اتصال، گواهی تازه می‌گیرد. اشتراک زمان‌دار هیچ‌وقت بعد از تاریخ پایانش آفلاین تمدید نمی‌شود و مهلت تمدید فقط برای اشتراک‌های «تمدید خودکار» بازار است.</p>
               <p class="hint"><b>مادام‌العمر:</b> بدون تاریخ پایان و بدون نیاز به اینترنت روی همان گوشی کار می‌کند. بازپرداخت یا انتقال آن در اولین اتصال گوشی به اینترنت اعمال می‌شود؛ گوشی‌ای که هرگز آنلاین نشود از ابطال خبردار نمی‌شود.</p>
               <label>متن راهنمای پشتیبانی در اپ</label><input type="text" name="support_text" value="<?= e(Settings::get('support_text', '')) ?>">

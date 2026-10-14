@@ -178,7 +178,7 @@ final class SalesPages
                   <option value="revoke_sessions">خروج از همهٔ دستگاه‌ها</option>
                   <option value="<?= $u['status'] === 'active' ? 'disable' : 'enable' ?>"><?= $u['status'] === 'active' ? 'غیرفعال کردن حساب' : 'فعال کردن حساب' ?></option>
                   <option value="transfer">انتقال خریدها به حساب دیگر</option>
-                  <option value="release_device">آزاد کردن گوشی اشتراک (فعال‌شدن روی گوشی بعدی)</option>
+                  <option value="release_device">آزاد کردن همهٔ دستگاه‌های اشتراک (دوباره روی دستگاه‌های بعدی فعال می‌شود)</option>
                   <option value="reset_moves">صفر کردن شمارش انتقال‌های گوشی</option>
                   <option value="note">یادداشت داخلی</option>
                 </select>
@@ -201,7 +201,9 @@ final class SalesPages
             <div class="card"><h3>اطلاعات حساب</h3>
               <p>نام کاربری: <b class="ltr"><?= e($u['username']) ?></b> — شناسه <?= fa_digits($u['id']) ?></p>
               <p>ایمیل (اختیاری): <span class="ltr"><?= e($u['email'] ?: '—') ?></span></p>
-              <p>گوشی فعال اشتراک: <b><?= $u['pro_device'] ? e($u['pro_device_name'] ?: 'نامشخص') . '</b> از ' . e(jdate($u['pro_device_at'])) : 'هنوز به گوشی‌ای وصل نشده</b>' ?>
+              <?php $pdev = Devices::list((int)$u['id']); $plim = Devices::limit(); ?>
+              <p>دستگاه‌های دارای Pro (<?= fa_digits(count($pdev)) ?> از <?= $plim === 0 ? 'بی‌سقف' : fa_digits($plim) ?>):
+                <?= $pdev ? implode('، ', array_map(fn($d) => '<b>' . e($d['name'] ?: 'نامشخص') . '</b> <small>(' . e(jdate($d['seen_at'])) . ')</small>', $pdev)) : 'هنوز دستگاهی ثبت نشده' ?>
                 — انتقال در ۳۰ روز اخیر: <?= fa_digits((Clock::ts($u['device_moves_since']) ?? 0) > Clock::now() - 30 * 86400 ? (int)$u['device_moves'] : 0) ?> از <?= fa_digits((int)Settings::get('device_moves_limit', 3)) ?></p>
               <p>پشتیبان ابری بازی‌ها: <?= $backup ? fa_digits(number_format((int)$backup['size'])) . ' بایت — ' . e(jdate($backup['updated_at'])) : 'ندارد' ?></p>
               <?php if ($u['note']): ?><p>یادداشت: <?= nl2br(e($u['note'])) ?></p><?php endif; ?>
@@ -298,7 +300,7 @@ final class SalesPages
                 Support::action(null, (int)$target['id'], $adminId, 'transfer_in', $reason, ['from' => $u['username']]);
                 break;
             }
-            case 'release_device': Db::update('users', ['pro_device' => null, 'pro_device_name' => null, 'pro_device_at' => null], 'id = ?', [$id]); break;
+            case 'release_device': Devices::release($id); break;
             case 'reset_moves': Db::update('users', ['device_moves' => 0, 'device_moves_since' => null], 'id = ?', [$id]); break;
             case 'note': Db::update('users', ['note' => trim(($u['note'] ?? '') . "\n" . gmdate('Y-m-d') . ' ' . Admin::$me['username'] . ': ' . $reason)], 'id = ?', [$id]); break;
             default: throw new ApiError('action', 'اقدام نامعتبر است.');

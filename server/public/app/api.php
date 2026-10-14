@@ -213,10 +213,9 @@ final class Api
                 self::post($method);
                 $u = self::user();
                 $r = Purchases::verify($u, $in);
-                // A purchase made on this phone puts the subscription on this phone.
+                // The device a purchase is made on always holds Pro (taking the place of the one used longest ago if full).
                 if (in_array($r['purchase']['status'], Purchases::OK_STATES, true) && !empty(self::$auth[1]['device_id']) && Devices::enabled()) {
-                    $cur = Users::byId((int)$u['id']);
-                    if ($cur['pro_device'] !== self::$auth[1]['device_id']) Devices::bind((int)$u['id'], self::$auth[1]['device_id'], self::$auth[1]['device_name'], 'purchase');
+                    Devices::bind((int)$u['id'], self::$auth[1]['device_id'], self::$auth[1]['device_name'], 'purchase');
                 }
                 return ['status' => $r['purchase']['status'], 'consume' => $r['consume'], 'purchase' => Purchases::publicView($r['purchase'])] + self::account($u);
             }
