@@ -22,7 +22,7 @@ teavm {
     js {
         mainClass = 'divan.web.Main'
         targetFileName = 'divan.js'
-        obfuscated = false
+        obfuscated = true
     }
 }
 
