@@ -1,0 +1,116 @@
+name: Build all versions (site APK, web/PWA, Windows, iPhone)
+
+# Manual only. Builds every downloadable version as workflow artifacts; it never creates a release, tag or deploy.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android-and-web:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21 (web) and 17 (Android)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: |
+            21
+            17
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Version
+        id: ver
+        run: echo "version=$(grep -oP "versionName '\K[^']+" app/build.gradle)" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare release signing key
+        env:
+          DIVAN_KEYSTORE_BASE64: ${{ secrets.DIVAN_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$DIVAN_KEYSTORE_BASE64" ]; then
+            echo "::error::DIVAN_KEYSTORE_BASE64 secret is missing; the site APK must be signed with the fixed release key."
+            exit 1
+          fi
+          echo "$DIVAN_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/divan-release.jks"
+          echo "DIVAN_KEYSTORE_FILE=$RUNNER_TEMP/divan-release.jks" >> "$GITHUB_ENV"
+
+      - name: Test and build the site APK (direct)
+        env:
+          JAVA_HOME: ${{ env.JAVA_HOME_17_X64 }}
+          DIVAN_KEYSTORE_PASSWORD: ${{ secrets.DIVAN_KEYSTORE_PASSWORD }}
+          DIVAN_KEY_ALIAS: ${{ secrets.DIVAN_KEY_ALIAS }}
+          DIVAN_KEY_PASSWORD: ${{ secrets.DIVAN_KEY_PASSWORD }}
+          DIVAN_LICENSE_KEY: ${{ vars.DIVAN_LICENSE_KEY || secrets.DIVAN_LICENSE_KEY }}
+        run: gradle --no-daemon testDirectReleaseUnitTest assembleDirectRelease
+
+      - name: Verify release signature
+        run: |
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          "$APKSIGNER" verify --print-certs app/build/outputs/apk/direct/release/app-direct-release.apk | tee cert.txt
+          if grep -qi "CN=Android Debug" cert.txt; then echo "::error::site APK is debug-signed"; exit 1; fi
+
+      - name: Build the web version (PWA) and the iPhone profile
+        env:
+          JAVA_HOME: ${{ env.JAVA_HOME_21_X64 }}
+        working-directory: webapp
+        run: |
+          python3 build-play.py
+          python3 build-iphone.py
+          python3 build-play.py --skip-teavm --channel windows --out ../desktop/play
+
+      - name: Pack files
+        run: |
+          V=${{ steps.ver.outputs.version }}
+          mkdir -p out
+          cp app/build/outputs/apk/direct/release/app-direct-release.apk "out/Divan-Emtiaz-Site-v$V.apk"
+          (cd webapp/build && zip -qr "../../out/Divan-Emtiaz-Play-v$V.zip" play)
+          cp webapp/build/iPhone.mobileconfig "out/Divan-Emtiaz-iPhone-v$V.mobileconfig"
+          (cd out && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Divan-Emtiaz-Site-Web-iPhone-v${{ steps.ver.outputs.version }}
+          path: out/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-play
+          path: desktop/play
+          retention-days: 1
+
+  windows:
+    needs: android-and-web
+    runs-on: windows-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-play
+          path: desktop/play
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build the Windows installer
+        working-directory: desktop
+        run: |
+          npm install --no-audit --no-fund
+          npm run dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Divan-Emtiaz-Windows-v${{ needs.android-and-web.outputs.version }}
+          path: desktop/dist/*.exe
