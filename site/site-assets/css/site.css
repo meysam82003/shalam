@@ -168,6 +168,12 @@ footer h4 { color: var(--gold2); margin-bottom: 10px; }
 footer a, footer p { color: var(--muted); font-size: .93rem; display: block; margin-bottom: 6px; }
 footer a:hover { color: var(--gold2); }
 .trust { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+/* e-Namad seal: the official code, unchanged, in a gold frame that stays visible while the seal image loads. */
+.trust[id^="enamad"] { display: inline-flex; flex-direction: column; gap: 8px; margin-top: 14px; padding: 12px 12px 10px; border-radius: 18px;
+  background: linear-gradient(160deg, rgba(251, 227, 166, .14), rgba(4, 16, 12, .6)); border: 1px solid var(--gold); box-shadow: 0 8px 26px rgba(0, 0, 0, .35); }
+.trust[id^="enamad"] > a { display: grid; place-items: center; min-width: 125px; min-height: 136px; border-radius: 12px; background: #fff; }
+.trust[id^="enamad"] > a img { max-width: 125px; height: auto; display: block; }
+.trust-label { color: var(--gold2); font-size: .8rem; font-weight: 700; text-align: center; }
 .copy { text-align: center; color: var(--dim); font-size: .85rem; margin-top: 30px; }
 
 /* legal pages */
