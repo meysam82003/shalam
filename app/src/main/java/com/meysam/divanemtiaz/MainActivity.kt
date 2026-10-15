@@ -404,6 +404,8 @@ class MainActivity : Activity() {
 
     private var toastView: View? = null
     private var toastHide: Runnable? = null
+    /** Own timer of the toast: page changes clear [handler]'s posts, which must never leave a toast on screen. */
+    private val toastHandler = Handler(Looper.getMainLooper())
 
     /**
      * The app's own toast: a framed pill in the active style (panel colours, metal border, the app's font) that springs
@@ -412,7 +414,7 @@ class MainActivity : Activity() {
     fun showToast(message: String, long: Boolean = false) {
         if (isFinishing || message.isBlank()) return
         val d = resources.displayMetrics.density
-        toastHide?.let { handler.removeCallbacks(it) }
+        toastHide?.let { toastHandler.removeCallbacks(it) }
         toastView?.let { it.animate().cancel(); rootView.removeView(it) }
         val t = TextView(this).apply {
             text = message
@@ -443,9 +445,11 @@ class MainActivity : Activity() {
         val hide = Runnable {
             t.animate().alpha(0f).translationY(14 * d).scaleX(0.94f).scaleY(0.94f).setDuration(220).setInterpolator(Motion.EASE_IN)
                 .withEndAction { rootView.removeView(t); if (toastView === t) toastView = null }.start()
+            // Safety net: gone even if the animation never ends (system animations off, view detached).
+            toastHandler.postDelayed({ if (t.parent != null) rootView.removeView(t); if (toastView === t) toastView = null }, 400)
         }
         toastHide = hide
-        handler.postDelayed(hide, if (long || message.length > 60) 3800L else 2400L)
+        toastHandler.postDelayed(hide, if (long || message.length > 60) 3800L else 2400L)
     }
 
     fun onBackPressedCompat() {

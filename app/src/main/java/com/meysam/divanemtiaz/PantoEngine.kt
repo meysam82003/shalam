@@ -73,7 +73,7 @@ class PantoBank(val words: List<PantoWord>) {
         fun get(open: () -> InputStream): PantoBank = loaded ?: synchronized(this) { loaded ?: read(open()).also { loaded = it } }
 
         fun read(input: InputStream): PantoBank {
-            val out = ArrayList<PantoWord>(18100)
+            val out = ArrayList<PantoWord>(27300)
             input.bufferedReader(Charsets.UTF_8).useLines { lines ->
                 lines.forEach { line ->
                     if (line.isEmpty()) return@forEach
