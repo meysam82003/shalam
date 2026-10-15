@@ -46,7 +46,7 @@ jobs:
             echo "Release key found; APK is signed with the fixed release key."
           else
             echo "RELEASE_SIGNED=false" >> "$GITHUB_ENV"
-            echo "::warning::No DIVAN_KEYSTORE_BASE64 secret; APK is signed with the runner debug key and is NOT published as a release (Cafe Bazaar rejects debug-signed APKs)."
+            echo "::warning::No DIVAN_KEYSTORE_BASE64 secret: this run only tests (its APK is debug-signed and is never published)."
           fi
 
       - name: Test and build signed APK
@@ -135,41 +135,15 @@ jobs:
         if: env.RELEASE_SIGNED == 'true'
         run: |
           APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          WANT=$(grep -oP "DIVAN_CERT_SHA256'\) \?: '\K[0-9A-F]{64}" app/build.gradle)
           for STORE in Bazaar Myket; do
             "$APKSIGNER" verify --print-certs "Divan-Emtiaz-$STORE-v$VERSION.apk" | tee cert.txt
-            if grep -qi "CN=Android Debug" cert.txt; then echo "::error::$STORE APK is debug-signed"; exit 1; fi
+            GOT=$(grep -m1 'certificate SHA-256 digest' cert.txt | sed 's/.*: *//' | tr 'a-f' 'A-F')
+            if [ "$GOT" != "$WANT" ]; then echo "::error::$STORE APK is not signed with the official key ($GOT)"; exit 1; fi
           done
 
-      - name: Publish unsigned build for re-signing
-        if: env.RELEASE_SIGNED != 'true' && github.event_name == 'workflow_dispatch' && inputs.publish == true
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: build-v${{ env.VERSION }}
-          target_commitish: ${{ github.sha }}
-          name: ساخت آزمایشی v${{ env.VERSION }} (امضای دیباگ؛ برای بازار نیست)
-          prerelease: true
-          make_latest: false
-          body: |
-            این فایل با کلید دیباگ امضا شده و برای کافه‌بازار قابل قبول نیست؛ فقط برای امضای مجدد با کلید انتشار است.
-          files: |
-            Divan-Emtiaz-Bazaar-v${{ env.VERSION }}.apk
-            Divan-Emtiaz-Myket-v${{ env.VERSION }}.apk
-          overwrite_files: true
-
-      - name: Keep the build on the ci-builds branch (no release, nothing published)
-        if: github.event_name == 'workflow_dispatch' && inputs.publish != true
-        run: |
-          mkdir -p "$RUNNER_TEMP/cib"
-          cp Divan-Emtiaz-Bazaar-v$VERSION.apk Divan-Emtiaz-Myket-v$VERSION.apk "$RUNNER_TEMP/cib/"
-          cp app/build/outputs/apk/direct/release/app-direct-release.apk "$RUNNER_TEMP/cib/Divan-Emtiaz-Site-v$VERSION.apk"
-          cd "$RUNNER_TEMP/cib"
-          echo "Build of ${GITHUB_SHA} — debug-signed, NOT a release; re-sign before any distribution." > README.txt
-          git init -q && git checkout -q -b ci-builds && git add . 
-          git -c user.name=ci -c user.email=ci@localhost commit -qm "Build v$VERSION (${GITHUB_SHA}) — not a release"
-          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" ci-builds
-
       - name: Publish GitHub Release
-        if: env.RELEASE_SIGNED == 'true' && ((github.event_name == 'workflow_dispatch' && inputs.publish == true) || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+        if: env.RELEASE_SIGNED == 'true' && github.event_name == 'workflow_dispatch' && inputs.publish == true
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.VERSION }}
@@ -187,7 +161,7 @@ jobs:
 
   publish-web:
     needs: build-release
-    if: (github.event_name == 'workflow_dispatch' && inputs.publish == true) || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    if: github.event_name == 'workflow_dispatch' && inputs.publish == true
     runs-on: ubuntu-latest
     continue-on-error: true
     environment:

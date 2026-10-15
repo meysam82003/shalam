@@ -18,15 +18,15 @@ class PantoSpyTest {
     private fun match(mode: PantoMode, n: Int = 2, rounds: Int = 3) = PantoEngine.create(1L, mode, teams(n), rounds, null)
 
     @Test fun bankKeepsEveryRecordAndCategory() {
-        assertEquals(18017, bank.words.size)
-        assertEquals(18017, bank.words.map { it.id }.toSet().size)
+        assertEquals(27205, bank.words.size)
+        assertEquals(27205, bank.words.map { it.id }.toSet().size)
         (1..20).forEach { assertTrue("cat $it", bank.count(it) > 0) }
         assertEquals(931, bank.count(PantoCategories.FIVE_SECOND))
         assertEquals(260, bank.count(PantoCategories.SOUND))
         assertEquals(1114, bank.count(PantoCategories.GOLDEN))
-        assertEquals(2178, bank.count(1))
-        assertEquals(3121, bank.count(2))
-        assertEquals(509, bank.count(20))
+        assertEquals(2685, bank.count(1))
+        assertEquals(3909, bank.count(2))
+        assertEquals(853, bank.count(20))
     }
 
     @Test fun drawsWithoutRepeatsUntilThePoolRunsOut() {
@@ -174,9 +174,14 @@ class PantoSpyTest {
     private val spyWords by lazy { File(assets, "spy/words.json").inputStream().use { SpyEngine.defaults(it) } }
 
     @Test fun spyDefaults() {
-        assertEquals(262, spyWords.size)
-        assertEquals(96, spyWords.count { it.category == SpyCategory.PLACE })
-        assertEquals(262, spyWords.map { it.id }.toSet().size)
+        assertEquals(1339, spyWords.size)
+        assertEquals(206, spyWords.count { it.category == SpyCategory.PLACE })
+        assertEquals(1339, spyWords.map { it.id }.toSet().size)
+        // Every category has words, and the words of the first versions keep their ids (switched-off lists stay valid).
+        assertTrue(SpyCategory.values().filter { it != SpyCategory.USER }.all { c -> spyWords.any { it.category == c } })
+        assertEquals(SpyCategory.PLACE, spyWords.first { it.id == 1000 }.category)
+        assertEquals(4000 + 52, spyWords.filter { it.category == SpyCategory.JOB }.take(53).last().id)
+        assertEquals(spyWords.size, spyWords.map { it.text.replace("\u200c", "").replace(" ", "") }.toSet().size + 2) // «خفاش» and «مرغ» repeat since 1.0
     }
 
     @Test fun spyStartRules() {

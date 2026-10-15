@@ -1,2 +1,4 @@
-build/
+/build/
 .gradle/
+# The TeaVM compiler plugin lives in the divan.build package (not a build output).
+!/src/main/java/divan/build/

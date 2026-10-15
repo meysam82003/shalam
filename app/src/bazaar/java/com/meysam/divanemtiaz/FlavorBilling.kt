@@ -14,8 +14,9 @@ import ir.cafebazaar.poolakey.entity.PurchaseState
 import ir.cafebazaar.poolakey.request.PurchaseRequest
 
 /**
- * Cafe Bazaar in-app billing (Poolakey). The receipt is checked by the server (signature and the
- * Bazaar developer API), so no key is needed in the app.
+ * Cafe Bazaar in-app billing (Poolakey). Every receipt is checked by the server (signature and the Bazaar developer
+ * API) before Pro is given; the app's public RSA key from the Bazaar panel also lets Poolakey refuse a purchase whose
+ * signature does not match on the phone itself.
  */
 class FlavorBilling : StoreBilling {
     override fun availability(context: Context): String? {
@@ -69,7 +70,7 @@ class FlavorBilling : StoreBilling {
 
     private fun connect(context: Context, fail: (String) -> Unit, block: (Payment, Connection) -> Unit) {
         availability(context)?.let { fail(it); return }
-        val payment = Payment(context.applicationContext, PaymentConfiguration(SecurityCheck.Disable, true))
+        val payment = Payment(context.applicationContext, config(context))
         var conn: Connection? = null
         conn = payment.connect {
             connectionSucceed { conn?.let { block(payment, it) } }
@@ -80,6 +81,15 @@ class FlavorBilling : StoreBilling {
 
     companion object {
         const val BAZAAR = "com.farsitel.bazaar"
+
+        /** Signature check with the app's Bazaar RSA key when the build has it (all release builds do). */
+        fun config(context: Context): PaymentConfiguration {
+            val key = runCatching {
+                @Suppress("DEPRECATION")
+                context.packageManager.getApplicationInfo(context.packageName, android.content.pm.PackageManager.GET_META_DATA).metaData?.getString("divan.bazaarKey")
+            }.getOrNull().orEmpty().trim().let { StoreInfo.storeKey(it) }
+            return PaymentConfiguration(if (key.isNotEmpty()) SecurityCheck.Enable(key) else SecurityCheck.Disable, true)
+        }
 
         fun message(t: Throwable): String = when (t.javaClass.simpleName) {
             "BazaarNotFoundException" -> "برنامهٔ کافه‌بازار پیدا نشد."
@@ -104,7 +114,7 @@ class BazaarPayActivity : ComponentActivity() {
         val payload = intent.getStringExtra("payload").orEmpty()
         val dynamic = intent.getStringExtra("dynamic")
         val subscription = intent.getStringExtra("type") == "subscription"
-        val payment = Payment(applicationContext, PaymentConfiguration(SecurityCheck.Disable, true))
+        val payment = Payment(applicationContext, FlavorBilling.config(this))
         conn = payment.connect {
             connectionSucceed {
                 val request = PurchaseRequest(sku, payload, dynamic)

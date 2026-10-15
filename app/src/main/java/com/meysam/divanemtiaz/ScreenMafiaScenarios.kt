@@ -423,7 +423,7 @@ class MafiaRoleEditScreen(host: MainActivity, role: MafiaRole?) : Screen(host) {
             addView(valueRow("ساید", side.title) {
                 optionPicker("ساید نقش", MafiaSide.values().map { it.title }, side.ordinal, 3) { d = d.copy(side = MafiaSide.values()[it]); host.refresh() }
             })
-            addView(kit.settingRow("نماد نقش", "برای تغییر بزنید", seal(glyph, side, 40)) { glyphPicker(side) })
+            addView(kit.settingRow("نماد نقش", if (mafiaSettings.rolePictures.containsKey(r.name)) "تصویر دلخواه از گالری انتخاب شده" else "برای تغییر بزنید", seal(glyph, side, 40)) { glyphPicker(side, r) })
             addView(valueRow("شعار کوتاه", d.tagline ?: base?.tagline ?: r.defaultTagline) {
                 longPrompt("شعار کوتاه", d.tagline ?: "", false) { d = d.copy(tagline = it.ifBlank { null }); host.refresh() }
             })
@@ -502,16 +502,39 @@ class MafiaRoleEditScreen(host: MainActivity, role: MafiaRole?) : Screen(host) {
         }
     }
 
-    private fun glyphPicker(side: MafiaSide) {
+    /** The designed symbols (each in a fixed-size cell, so the grid can measure them), or a picture from the phone. */
+    private fun glyphPicker(side: MafiaSide, r: MafiaRole) {
         lateinit var dialog: Dialog
         val grid = kit.grid(5, MafiaGlyph.values().map { gl ->
-            seal(gl, side, 44).apply {
+            FrameLayout(host).apply {
+                addView(seal(gl, side, 44), FrameLayout.LayoutParams(kit.dp(44), kit.dp(44), Gravity.CENTER))
+                setPadding(0, kit.dp(2), 0, kit.dp(2))
                 isClickable = true
                 contentDescription = gl.name
                 setOnClickListener { kit.tap(it); dialog.dismiss(); d = d.copy(glyph = gl); host.refresh() }
             }
         }, 6)
-        dialog = kit.dialog("نماد نقش", null, grid, listOf(DialogAction("انصراف")))
+        val scroll = android.widget.ScrollView(host).apply {
+            isVerticalScrollBarEnabled = false
+            addView(grid)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (host.resources.displayMetrics.heightPixels * 0.42f).toInt())
+        }
+        val key = r.name
+        val pics = mafiaSettings.rolePictures
+        val actions = arrayListOf(DialogAction("انتخاب تصویر از گالری", ButtonKind.PRIMARY) {
+            host.pickFile(arrayOf("image/*")) { uri ->
+                if (uri == null) return@pickFile
+                val path = MafiaPictures.import(host, uri, key)
+                if (path == null) kit.toast("تصویر خوانده نشد")
+                else { host.mafia.saveSettings(mafiaSettings.let { s -> s.copy(rolePictures = s.rolePictures + (key to path)) }); kit.toast("تصویر نقش ذخیره شد"); host.refresh() }
+            }
+        })
+        if (pics.containsKey(key)) actions += DialogAction("حذف تصویر و نمایش نماد", ButtonKind.DANGER) {
+            pics[key]?.let { p -> MafiaPictures.forget(p); java.io.File(p).delete() }
+            host.mafia.saveSettings(mafiaSettings.let { s -> s.copy(rolePictures = s.rolePictures - key) }); host.refresh()
+        }
+        actions += DialogAction("انصراف")
+        dialog = kit.dialog("نماد نقش", "یکی از نمادها را بزنید، یا تصویر دلخواه را از گالری بگذارید", scroll, actions)
         dialog.show()
     }
 

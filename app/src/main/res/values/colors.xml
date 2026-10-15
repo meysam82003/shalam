@@ -11,4 +11,10 @@
     <color name="ic_launcher_background">#00287F</color>
     <color name="divan_launch">#0B241D</color>
     <color name="divan_launch_bar">#0A2019</color>
+    <color name="divan_launch_cobalt">#FFEFF3FA</color>
+    <color name="divan_launch_copper">#FF17191C</color>
+    <color name="divan_launch_iranic">#FFF3EBDC</color>
+    <color name="divan_launch_emerald">#FF0B241D</color>
+    <color name="divan_launch_ivory">#FFF8F1E4</color>
+    <color name="divan_launch_neon">#FF0F0A26</color>
 </resources>

@@ -1,21 +1,31 @@
-MIT License
+Divan Emtiaz (دیوان امتیاز) — Proprietary License
 
-Copyright (c) 2026 Meysam
+Copyright (c) 2026 Meysam. All rights reserved.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+This repository and everything in it — source code of the Android app, the web, Windows and iPhone versions,
+the subscription server, the admin panel, the Iran payment bridge and the website, together with the design,
+artwork, characters, icons, sounds, texts, game rules as implemented, names and logos — is the property of
+its owner and is protected by copyright and intellectual-property law.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+No licence is granted to copy, modify, distribute, publish, sublicense, sell, rebuild, re-sign or offer as a
+service any part of it, in source or compiled form, without the owner's prior written permission. Viewing
+the repository where it is shared does not grant any such right. Modified, re-signed or redistributed builds
+are unauthorised; official builds are listed in AUTHENTICITY.md.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+Versions of this repository published earlier under the MIT License remain available under that licence for
+those earlier copies only; this licence applies to all later changes and versions.
+
+Third-party components keep their own licences (see third_party_licenses/); nothing here restricts the rights
+those licences give.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
+
+—
+
+مجوز اختصاصی دیوان امتیاز
+
+همهٔ حقوق این مخزن و هر آنچه در آن است — کد برنامهٔ اندروید، نسخه‌های وب، ویندوز و آیفون، سرور اشتراک،
+پنل مدیریت، واسط پرداخت ایران و سایت، و نیز طراحی، تصویرها، نمادها، صداها، متن‌ها، پیاده‌سازی قوانین بازی‌ها،
+نام و نشان «دیوان امتیاز» — متعلق به صاحب آن است. هرگونه کپی، تغییر، بازسازی، امضای دوباره، انتشار یا فروش
+بخشی از آن، به‌صورت کد یا برنامهٔ ساخته‌شده، بدون اجازهٔ کتبی صاحب اثر مجاز نیست. نسخه‌های رسمی در
+AUTHENTICITY.md فهرست شده‌اند.

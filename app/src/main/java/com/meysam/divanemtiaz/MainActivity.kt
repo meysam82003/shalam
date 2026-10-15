@@ -18,6 +18,7 @@ import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.TextView
 
 abstract class Screen(val host: MainActivity) {
     val kit: RoyalKit get() = host.kit
@@ -178,6 +179,7 @@ class MainActivity : Activity() {
         settings = repo.settings()
         kit = RoyalKit(this) { settings }
         ThemeEngine.apply(Themes.byId(settings.general.theme))
+        LaunchLook.remember(this, ThemeEngine.spec)
         PhotoStore.init(this)
         ProState.init(this)
         AdEngine.init(this)
@@ -198,6 +200,7 @@ class MainActivity : Activity() {
         frame.addView(bottomAd, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         root.addView(frame, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         ProState.listeners += proListener
+        ProSync.signedOutElsewhere = { showToast(it, long = true) }
         setContentView(root)
         fitSystemBars(root)
         applyWindowSettings()
@@ -216,7 +219,10 @@ class MainActivity : Activity() {
         Notices.channels(this)
         if (Notices.offersWanted(this) || Notices.reminders(this)) Notices.schedule(this)
         // Opened from a notification or a payment page: act once the first page is on screen.
-        if (intent?.data != null || intent?.hasExtra(Notices.EXTRA_TARGET) == true) post(SplashScreen.LOGO_MS + 500) { openFromIntent(intent) }
+        // (Behind the logo screen it waits for the logo to hand over to home; that hand-over clears pending posts.)
+        if (intent?.data != null || intent?.hasExtra(Notices.EXTRA_TARGET) == true) {
+            if (stack.lastOrNull() is SplashScreen) openAfterSplash = intent else post(500) { openFromIntent(intent) }
+        }
     }
 
     /** «Back to the app» link of the payment page (divan://pay/…): just shows the Pro page, which asks the server. */
@@ -226,7 +232,7 @@ class MainActivity : Activity() {
         openFromIntent(intent)
     }
 
-    private fun openFromIntent(intent: android.content.Intent?) {
+    fun openFromIntent(intent: android.content.Intent?) {
         val data = intent?.data
         if (data != null && data.scheme == "divan" && data.host == "pay" && ProState.pendingOrder != null) {
             if (current !is ProScreen) push(ProScreen(this)) else current?.onShow()
@@ -262,6 +268,7 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         ProState.listeners -= proListener
+        ProSync.signedOutElsewhere = null
         if (audioUsed) audio.release()
         super.onDestroy()
     }
@@ -315,6 +322,7 @@ class MainActivity : Activity() {
         val next = Themes.byId(id)
         if (next === ThemeEngine.spec) return
         ThemeEngine.apply(next)
+        LaunchLook.remember(this, next)
         rootView.background = BackdropDrawable(resources.displayMetrics.density)
         paintSystemBars()
         refresh()
@@ -394,6 +402,56 @@ class MainActivity : Activity() {
         })
     }
 
+    private var toastView: View? = null
+    private var toastHide: Runnable? = null
+    /** Own timer of the toast: page changes clear [handler]'s posts, which must never leave a toast on screen. */
+    private val toastHandler = Handler(Looper.getMainLooper())
+
+    /**
+     * The app's own toast: a framed pill in the active style (panel colours, metal border, the app's font) that springs
+     * up above the bottom bar and fades away; a new message replaces the one on screen.
+     */
+    fun showToast(message: String, long: Boolean = false) {
+        if (isFinishing || message.isBlank()) return
+        val d = resources.displayMetrics.density
+        toastHide?.let { toastHandler.removeCallbacks(it) }
+        toastView?.let { it.animate().cancel(); rootView.removeView(it) }
+        val t = TextView(this).apply {
+            text = message
+            setTextColor(Royal.ivory)
+            textSize = 14f
+            typeface = RoyalFonts.get(context, true)
+            gravity = Gravity.CENTER
+            textDirection = View.TEXT_DIRECTION_RTL
+            setLineSpacing(0f, 1.3f)
+            maxWidth = (resources.displayMetrics.widthPixels * 0.86f).toInt()
+            setPadding((20 * d).toInt(), (12 * d).toInt(), (20 * d).toInt(), (13 * d).toInt())
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(Royal.panelTop, Royal.panelBottom)
+            ).apply { cornerRadius = 22 * d; setStroke((1.4f * d).toInt().coerceAtLeast(1), Royal.alpha(Royal.metal, 0.9f)) }
+            elevation = 12 * d
+        }
+        val lp = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
+            .apply { bottomMargin = frame.paddingBottom + (92 * d).toInt() }
+        rootView.addView(t, lp)
+        toastView = t
+        t.alpha = 0f; t.translationY = 26 * d; t.scaleX = 0.86f; t.scaleY = 0.86f
+        t.animate().translationY(0f).scaleX(1f).scaleY(1f).setDuration(Motion.SPRING_ITEM).setInterpolator(Motion.JELLY).withLayer().start()
+        android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 200; interpolator = Motion.EASE_OUT
+            addUpdateListener { t.alpha = it.animatedValue as Float }
+            start()
+        }
+        val hide = Runnable {
+            t.animate().alpha(0f).translationY(14 * d).scaleX(0.94f).scaleY(0.94f).setDuration(220).setInterpolator(Motion.EASE_IN)
+                .withEndAction { rootView.removeView(t); if (toastView === t) toastView = null }.start()
+            // Safety net: gone even if the animation never ends (system animations off, view detached).
+            toastHandler.postDelayed({ if (t.parent != null) rootView.removeView(t); if (toastView === t) toastView = null }, 400)
+        }
+        toastHide = hide
+        toastHandler.postDelayed(hide, if (long || message.length > 60) 3800L else 2400L)
+    }
+
     fun onBackPressedCompat() {
         if (current?.onBack() == true) return
         pop()
@@ -407,6 +465,9 @@ class MainActivity : Activity() {
     fun post(delayMs: Long, action: () -> Unit) {
         handler.postDelayed(action, delayMs)
     }
+
+    /** A notification or payment link that opened the app, acted on once the logo screen has given way to home. */
+    var openAfterSplash: Intent? = null
 
     fun cancelPosts() {
         handler.removeCallbacksAndMessages(null)
@@ -559,8 +620,13 @@ class MainActivity : Activity() {
 
     private var transition = 0
 
+    /** The running fade-in of the newest page (stopped when another page replaces it mid-way). */
+    private var pageFade: android.animation.ValueAnimator? = null
+
     private fun render(animate: Boolean = true, forward: Boolean = true, notify: Boolean = true) {
         val screen = current ?: return
+        pageFade?.cancel()
+        pageFade = null
         val view = screen.build()
         restoreScroll(view, screen.savedScroll)
         if (!animate || !settings.general.animations) {
@@ -590,7 +656,14 @@ class MainActivity : Activity() {
                     old.animate().alpha(0f).translationX(if (forward) shift * 0.6f else -shift * 0.6f).setDuration(Motion.PAGE_OUT)
                         .setInterpolator(Motion.EASE_IN_OUT).withLayer().withEndAction { container.removeView(old) }.start()
                 }
-                view.animate().alpha(1f).translationX(0f).setDuration(Motion.PAGE_IN).setInterpolator(Motion.EASE_OUT).withLayer().start()
+                // The new page slides in on a soft spring (a little past its place, then settles); it fades in quickly.
+                view.animate().translationX(0f).setDuration(Motion.SPRING_PAGE).setInterpolator(Motion.SPRING).withLayer().start()
+                pageFade = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+                    duration = Motion.PAGE_IN
+                    interpolator = Motion.EASE_OUT
+                    addUpdateListener { view.alpha = it.animatedValue as Float }
+                    start()
+                }
                 Entrance.play(entrance)
             }
             view.viewTreeObserver.addOnPreDrawListener(object : android.view.ViewTreeObserver.OnPreDrawListener {

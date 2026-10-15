@@ -35,6 +35,25 @@ object Motion {
     const val PAGE_OUT = 220L
     const val ITEM = 240L
     const val STAGGER = 30L
+    /** A soft spring: overshoots a little and settles (pages, cards). */
+    val SPRING: android.animation.TimeInterpolator = Spring(6.5f, 10.5f)
+    /** A livelier, jelly-like spring for items appearing one after another. */
+    val JELLY: android.animation.TimeInterpolator = Spring(5.2f, 13f)
+    const val SPRING_PAGE = 460L
+    const val SPRING_ITEM = 520L
+}
+
+/**
+ * Damped spring as a time curve: 1 − e^(−d·t)·cos(ω·t), scaled so it ends exactly at 1. Cheap enough for every frame
+ * (two transcendental calls), works with ViewPropertyAnimator on hardware layers and honours the system animation scale.
+ */
+class Spring(private val damping: Float, private val omega: Float) : android.view.animation.Interpolator {
+    private val end = 1f - (Math.exp(-damping.toDouble()) * Math.cos(omega.toDouble())).toFloat()
+    override fun getInterpolation(t: Float): Float {
+        if (t >= 1f) return 1f
+        val v = 1f - (Math.exp(-damping * t.toDouble()) * Math.cos(omega * t.toDouble())).toFloat()
+        return v / end
+    }
 }
 
 /**
@@ -436,8 +455,16 @@ object Entrance {
     fun play(plan: Plan?) {
         plan ?: return
         plan.items.forEachIndexed { i, (v, alpha) ->
-            v.animate().alpha(alpha).translationY(0f).scaleX(1f).scaleY(1f)
-                .setStartDelay(40L + i * 35L).setDuration(320).setInterpolator(Motion.EASE_OUT).start()
+            // Position and size spring in like jelly; the fade itself stays smooth so nothing flashes.
+            v.animate().translationY(0f).scaleX(1f).scaleY(1f)
+                .setStartDelay(40L + i * 35L).setDuration(Motion.SPRING_ITEM).setInterpolator(Motion.JELLY).withLayer().start()
+            ValueAnimator.ofFloat(0f, alpha).apply {
+                startDelay = 40L + i * 35L
+                duration = 260
+                interpolator = Motion.EASE_OUT
+                addUpdateListener { v.alpha = it.animatedValue as Float }
+                start()
+            }
         }
     }
 }

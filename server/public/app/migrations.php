@@ -554,5 +554,12 @@ final class Seed
             'support_text' => 'برای پیگیری خرید یا بازیابی حساب، درخواست پشتیبانی ثبت کنید.',
         ];
         foreach ($defaults as $k => $v) if (Settings::get($k) === null) Settings::set($k, $v);
+        // Cafe Bazaar's public RSA key of this app (public, from the Bazaar panel): the server checks every receipt's
+        // signature with it. Only filled in when the panel has none, so a key the owner typed is never replaced.
+        $bz = (array)Settings::get('bazaar', []);
+        if (trim((string)($bz['public_key'] ?? '')) === '') {
+            $bz['public_key'] = 'MIHNMA0GCSqGSIb3DQEBAQUAA4G7ADCBtwKBrwCbivNO6KdM5zzuOw4Z3AKHzSETm5dTZhlPV3dNARx/Ae+ny+AMGuO6DXyW5FSMwOBhs4k0wNwseEBkU1V1II7IRmna/2S/95Gqz+DcUA5ilxkxLlIpLAwi+D429RWYEMfx05ndBv4z0vjmDGb+2J9U21RCLLWXZL01ZkiopXS0zULVMPKTJU4dvIqtjV3rTvkoE+NPd42wsJ5fD6k4RCiHK0dba8ILe4lc75CGbx0CAwEAAQ==';
+            Settings::set('bazaar', $bz);
+        }
     }
 }

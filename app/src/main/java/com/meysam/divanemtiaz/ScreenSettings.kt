@@ -12,7 +12,7 @@ class SettingsScreen(host: MainActivity, private var tab: Int = TAB_GENERAL) : S
     private var shalamTab = 0
 
     override fun build(): View = scaffold(title = "تنظیمات", subtitle = "همهٔ تغییرات خودکار ذخیره می‌شوند") {
-        addView(kit.chipRail(listOf("عمومی", "شلم", "منفی", "هزارتایی", "دو لو گشنیز", "لیگ").mapIndexed { i, label ->
+        addView(kit.chipRail(listOf("عمومی", "شلم", "منفی", "هزارتایی", "دو لو گشنیز", "لیگ", "راوی مافیا", "پانتومیم", "جاسوس").mapIndexed { i, label ->
             kit.chip(label, tab == i, ButtonKind.CHIP_GOLD) { tab = i; host.refresh() }.apply { setPadding(kit.dp(14), kit.dp(4), kit.dp(14), kit.dp(6)) }
         }, tab), kit.spaced(8))
         when (tab) {
@@ -64,8 +64,66 @@ class SettingsScreen(host: MainActivity, private var tab: Int = TAB_GENERAL) : S
                 editLeague(this, settings.league) { c -> host.updateSettings { it.copy(league = c) } }
                 resetButton(this, "لیگ") { it.copy(league = LeagueSettings()) }
             }
+            TAB_MAFIA -> mafia(this)
+            TAB_PANTO -> panto(this)
+            TAB_SPY -> spy(this)
             else -> general(this)
         }
+    }
+
+    /** «راوی مافیا»: the narrator's times and rules here; sounds and role pictures on their own pages. */
+    private fun mafia(parent: LinearLayout) {
+        mafiaGameSettings(parent)
+        parent.addView(kit.section("صدا و تصویر راوی", RoyalIcon.PLAY))
+        parent.addView(kit.listGroup(listOf(
+            kit.listRow(kit.iconChip(RoyalIcon.PLAY), "صداها", "موزیک شب، صدای هر مرحله و هر نقش") { host.push(MafiaSettingsScreen(host, 1)) },
+            kit.listRow(kit.iconChip(RoyalIcon.USER), "تصاویر نقش", "تصویر دلخواه برای کارت هر نقش") { host.push(MafiaSettingsScreen(host, 2)) }
+        )))
+        resetAction(parent, "راوی مافیا") {
+            val d = MafiaSettings()
+            host.mafia.saveSettings(mafiaSettings.copy(speakTime = d.speakTime, challengeTime = d.challengeTime, defenceTime = d.defenceTime, queryCount = d.queryCount,
+                voteEdgeUp = d.voteEdgeUp, selfKill = d.selfKill, capoGun = d.capoGun, keepScreenOn = d.keepScreenOn, vibrate = d.vibrate))
+        }
+    }
+
+    /** «پانتومیم»: starting values of a new match, sound, and the words. */
+    private fun panto(parent: LinearLayout) {
+        val d = host.panto.defaults()
+        fun save(change: (PantoDefaults) -> PantoDefaults, redraw: Boolean = false) { host.panto.saveDefaults(change(host.panto.defaults()).sane()); if (redraw) host.refresh() }
+        parent.addView(kit.section("پیش‌فرض مسابقهٔ جدید", RoyalIcon.TIMER))
+        parent.addView(kit.stepperRow("تعداد دورها", "در صفحهٔ مسابقهٔ جدید هم قابل تغییر است", d.rounds, PantoEngine.MIN_ROUNDS, PantoEngine.MAX_ROUNDS, 1) { v -> save({ it.copy(rounds = v) }) })
+        parent.addView(kit.choiceRow("نوع زمان", "خودکار: نسبت به سختی کلمه و نوع مسابقه", listOf(0 to "خودکار", 1 to "دستی"), if (d.manualTime) 1 else 0) { v -> save({ it.copy(manualTime = v == 1) }, redraw = true) })
+        if (d.manualTime) parent.addView(kit.stepperRow("زمان دستی", "از ${kit.n(PantoEngine.MIN_TIME)} تا ${kit.n(PantoEngine.MAX_TIME)} ثانیه", d.seconds, PantoEngine.MIN_TIME, PantoEngine.MAX_TIME, PantoEngine.TIME_STEP,
+            format = { "${kit.n(it)} ث" }) { v -> save({ it.copy(seconds = v) }) })
+        parent.addView(kit.section("صدا", RoyalIcon.PLAY))
+        parent.addView(kit.switchRow("صدای بازی", "صدای پاسخ درست و نادرست، ثانیه‌های آخر و زنگ پایان (مشترک با جاسوس)", host.spy.sound()) { host.spy.setSound(it) })
+        parent.addView(kit.section("واژه‌ها", RoyalIcon.CARDS))
+        parent.addView(kit.listGroup(listOf(
+            kit.listRow(kit.iconChip(RoyalIcon.CARDS), "بانک واژه‌ها", "جست‌وجو در دسته‌ها و سطح‌ها") { host.push(PantoBankScreen(host)) },
+            kit.listRow(kit.iconChip(RoyalIcon.EDIT), "کلمات من", "${kit.n(host.panto.userWords().size)} کلمه") { host.push(PantoWordsScreen(host)) },
+            kit.listRow(kit.iconChip(RoyalIcon.RULES), "قوانین", "قوانین مشترک و هر نوع مسابقه") { host.push(PantoRulesScreen(host)) }
+        )))
+        resetAction(parent, "پانتومیم") { host.panto.saveDefaults(PantoDefaults()) }
+    }
+
+    /** «جاسوس»: players, spies, time, hint, sound and the words. */
+    private fun spy(parent: LinearLayout) {
+        val s = host.spy.settings()
+        fun save(change: (SpySettings) -> SpySettings, redraw: Boolean = false) { host.spy.saveSettings(change(host.spy.settings())); if (redraw) host.refresh() }
+        parent.addView(kit.section("پیش‌فرض بازی", RoyalIcon.SLIDERS))
+        parent.addView(kit.stepperRow("تعداد بازیکنان", null, s.players, SpyEngine.MIN_PLAYERS, SpyEngine.MAX_PLAYERS, 1) { v ->
+            save({ it.copy(players = v, spies = it.spies.coerceAtMost(v - 1)) }, redraw = true)
+        })
+        parent.addView(kit.stepperRow("تعداد جاسوس‌ها", "همیشه کمتر از تعداد بازیکنان", s.spies, 1, (s.players - 1).coerceAtLeast(1), 1) { v -> save({ it.copy(spies = v) }) })
+        parent.addView(kit.stepperRow("زمان بازی", null, s.minutes, SpyEngine.MIN_MINUTES, SpyEngine.MAX_MINUTES, 1, format = { "${kit.n(it)} دقیقه" }) { v -> save({ it.copy(minutes = v) }) })
+        parent.addView(kit.section("گزینه‌ها", RoyalIcon.SETTINGS))
+        parent.addView(kit.switchRow("راهنمای دسته برای جاسوس", "جاسوس فقط دستهٔ کلمه (مثلاً «مکان») را می‌بیند؛ مناسب تازه‌کارها", s.spyHint) { v -> save({ it.copy(spyHint = v) }) })
+        parent.addView(kit.switchRow("صدای بازی", "زنگ پایان زمان (مشترک با پانتومیم)", host.spy.sound()) { host.spy.setSound(it) })
+        parent.addView(kit.section("کلمات", RoyalIcon.CARDS))
+        val enabled = spyEnabledWords()
+        parent.addView(kit.settingRow("${kit.n(enabled.size)} کلمهٔ انتخاب‌شده از ${kit.n(spyAllWords().size)}", "انتخاب دسته‌ها و کلمه‌ها، و افزودن کلمات خودتان",
+            kit.icon(RoyalIcon.EDIT, Royal.gold, 20)) { host.push(SpyWordsScreen(host)) })
+        resetAction(parent, "جاسوس") { host.spy.saveSettings(SpySettings()) }
     }
 
     private fun general(parent: LinearLayout) {
@@ -172,11 +230,14 @@ class SettingsScreen(host: MainActivity, private var tab: Int = TAB_GENERAL) : S
         }
     }
 
-    private fun resetButton(parent: LinearLayout, name: String, reset: (AppSettings) -> AppSettings) {
+    private fun resetButton(parent: LinearLayout, name: String, reset: (AppSettings) -> AppSettings) = resetAction(parent, name) { host.updateSettings(reset) }
+
+    /** Same button for the games that keep their settings in their own store (narrator, pantomime, spy). */
+    private fun resetAction(parent: LinearLayout, name: String, reset: () -> Unit) {
         parent.addView(kit.gap(8))
         parent.addView(kit.button("بازگشت به پیش‌فرض‌های $name", ButtonKind.GHOST, RoyalIcon.UNDO, 46) {
             kit.confirm("بازگشت به پیش‌فرض", "تنظیمات بخش «$name» به مقدار اولیه برگردد؟", "بازگشت") {
-                host.updateSettings(reset)
+                reset()
                 host.refresh()
             }
         })
@@ -187,6 +248,9 @@ class SettingsScreen(host: MainActivity, private var tab: Int = TAB_GENERAL) : S
         const val TAB_SHALAM = 1
         const val TAB_MENFI = 2
         const val TAB_HEZAR = 3
+        const val TAB_MAFIA = 6
+        const val TAB_PANTO = 7
+        const val TAB_SPY = 8
         const val TAB_DOLO = 4
         const val TAB_LEAGUE = 5
     }

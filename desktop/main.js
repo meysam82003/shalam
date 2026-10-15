@@ -17,7 +17,7 @@ let win = null;
 
 function createWindow() {
   win = new BrowserWindow({
-    width: 1366, height: 820, minWidth: 900, minHeight: 600, backgroundColor: '#050B1A', title: 'دیوان امتیاز',
+    width: 1366, height: 820, minWidth: 900, minHeight: 600, backgroundColor: '#0B241D', title: 'دیوان امتیاز',
     icon: path.join(__dirname, 'play', 'icons', 'icon-512.png'), autoHideMenuBar: true, show: false,
     webPreferences: { contextIsolation: true, sandbox: true, preload: path.join(__dirname, 'preload.js'), spellcheck: false }
   });

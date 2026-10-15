@@ -6,7 +6,7 @@
  */
 (function () {
   'use strict';
-  var DH = window.DH = {};
+  var DH = window.DH = window.DH || {};
   var cfgEl = document.getElementById('divan-config');
   var cfg = window.DIVAN_CONFIG = cfgEl ? JSON.parse(cfgEl.textContent) : (window.DIVAN_CONFIG || {});
   var reloadBtn = document.getElementById('crash-reload');
@@ -115,7 +115,8 @@
   DH.keepAwake = keepAwake;
   DH.lightBars = function (light) {
     var m = document.querySelector('meta[name=theme-color]');
-    if (m) m.setAttribute('content', light ? '#F4EAD2' : '#050B1A');
+    var c = (getComputedStyle(document.documentElement).getPropertyValue('--lb1') || '').trim();
+    if (m) m.setAttribute('content', /^#[0-9A-Fa-f]{6}$/.test(c) ? c : (light ? '#F4EAD2' : '#0A2019'));
   };
   DH.leave = function () { try { window.close(); } catch (e) {} };
 
@@ -278,7 +279,10 @@
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') flush(); });
   DH.saveFile = function (p, d, t) { queue('f:' + p, { data: d.slice().buffer, t: t }); };
   DH.deleteFile = function (p) { queue('f:' + p, null); };
-  DH.savePrefs = function (n, json) { queue('p:' + n, json); };
+  DH.savePrefs = function (n, json) {
+    queue('p:' + n, json);
+    if (n === 'divan_launch') { try { localStorage.setItem('divan.launch', json); } catch (e) {} if (DH.applyLaunch) DH.applyLaunch(); }
+  };
   var blobs = Object.create(null);
   DH.blobUrl = function (key, d) {
     if (!blobs[key]) blobs[key] = URL.createObjectURL(new Blob([d.slice()]));
@@ -555,9 +559,17 @@
     var box = document.getElementById('crash');
     if (box) { box.querySelector('.msg').textContent = m; box.classList.add('on'); }
   };
+  // The loading page plays the logo's entrance (about 1.6 s); a fast start waits for it to finish before fading out.
   DH.started = function () {
     var l = document.getElementById('loading');
-    if (l) { l.classList.add('done'); setTimeout(function () { l.remove(); }, 600); }
+    if (!l) return;
+    var hide = function () { l.classList.add('done'); setTimeout(function () { l.remove(); }, 600); };
+    var anims = [];
+    try { anims = l.getAnimations ? l.getAnimations({ subtree: true }).filter(function (a) { return a.effect && a.effect.getTiming().iterations !== Infinity; }) : []; } catch (e) { anims = []; }
+    if (!anims.length) { setTimeout(hide, Math.max(0, 1750 - (window.performance && performance.now ? performance.now() : 0))); return; }
+    var gone = false, once = function () { if (!gone) { gone = true; setTimeout(hide, 250); } };
+    Promise.all(anims.map(function (a) { return a.finished; })).then(once, once);
+    setTimeout(once, 4000);
   };
   function fetchBytes(u) { return fetch(u).then(function (r) { if (!r.ok) throw new Error(u); return r.arrayBuffer(); }).then(function (b) { return new Int8Array(b); }); }
   function loadFonts() {

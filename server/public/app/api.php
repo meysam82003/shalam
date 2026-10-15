@@ -100,6 +100,9 @@ final class Api
                     'features' => Features::forUser($u === null ? null : (int)$u['id'], $pro),
                     'ads' => Ads::configFor($store, $pro),
                     'cross_store' => (bool)Settings::get('cross_store', true),
+                    // The store's public RSA key from the panel (public by design): the app checks each purchase's
+                    // signature with it too, so a key changed in the panel reaches installed apps without a new APK.
+                    'store_key' => in_array($store, Plans::STORES, true) ? trim((string)(Settings::get($store, [])['public_key'] ?? '')) : '',
                     'support_text' => Settings::get('support_text', ''),
                     'privacy_url' => App::baseUrl() . '/index.php?p=privacy',
                 ];
@@ -278,6 +281,8 @@ final class Api
     private static function open(array $u, array $in): string
     {
         $token = Sessions::signIn((int)$u['id'], $in);
+        // An Android build reports when its APK is not signed with the official key (a modified copy): logged for the owner.
+        if (($in['integrity'] ?? true) === false) Audit::security('unofficial_app', (int)$u['id'], (string)$u['username'], mb_substr((string)($in['device'] ?? ''), 0, 80) . ' ' . mb_substr((string)($in['app_version'] ?? ''), 0, 20));
         self::$auth = [$u, Db::one('SELECT * FROM {sessions} WHERE token_hash = ?', [Crypto::hash($token)])];
         return $token;
     }

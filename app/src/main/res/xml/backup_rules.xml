@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 6 to 11: games, people and settings are backed up; the account session and Pro certificate are not
+     (a restored phone signs in again instead of carrying another device's session). -->
+<full-backup-content>
+    <exclude domain="sharedpref" path="divan_pro.xml" />
+</full-backup-content>

@@ -8,12 +8,19 @@ def releaseKeystore = System.getenv('DIVAN_KEYSTORE_FILE')
 // Values for the Pro subscription; none of them is secret (public keys and addresses).
 def setting = { String name, String env -> ((project.findProperty(name) ?: System.getenv(env) ?: '') as String).trim() }
 def divanApi = setting('divan.api', 'DIVAN_API') ?: 'https://httpuser87890.ir/divan/api/index.php'
-def divanLicenseKey = setting('divan.licenseKey', 'DIVAN_LICENSE_KEY')
+// Public key of the subscription server's certificates (from /v1/keys of the live server, kid 1ce0e85fcdca4bfb), pinned so
+// a key swapped in the phone's storage can never sign a forged Pro certificate. A property or variable overrides it.
+def divanLicenseKey = setting('divan.licenseKey', 'DIVAN_LICENSE_KEY') ?: 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAw7JEk5pLY5jqNXNBaOf5iDrcZVgl0II2znwXp3COiBI2CophSEM2dM3lui9DZ8PALWoBVhcsJ3i5ckGMmeiXEm7t9qKeNFPNRV+1eSBDV7M0uqlLNl89tN/iC84abqkeKhR+2GDcGHSxrrNWHW565nZ0aOVNF4p2+9h7ro1jiCt+SzEFpRWSZKmfoROFqApirTVROf26A7Uisn7LZjMDUZ8oH7pB+xZYMWLN3rYCW7ov3lNZt81Tjl1jkYnT08lV+z87f0bmKpCWckplVGdKIDdko1e/HLdqnE8JtC3UTpcf4KScGYoUFLuQSKCl5m9zXfwp6QjjFDbWVmF/2Fx45wIDAQAB'
+// Cafe Bazaar's public RSA key of this app (safe to commit): Poolakey checks every purchase's signature with it too.
+def divanBazaarKey = setting('divan.bazaarKey', 'DIVAN_BAZAAR_RSA_KEY') ?: 'MIHNMA0GCSqGSIb3DQEBAQUAA4G7ADCBtwKBrwCbivNO6KdM5zzuOw4Z3AKHzSETm5dTZhlPV3dNARx/Ae+ny+AMGuO6DXyW5FSMwOBhs4k0wNwseEBkU1V1II7IRmna/2S/95Gqz+DcUA5ilxkxLlIpLAwi+D429RWYEMfx05ndBv4z0vjmDGb+2J9U21RCLLWXZL01ZkiopXS0zULVMPKTJU4dvIqtjV3rTvkoE+NPd42wsJ5fD6k4RCiHK0dba8ILe4lc75CGbx0CAwEAAQ=='
 // Myket's public RSA key (safe to commit); per-build property or environment variable takes precedence.
 def divanMyketKey = setting('divan.myketKey', 'DIVAN_MYKET_RSA_KEY') ?: 'MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCADyNgGC9nxkQGOJhwp/8wyI7aaftQ9v7E2PBaktHfIss9ZcD01MD0i1H2EVyaEPJRXgMiTaQMvdF7u1BP8V4IlcxR9HF17x0Il22eBL+q7nTTDFr5vkNJDi2wUzmMIRQzJAFkQHIeUKSkcY8i68GYCSS5lVtDMzi72F7uB3F3XQIDAQAB'
 def divanTapsell = setting('divan.tapsellAppId', 'DIVAN_TAPSELL_APP_ID')
+// SHA-256 of the official release signing certificate (the key of every published APK since 4.9.1). Release builds
+// refuse Pro when the installed APK is signed with another key, and CI refuses to publish an APK that is not.
+def divanCertSha256 = setting('divan.certSha256', 'DIVAN_CERT_SHA256') ?: 'BDF49332DE48F6E06E3D55C380A11479243AB404291151DF8DE1F9F4BF25D0AA'
 def basePlaceholders = [
-    divanStore: 'bazaar', divanApi: divanApi, divanLicenseKey: divanLicenseKey, divanMyketKey: '', divanTapsell: divanTapsell,
+    divanStore: 'bazaar', divanApi: divanApi, divanLicenseKey: divanLicenseKey, divanMyketKey: '', divanBazaarKey: '', divanCertSha256: '', divanTapsell: divanTapsell,
     TapsellMediationAppKey: divanTapsell, marketApplicationId: 'ir.mservices.market',
     marketBindAddress: 'ir.mservices.market.InAppBillingService.BIND', marketPermission: 'ir.mservices.market.BILLING'
 ]
@@ -48,10 +55,13 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled false
-            shrinkResources false
+            // R8: removes unused code and resources and renames the rest, so the published APK is smaller and much
+            // harder to read or patch (rules in proguard-rules.pro keep saved games and store billing intact).
+            minifyEnabled true
+            shrinkResources true
             signingConfig releaseKeystore ? signingConfigs.release : signingConfigs.debug
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            manifestPlaceholders = [divanCertSha256: divanCertSha256]
         }
         debug {
             applicationIdSuffix '.debug'
@@ -64,7 +74,7 @@ android {
     productFlavors {
         bazaar {
             dimension 'store'
-            manifestPlaceholders = basePlaceholders + [divanStore: 'bazaar']
+            manifestPlaceholders = basePlaceholders + [divanStore: 'bazaar', divanBazaarKey: divanBazaarKey]
         }
         myket {
             dimension 'store'

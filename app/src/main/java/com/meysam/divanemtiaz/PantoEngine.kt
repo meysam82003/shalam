@@ -73,7 +73,7 @@ class PantoBank(val words: List<PantoWord>) {
         fun get(open: () -> InputStream): PantoBank = loaded ?: synchronized(this) { loaded ?: read(open()).also { loaded = it } }
 
         fun read(input: InputStream): PantoBank {
-            val out = ArrayList<PantoWord>(18100)
+            val out = ArrayList<PantoWord>(27300)
             input.bufferedReader(Charsets.UTF_8).useLines { lines ->
                 lines.forEach { line ->
                     if (line.isEmpty()) return@forEach
@@ -632,6 +632,11 @@ object PantoCodec {
 }
 
 /** Matches, the used-word list (no repeats across matches) and the players' own words, in the app's store. */
+/** Starting values of the «مسابقهٔ جدید» page: rounds, and automatic or manual time. */
+data class PantoDefaults(val rounds: Int = 3, val manualTime: Boolean = false, val seconds: Int = 45) {
+    fun sane() = copy(rounds = rounds.coerceIn(PantoEngine.MIN_ROUNDS, PantoEngine.MAX_ROUNDS), seconds = seconds.coerceIn(PantoEngine.MIN_TIME, PantoEngine.MAX_TIME))
+}
+
 class PantoRepository(private val kv: KeyValueStore) {
     fun index(): List<Long> = kv.get(KEY_INDEX)?.let { raw -> runCatching { JSONArray(raw).let { a -> List(a.length()) { a.optLong(it) } } }.getOrNull() } ?: emptyList()
 
@@ -658,6 +663,13 @@ class PantoRepository(private val kv: KeyValueStore) {
 
     fun saveUserWords(list: List<PantoWord>) = kv.write(mapOf(KEY_USER_WORDS to PantoCodec.encodeWords(list)))
 
+    /** Defaults of a new match, set in the app settings («پانتومیم»). */
+    fun defaults(): PantoDefaults = kv.get(KEY_DEFAULTS)?.let { raw ->
+        runCatching { JSONObject(raw).let { PantoDefaults(it.optInt("r", 3), it.optBoolean("m"), it.optInt("s", 45)) } }.getOrNull()
+    }?.sane() ?: PantoDefaults()
+
+    fun saveDefaults(d: PantoDefaults) = kv.write(mapOf(KEY_DEFAULTS to JSONObject().put("r", d.rounds).put("m", d.manualTime).put("s", d.seconds).toString()))
+
     /** Next id for an own word (kept above the bank's ids). */
     fun nextUserWordId(): Int = (userWords().maxOfOrNull { it.id } ?: USER_ID_BASE).coerceAtLeast(USER_ID_BASE) + 1
 
@@ -666,6 +678,7 @@ class PantoRepository(private val kv: KeyValueStore) {
         const val KEY_MATCH = "panto_match_"
         const val KEY_USED = "panto_used"
         const val KEY_USER_WORDS = "panto_user_words"
+        const val KEY_DEFAULTS = "panto_defaults"
         const val USER_ID_BASE = 1_000_000
     }
 }

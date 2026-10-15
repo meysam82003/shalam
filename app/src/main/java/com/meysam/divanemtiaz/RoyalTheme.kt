@@ -311,6 +311,31 @@ object ThemeEngine {
     }
 }
 
+/**
+ * The first picture before the app has drawn anything, in the colours of the chosen style (no white or navy flash):
+ * Android 13+ keeps a splash theme per style for the next start; the web versions keep the colours for their
+ * loading page (the host mirrors this preferences file into the browser's local storage).
+ */
+object LaunchLook {
+    const val PREFS = "divan_launch"
+
+    private fun hex(c: Int) = "#" + Integer.toHexString(c and 0xFFFFFF or 0x1000000).substring(1).uppercase()
+
+    fun remember(activity: android.app.Activity, spec: ThemeSpec) {
+        val look = org.json.JSONObject()
+            .put("id", spec.id).put("light", spec.light)
+            .put("b1", hex(spec.bg[0])).put("b2", hex(spec.bg[1])).put("b3", hex(spec.bg[2]))
+            .put("title", hex(spec.accentText)).put("gold", hex(spec.accent)).put("muted", hex(spec.muted)).put("dim", hex(spec.dim))
+            .toString()
+        val prefs = activity.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
+        if (prefs.getString("look", null) != look) prefs.edit().putString("look", look).apply()
+        if (android.os.Build.VERSION.SDK_INT >= 33) runCatching {
+            val style = activity.resources.getIdentifier("Theme.Divan.Launch." + spec.id.replaceFirstChar { it.uppercase() }, "style", activity.packageName)
+            if (style != 0) activity.splashScreen.setSplashScreenTheme(style)
+        }
+    }
+}
+
 /** Bottom navigation of the main pages: home, leagues, history, ranking and settings. */
 object NavBar {
     const val HOME = 0
