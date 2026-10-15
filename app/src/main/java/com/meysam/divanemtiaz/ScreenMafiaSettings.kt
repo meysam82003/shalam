@@ -24,7 +24,7 @@ class MafiaSettingsScreen(host: MainActivity, private var tab: Int = 0) : Screen
             kit.chip(t, tab == i, ButtonKind.CHIP_GOLD) { tab = i; host.refresh() }
         }, 6), kit.spaced(8))
         when (tab) {
-            0 -> game(this)
+            0 -> mafiaGameSettings(this)
             1 -> sounds(this)
             else -> pictures(this)
         }
@@ -37,25 +37,6 @@ class MafiaSettingsScreen(host: MainActivity, private var tab: Int = 0) : Screen
     }
 
     // ------------------------------------------------------------------ game
-
-    private fun game(parent: LinearLayout) {
-        val s = mafiaSettings
-        val sec = { v: Int -> kit.n(v) + " ثانیه" }
-        parent.addView(kit.section("زمان‌ها", RoyalIcon.TIMER))
-        parent.addView(kit.stepperRow("زمان صحبت بازیکنان", "زمان صحبت را برای بازیکنان تعین میکند", s.speakTime, 15, 120, 5, sec) { v -> update({ it.copy(speakTime = v) }) })
-        parent.addView(kit.stepperRow("زمان چالش", "زمان چالش را برای بازیکنان تعین میکند", s.challengeTime, 15, 120, 5, sec) { v -> update({ it.copy(challengeTime = v) }) })
-        parent.addView(kit.stepperRow("زمان دفاعیه", "زمان دفاع را برای بازیکنان تعین میکند", s.defenceTime, 15, 120, 5, sec) { v -> update({ it.copy(defenceTime = v) }) })
-        parent.addView(kit.section("قوانین", RoyalIcon.RULES))
-        parent.addView(kit.stepperRow("تعداد استعلام", "تعداد استعلام گروهی را برای بازی تعیین میکند", s.queryCount, 0, 5, 1) { v -> update({ it.copy(queryCount = v) }) })
-        parent.addView(kit.choiceRow("حد نصاب آرا ورود به دفاعیه", null, listOf(1 to "50 درصد گرد شده رو به بالا", 0 to "50 درصد گرد شده رو به پایین"), if (s.voteEdgeUp) 1 else 0) { v ->
-            update({ it.copy(voteEdgeUp = v == 1) })
-        })
-        parent.addView(kit.switchRow("خودزنی", "مافیا می‌تواند به اعضای خودش هم شلیک کند", s.selfKill) { v -> update({ it.copy(selfKill = v) }) })
-        parent.addView(kit.switchRow("تفنگ کاپو", "روز اول به جای رأی‌گیری، معتمد شهر با تفنگ کاپو شلیک می‌کند", s.capoGun) { v -> update({ it.copy(capoGun = v) }) })
-        parent.addView(kit.section("دستگاه", RoyalIcon.SETTINGS))
-        parent.addView(kit.switchRow("ممانعت از به خواب رفتن دستگاه", null, s.keepScreenOn) { v -> update({ it.copy(keepScreenOn = v) }) })
-        parent.addView(kit.switchRow("ویبره", null, s.vibrate) { v -> update({ it.copy(vibrate = v) }) })
-    }
 
     // ------------------------------------------------------------------ sounds
 
@@ -249,4 +230,25 @@ class MafiaSettingsScreen(host: MainActivity, private var tab: Int = 0) : Screen
             kit.dialog(name.replace("\n", " "), "تصویر این کارت", null, actions).show()
         }
     }
+}
+
+/** Times, rules and device options of the narrator (also shown in the app settings under «راوی مافیا»). */
+fun Screen.mafiaGameSettings(parent: LinearLayout) {
+    fun update(change: (MafiaSettings) -> MafiaSettings) = host.mafia.saveSettings(change(mafiaSettings))
+    val s = mafiaSettings
+    val sec = { v: Int -> kit.n(v) + " ثانیه" }
+    parent.addView(kit.section("زمان‌ها", RoyalIcon.TIMER))
+    parent.addView(kit.stepperRow("زمان صحبت بازیکنان", "زمان صحبت را برای بازیکنان تعین میکند", s.speakTime, 15, 120, 5, sec) { v -> update({ it.copy(speakTime = v) }) })
+    parent.addView(kit.stepperRow("زمان چالش", "زمان چالش را برای بازیکنان تعین میکند", s.challengeTime, 15, 120, 5, sec) { v -> update({ it.copy(challengeTime = v) }) })
+    parent.addView(kit.stepperRow("زمان دفاعیه", "زمان دفاع را برای بازیکنان تعین میکند", s.defenceTime, 15, 120, 5, sec) { v -> update({ it.copy(defenceTime = v) }) })
+    parent.addView(kit.section("قوانین", RoyalIcon.RULES))
+    parent.addView(kit.stepperRow("تعداد استعلام", "تعداد استعلام گروهی را برای بازی تعیین میکند", s.queryCount, 0, 5, 1) { v -> update({ it.copy(queryCount = v) }) })
+    parent.addView(kit.choiceRow("حد نصاب آرا ورود به دفاعیه", null, listOf(1 to "50 درصد گرد شده رو به بالا", 0 to "50 درصد گرد شده رو به پایین"), if (s.voteEdgeUp) 1 else 0) { v ->
+        update({ it.copy(voteEdgeUp = v == 1) })
+    })
+    parent.addView(kit.switchRow("خودزنی", "مافیا می‌تواند به اعضای خودش هم شلیک کند", s.selfKill) { v -> update({ it.copy(selfKill = v) }) })
+    parent.addView(kit.switchRow("تفنگ کاپو", "روز اول به جای رأی‌گیری، معتمد شهر با تفنگ کاپو شلیک می‌کند", s.capoGun) { v -> update({ it.copy(capoGun = v) }) })
+    parent.addView(kit.section("دستگاه", RoyalIcon.SETTINGS))
+    parent.addView(kit.switchRow("ممانعت از به خواب رفتن دستگاه", null, s.keepScreenOn) { v -> update({ it.copy(keepScreenOn = v) }) })
+    parent.addView(kit.switchRow("ویبره", null, s.vibrate) { v -> update({ it.copy(vibrate = v) }) })
 }

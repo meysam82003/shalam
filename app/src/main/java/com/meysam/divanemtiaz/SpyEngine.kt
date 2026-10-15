@@ -7,7 +7,11 @@ import kotlin.random.Random
 
 /** «جاسوس»: word categories of the game (and the players' own words). */
 enum class SpyCategory(val title: String, val key: String) {
-    PLACE("مکان", "مکان‌ها"), FOOD("غذا", "غذاها"), ANIMAL("حیوان", "حیوانات"), JOB("شغل", "شغل‌ها"), USER("کلمات کاربر", "");
+    PLACE("مکان", "مکان‌ها"), FOOD("غذا", "غذاها"), ANIMAL("حیوان", "حیوانات"), JOB("شغل", "شغل‌ها"),
+    // Added in 5.5 (always after the first four, so the ids of the older words stay the same).
+    OBJECT("شیء", "اشیا"), SPORT("ورزش", "ورزش‌ها"), CITY("شهر و کشور", "شهرها و کشورها"), VEHICLE("وسیلهٔ نقلیه", "وسایل نقلیه"),
+    PRODUCE("میوه و سبزی", "میوه‌ها و سبزی‌ها"), CLOTHES("پوشاک", "پوشاک"), NATURE("طبیعت", "طبیعت"), INSTRUMENT("ساز", "سازها"),
+    USER("کلمات کاربر", "");
 
     companion object {
         fun of(name: String?) = values().firstOrNull { it.name == name } ?: USER

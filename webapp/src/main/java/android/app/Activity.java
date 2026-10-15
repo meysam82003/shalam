@@ -19,6 +19,12 @@ public class Activity extends android.view.ContextThemeWrapper {
     public Activity() {}
 
     public Window getWindow() { return window; }
+    private final android.window.SplashScreen splash = new android.window.SplashScreen() {
+        private int theme;
+        @Override public void setSplashScreenTheme(int themeId) { theme = themeId; }
+        @Override public int getSplashScreenTheme() { return theme; }
+    };
+    public final android.window.SplashScreen getSplashScreen() { return splash; }
     public Intent getIntent() { return intent; }
     public void setIntent(Intent newIntent) { intent = newIntent; }
     public android.view.WindowManager getWindowManager() { return null; }

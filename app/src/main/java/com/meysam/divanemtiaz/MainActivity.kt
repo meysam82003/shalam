@@ -179,6 +179,7 @@ class MainActivity : Activity() {
         settings = repo.settings()
         kit = RoyalKit(this) { settings }
         ThemeEngine.apply(Themes.byId(settings.general.theme))
+        LaunchLook.remember(this, ThemeEngine.spec)
         PhotoStore.init(this)
         ProState.init(this)
         AdEngine.init(this)
@@ -218,7 +219,10 @@ class MainActivity : Activity() {
         Notices.channels(this)
         if (Notices.offersWanted(this) || Notices.reminders(this)) Notices.schedule(this)
         // Opened from a notification or a payment page: act once the first page is on screen.
-        if (intent?.data != null || intent?.hasExtra(Notices.EXTRA_TARGET) == true) post(SplashScreen.LOGO_MS + 500) { openFromIntent(intent) }
+        // (Behind the logo screen it waits for the logo to hand over to home; that hand-over clears pending posts.)
+        if (intent?.data != null || intent?.hasExtra(Notices.EXTRA_TARGET) == true) {
+            if (stack.lastOrNull() is SplashScreen) openAfterSplash = intent else post(500) { openFromIntent(intent) }
+        }
     }
 
     /** «Back to the app» link of the payment page (divan://pay/…): just shows the Pro page, which asks the server. */
@@ -228,7 +232,7 @@ class MainActivity : Activity() {
         openFromIntent(intent)
     }
 
-    private fun openFromIntent(intent: android.content.Intent?) {
+    fun openFromIntent(intent: android.content.Intent?) {
         val data = intent?.data
         if (data != null && data.scheme == "divan" && data.host == "pay" && ProState.pendingOrder != null) {
             if (current !is ProScreen) push(ProScreen(this)) else current?.onShow()
@@ -318,6 +322,7 @@ class MainActivity : Activity() {
         val next = Themes.byId(id)
         if (next === ThemeEngine.spec) return
         ThemeEngine.apply(next)
+        LaunchLook.remember(this, next)
         rootView.background = BackdropDrawable(resources.displayMetrics.density)
         paintSystemBars()
         refresh()
@@ -456,6 +461,9 @@ class MainActivity : Activity() {
     fun post(delayMs: Long, action: () -> Unit) {
         handler.postDelayed(action, delayMs)
     }
+
+    /** A notification or payment link that opened the app, acted on once the logo screen has given way to home. */
+    var openAfterSplash: Intent? = null
 
     fun cancelPosts() {
         handler.removeCallbacksAndMessages(null)

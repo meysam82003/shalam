@@ -17,4 +17,54 @@
         <item name="android:windowSplashScreenAnimatedIcon">@android:color/transparent</item>
         <item name="android:windowSplashScreenAnimationDuration">0</item>
     </style>
+
+    <!-- Splash of the next start in the colours of the chosen style (Android 13+, set from LaunchLook). -->
+    <style name="Theme.Divan.Launch.Cobalt" parent="Theme.Divan">
+        <item name="android:windowSplashScreenBackground">#FFEFF3FA</item>
+        <item name="android:windowBackground">@color/divan_launch_cobalt</item>
+        <item name="android:statusBarColor">#FFF6F8FC</item>
+        <item name="android:navigationBarColor">#FFE8EEF8</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+    <style name="Theme.Divan.Launch.Copper" parent="Theme.Divan">
+        <item name="android:windowSplashScreenBackground">#FF17191C</item>
+        <item name="android:windowBackground">@color/divan_launch_copper</item>
+        <item name="android:statusBarColor">#FF1D2023</item>
+        <item name="android:navigationBarColor">#FF111315</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+    <style name="Theme.Divan.Launch.Iranic" parent="Theme.Divan">
+        <item name="android:windowSplashScreenBackground">#FFF3EBDC</item>
+        <item name="android:windowBackground">@color/divan_launch_iranic</item>
+        <item name="android:statusBarColor">#FFF7F0E3</item>
+        <item name="android:navigationBarColor">#FFEDE3D1</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+    <style name="Theme.Divan.Launch.Emerald" parent="Theme.Divan">
+        <item name="android:windowSplashScreenBackground">#FF0B241D</item>
+        <item name="android:windowBackground">@color/divan_launch_emerald</item>
+        <item name="android:statusBarColor">#FF0A2019</item>
+        <item name="android:navigationBarColor">#FF061511</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+    <style name="Theme.Divan.Launch.Ivory" parent="Theme.Divan">
+        <item name="android:windowSplashScreenBackground">#FFF8F1E4</item>
+        <item name="android:windowBackground">@color/divan_launch_ivory</item>
+        <item name="android:statusBarColor">#FFFCF9F2</item>
+        <item name="android:navigationBarColor">#FFF1E7D4</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+    <style name="Theme.Divan.Launch.Neon" parent="Theme.Divan">
+        <item name="android:windowSplashScreenBackground">#FF0F0A26</item>
+        <item name="android:windowBackground">@color/divan_launch_neon</item>
+        <item name="android:statusBarColor">#FF140B2E</item>
+        <item name="android:navigationBarColor">#FF0A0819</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
 </resources>

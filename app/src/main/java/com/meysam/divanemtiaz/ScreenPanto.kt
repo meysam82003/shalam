@@ -75,9 +75,10 @@ class PantoHomeScreen(host: MainActivity) : Screen(host) {
 class PantoSetupScreen(host: MainActivity) : Screen(host) {
     private var mode = PantoMode.NORMAL
     private val teams = ArrayList<PantoTeam>()
-    private var rounds = 3
-    private var manual = false
-    private var seconds = 45
+    private val defaults = host.panto.defaults()
+    private var rounds = defaults.rounds
+    private var manual = defaults.manualTime
+    private var seconds = defaults.seconds
     private var referee = ""
 
     init {
@@ -395,16 +396,23 @@ class PantoCategoryScreen(host: MainActivity, matchId: Long) : PantoScreen(host,
         }
     }
 
-    private fun goldenCard(o: PantoEngine.Option): View = kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
+    /** The golden topic in one slim gold strip (crown, title and its terms). */
+    private fun goldenCard(o: PantoEngine.Option): View = kit.horizontal().apply {
         background = android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(0xFF8A6418.toInt(), 0xFF3E2C08.toInt())).apply { cornerRadius = kit.dpf(18f); setStroke(kit.dp(2), Royal.goldLight) }
-        setPadding(kit.dp(12), kit.dp(12), kit.dp(12), kit.dp(14))
-        layoutParams = kit.spaced(8)
+            intArrayOf(0xFF8A6418.toInt(), 0xFF3E2C08.toInt())).apply { cornerRadius = kit.dpf(14f); setStroke(kit.dp(1), Royal.goldLight) }
+        setPadding(kit.dp(10), kit.dp(7), kit.dp(10), kit.dp(8))
+        layoutParams = kit.spaced(6)
         alpha = if (o.enabled) 1f else 0.45f
-        addView(kit.icon(RoyalIcon.CROWN, Royal.goldLight, 30))
-        addView(kit.text("موضوع طلایی", TextStyle.TITLE, Royal.goldLight, Gravity.CENTER))
-        addView(kit.text("${kit.n(30)} امتیاز • ${kit.n(3)} دقیقه • پاسخ نادرست = خروج از مسابقه", TextStyle.LABEL, Royal.ivory, Gravity.CENTER))
-        if (!o.enabled) addView(kit.text("این تیم موضوع طلایی را انتخاب کرده است", TextStyle.CAPTION, Royal.muted, Gravity.CENTER))
+        addView(kit.icon(RoyalIcon.CROWN, Royal.goldLight, 22))
+        addView(kit.hgap(8))
+        addView(kit.weight(kit.vertical().apply {
+            addView(kit.text("موضوع طلایی", TextStyle.BODY_BOLD, Royal.goldLight))
+            addView(kit.text(if (o.enabled) "پاسخ نادرست = خروج از مسابقه" else "این تیم موضوع طلایی را انتخاب کرده است", TextStyle.CAPTION, Royal.ivory, maxLines = 1))
+        }))
+        addView(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
+            addView(kit.text(kit.n(30), TextStyle.HEADING, Royal.goldLight, Gravity.CENTER))
+            addView(kit.text("${kit.n(3)} دقیقه", TextStyle.CAPTION, Royal.ivory, Gravity.CENTER, 1))
+        })
         contentDescription = "موضوع طلایی"
         setOnClickListener {
             if (!o.enabled) { kit.toast("این تیم موضوع طلایی را قبلاً انتخاب کرده است"); return@setOnClickListener }
@@ -413,30 +421,33 @@ class PantoCategoryScreen(host: MainActivity, matchId: Long) : PantoScreen(host,
         }
     }
 
-    private fun categoryCard(cat: Int, opts: List<PantoEngine.Option>): View = kit.vertical().apply {
-        background = PanelDrawable(kit.density, PanelStyle.NORMAL, 18f)
-        setPadding(kit.dp(12), kit.dp(10), kit.dp(12), kit.dp(12))
-        layoutParams = kit.spaced(8)
-        addView(kit.horizontal().apply {
-            addView(kit.text(PantoCategories.name(cat), TextStyle.TITLE, Royal.goldLight))
-            addView(kit.hgap(8))
-            if (cat == PantoCategories.USER) addView(kit.badge("کلمات شما", Royal.turquoise))
-        })
-        addView(kit.gap(6))
-        addView(kit.grid(3, opts.map { o ->
-            kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
-                background = ButtonDrawable(kit.density, if (o.enabled) ButtonKind.SECONDARY else ButtonKind.GHOST, 12f)
-                setPadding(kit.dp(4), kit.dp(6), kit.dp(4), kit.dp(9))
+    /** One slim row per topic: its name, then a small tile per level (points, level and time). */
+    private fun categoryCard(cat: Int, opts: List<PantoEngine.Option>): View = kit.horizontal().apply {
+        background = PanelDrawable(kit.density, PanelStyle.NORMAL, 14f)
+        setPadding(kit.dp(8), kit.dp(5), kit.dp(8), kit.dp(6))
+        layoutParams = kit.spaced(5)
+        gravity = Gravity.CENTER_VERTICAL
+        addView(kit.vertical().apply {
+            addView(kit.text(PantoCategories.name(cat), TextStyle.BODY_BOLD, Royal.goldLight, maxLines = 2))
+            if (cat == PantoCategories.USER) addView(kit.text("کلمات شما", TextStyle.CAPTION, Royal.turquoiseLight, maxLines = 1))
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.15f))
+        opts.forEachIndexed { i, o ->
+            if (i > 0) addView(kit.hgap(5))
+            addView(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
+                background = ButtonDrawable(kit.density, if (o.enabled) ButtonKind.SECONDARY else ButtonKind.GHOST, 10f)
+                setPadding(kit.dp(2), kit.dp(3), kit.dp(2), kit.dp(5))
                 alpha = if (o.enabled) 1f else 0.4f
-                addView(kit.text(kit.n(o.choice.points), TextStyle.DISPLAY, if (o.enabled) Royal.goldLight else Royal.muted, Gravity.CENTER))
-                addView(kit.text("${PantoCategories.levelNames[o.choice.level]} • ${kit.n(PantoEngine.seconds(m, o.choice))} ث", TextStyle.CAPTION, Royal.ivory, Gravity.CENTER, 1))
+                addView(kit.text(kit.n(o.choice.points), TextStyle.HEADING, if (o.enabled) Royal.goldLight else Royal.muted, Gravity.CENTER, 1))
+                addView(kit.text("${PantoCategories.levelNames[o.choice.level]} • ${kit.n(PantoEngine.seconds(m, o.choice))}ث", TextStyle.CAPTION, Royal.ivory, Gravity.CENTER, 1).apply {
+                    textSize = kit.textSize(10.5f)
+                })
                 contentDescription = "${PantoCategories.name(cat)} ${o.choice.points}"
                 setOnClickListener {
                     if (!o.enabled) { kit.toast("این موضوع را این تیم قبلاً بازی کرده است"); return@setOnClickListener }
                     kit.tap(it); pick(o.choice)
                 }
-            }
-        }, 6))
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        }
     }
 
     private fun pick(c: PantoChoice) {

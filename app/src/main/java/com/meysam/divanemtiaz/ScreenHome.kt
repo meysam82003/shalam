@@ -11,23 +11,54 @@ const val APP_VERSION_NAME = "5.5.0"
 const val APP_VERSION_LABEL = "نسخهٔ ۵.۵.۰"
 
 class SplashScreen(host: MainActivity) : Screen(host) {
+    /**
+     * The entrance plays on the phone; the web versions already played it on their loading page (same picture),
+     * and with «انیمیشن‌های روان» off the logo is shown still.
+     */
+    private val animated: Boolean get() = settings.general.animations && android.os.Build.DEVICE != "web"
+    private val staged = ArrayList<Pair<View, Long>>()
+
     override fun build(): View = FrameLayout(host).apply {
+        staged.clear()
+        val fan = SplashFanView(host)
         addView(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
-            addView(HeroCrestView(host), LinearLayout.LayoutParams(kit.dp(280), kit.dp(215)))
+            addView(fan, LinearLayout.LayoutParams(kit.dp(280), kit.dp(215)))
             addView(kit.gap(6))
-            addView(kit.text("دیوان امتیاز", TextStyle.DISPLAY, Royal.goldLight, Gravity.CENTER).apply { textSize = kit.textSize(34f) })
-            addView(kit.text("داور و دفتر امتیاز شاهانه", TextStyle.BODY, Royal.muted, Gravity.CENTER))
+            addView(stage(kit.text("دیوان امتیاز", TextStyle.DISPLAY, Royal.goldLight, Gravity.CENTER).apply { textSize = kit.textSize(34f) }, 880))
+            addView(stage(kit.text("داور و دفتر امتیاز شاهانه", TextStyle.BODY, Royal.muted, Gravity.CENTER), 1000))
             addView(kit.gap(10))
-            addView(kit.divider(), LinearLayout.LayoutParams(kit.dp(220), kit.dp(18)))
-            addView(kit.text(gameNames(), TextStyle.LABEL_BOLD, Royal.gold, Gravity.CENTER).apply { setLineSpacing(kit.dpf(4f), 1f) })
+            addView(stage(kit.divider(), 1090), LinearLayout.LayoutParams(kit.dp(220), kit.dp(18)))
+            addView(stage(kit.text(gameNames(), TextStyle.LABEL_BOLD, Royal.gold, Gravity.CENTER).apply { setLineSpacing(kit.dpf(4f), 1f) }, 1180))
         }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
-        addView(kit.text("$APP_VERSION_LABEL  •  آفلاین", TextStyle.CAPTION, Royal.dim, Gravity.CENTER),
+        addView(stage(kit.text("$APP_VERSION_LABEL  •  آفلاین", TextStyle.CAPTION, Royal.dim, Gravity.CENTER), 1280),
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply { bottomMargin = kit.dp(28) })
         isClickable = true
         setOnClickListener { goHome() }
-        // The window already shows the same emerald, so the logo only needs a short fade.
-        alpha = 0f
-        animate().alpha(1f).setDuration(180).start()
+        if (animated) {
+            fan.play()
+            staged.forEach { (v, delay) -> rise(v, delay) }
+        } else {
+            fan.still()
+            // The window already shows the same emerald, so the logo only needs a short fade.
+            alpha = 0f
+            animate().alpha(1f).setDuration(180).start()
+        }
+    }
+
+    private fun stage(v: View, delay: Long): View {
+        staged += v to delay
+        if (animated) { v.alpha = 0f; v.translationY = kit.dpf(18f) }
+        return v
+    }
+
+    /** One line of text coming up into place on the spring while it fades in. */
+    private fun rise(v: View, delay: Long) {
+        v.animate().translationY(0f).setStartDelay(delay).setDuration(Motion.SPRING_ITEM).setInterpolator(Motion.SPRING).start()
+        android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+            startDelay = delay; duration = 300; interpolator = Motion.EASE_OUT
+            addUpdateListener { v.alpha = it.animatedValue as Float }
+            start()
+        }
     }
 
     private var done = false
@@ -43,15 +74,18 @@ class SplashScreen(host: MainActivity) : Screen(host) {
         done = true
         host.cancelPosts()
         host.resetTo(if (Themes.isChosen(settings.general.theme)) HomeScreen(host) else ThemeWelcomeScreen(host))
+        host.openAfterSplash?.let { intent -> host.openAfterSplash = null; host.post(350) { host.openFromIntent(intent) } }
     }
 
-    /** Home follows as soon as the logo has been drawn and briefly seen; no long fixed wait. */
+    /** Home follows once the logo has been seen (after its entrance, or briefly when it is still); a touch skips it. */
     override fun onShow() {
-        host.post(LOGO_MS) { goHome() }
+        host.post(if (animated) ENTRANCE_MS else LOGO_MS) { goHome() }
     }
 
     companion object {
         const val LOGO_MS = 650L
+        /** The whole entrance plus a short look at the finished logo (a touch skips it). */
+        const val ENTRANCE_MS = 1900L
         @Volatile var askedThisRun = false
     }
 

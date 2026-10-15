@@ -352,7 +352,10 @@ class SpyWordsScreen(host: MainActivity) : Screen(host) {
         val all = spyAllWords()
         return scaffold("کلمات", "${kit.n(all.count { it.id !in off })} از ${kit.n(all.size)} کلمه انتخاب شده",
             bottom = if (cat == SpyCategory.USER) kit.button("افزودن کلمهٔ جدید", ButtonKind.PRIMARY, RoyalIcon.PLUS, 52) { edit(null) } else null) {
-            addView(SlidingTabs(host, kit, SpyCategory.values().map { it.title }, cat.ordinal) { i -> cat = SpyCategory.values()[i]; host.refresh() }, kit.spaced(8))
+            // Twelve categories and the players' own words: a scrolling rail instead of fixed tabs.
+            addView(kit.chipRail(SpyCategory.values().map { c ->
+                kit.chip(c.title, c == cat, ButtonKind.CHIP_GOLD) { cat = c; host.refresh() }.apply { setPadding(kit.dp(12), kit.dp(4), kit.dp(12), kit.dp(6)) }
+            }, cat.ordinal), kit.spaced(8))
             val words = all.filter { it.category == cat }
             addView(kit.horizontal().apply {
                 layoutParams = kit.spaced(8)

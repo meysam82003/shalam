@@ -795,7 +795,18 @@ class HeroCrestView(context: Context) : CachedArtView(context) {
 
     override fun artKey(): Any = "cards-crest"
 
-    override fun drawArt(canvas: Canvas) {
+    override fun drawArt(canvas: Canvas) = HeroCrestArt.draw(canvas, width, height, paint)
+}
+
+/** The fan of four cards under a crown (logo screen and about page), drawn still or at any moment of its entrance. */
+object HeroCrestArt {
+    private val FULL = floatArrayOf(1f, 1f, 1f, 1f)
+
+    /**
+     * Draws the fan in a [width] × [height] box. [cards] is the opening of each card (0 = not dealt yet, 1 = in its
+     * place; a spring may pass 1 a little), [crown] the drop of the crown and [glow] the light and sparkles.
+     */
+    fun draw(canvas: Canvas, width: Int, height: Int, paint: Paint, cards: FloatArray = FULL, crown: Float = 1f, glow: Float = 1f) {
         // Design box 300 × 230, centred and scaled to fit.
         val k = min(width / 300f, height / 230f)
         if (k <= 0f) return
@@ -806,18 +817,21 @@ class HeroCrestView(context: Context) : CachedArtView(context) {
         val light = ThemeEngine.spec.light
         // Soft light behind the fan and its shadow on the table.
         paint.style = Paint.Style.FILL
-        paint.shader = RadialGradient(x(150f), y(128f), 125f * k, intArrayOf(Royal.alpha(Royal.gold, if (light) 0.20f else 0.28f), Royal.alpha(Royal.gold, 0.06f), 0), floatArrayOf(0f, 0.6f, 1f), Shader.TileMode.CLAMP)
+        val g = glow.coerceIn(0f, 1f)
+        if (g > 0f) {
+        paint.shader = RadialGradient(x(150f), y(128f), 125f * k, intArrayOf(Royal.alpha(Royal.gold, (if (light) 0.20f else 0.28f) * g), Royal.alpha(Royal.gold, 0.06f * g), 0), floatArrayOf(0f, 0.6f, 1f), Shader.TileMode.CLAMP)
         canvas.drawCircle(x(150f), y(128f), 125f * k, paint)
-        paint.shader = RadialGradient(x(150f), y(206f), 92f * k, intArrayOf(if (light) 0x30000000 else 0x66000000, 0), null, Shader.TileMode.CLAMP)
+        paint.shader = RadialGradient(x(150f), y(206f), 92f * k, intArrayOf(Royal.alpha(if (light) 0x30000000 else 0x66000000, g), 0), null, Shader.TileMode.CLAMP)
         canvas.save()
         canvas.scale(1f, 0.16f, x(150f), y(206f))
         canvas.drawCircle(x(150f), y(206f), 92f * k, paint)
         canvas.restore()
+        }
         paint.shader = null
         // Four cards: diamond, club, heart and the spade of shalam in front.
         val ink = 0xFF1B2233.toInt()
         val red = 0xFFC4303F.toInt()
-        val cards = listOf(
+        val suits = listOf(
             Triple(-33f, SuitShapes.diamond(36f * k), red),
             Triple(-11f, SuitShapes.club(38f * k), ink),
             Triple(11f, SuitShapes.heart(36f * k), red),
@@ -828,9 +842,15 @@ class HeroCrestView(context: Context) : CachedArtView(context) {
         val corner = 7f * k
         val pivotX = x(150f)
         val pivotY = y(212f)
-        cards.forEach { (angle, suit, color) ->
+        suits.forEachIndexed { i, (angle, suit, color) ->
+            val p = cards.getOrElse(i) { 1f }
+            if (p <= 0f) return@forEachIndexed
             canvas.save()
-            canvas.rotate(angle, pivotX, pivotY)
+            // Dealt from the bottom: the card grows out of the pivot and swings open to its angle.
+            val grow = 0.35f + 0.65f * p.coerceAtMost(1f)
+            canvas.translate(0f, (1f - p.coerceAtMost(1f)) * 46f * k)
+            canvas.scale(grow, grow, pivotX, pivotY)
+            canvas.rotate(angle * p, pivotX, pivotY)
             val card = RectF(pivotX - w / 2f, pivotY - 30f * k - h, pivotX + w / 2f, pivotY - 30f * k)
             paint.style = Paint.Style.FILL
             paint.color = 0x2E000000
@@ -861,27 +881,83 @@ class HeroCrestView(context: Context) : CachedArtView(context) {
             canvas.drawPath(Path(pip).apply { offset(card.right - 10f * k - pb.centerX(), card.bottom - 12f * k - pb.centerY()) }, paint)
             canvas.restore()
         }
-        // Crown over the fan.
-        val crown = Path(GameSealView.CROWN)
+        // Crown over the fan, dropping in from above.
+        if (crown <= 0f) return
+        canvas.save()
+        val cs = 0.55f + 0.45f * crown.coerceAtMost(1.1f)
+        canvas.translate(0f, -(1f - crown) * 70f * k)
+        canvas.scale(cs, cs, x(150f), y(52f))
+        val crownPath = Path(GameSealView.CROWN)
         val m = Matrix().apply { setRectToRect(RectF(0f, 0f, 100f, 100f), RectF(x(112f), y(14f), x(188f), y(90f)), Matrix.ScaleToFit.CENTER) }
-        crown.transform(m)
+        crownPath.transform(m)
         paint.style = Paint.Style.FILL
         paint.color = 0x55000000
-        canvas.drawPath(Path(crown).apply { offset(0f, 2.2f * k) }, paint)
+        canvas.drawPath(Path(crownPath).apply { offset(0f, 2.2f * k) }, paint)
         paint.color = Color.BLACK
         paint.shader = Emblems.goldFill(y(34f), y(70f))
-        canvas.drawPath(crown, paint)
+        canvas.drawPath(crownPath, paint)
         paint.shader = null
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = 0.9f * k
         paint.color = Royal.alpha(Royal.metalShadow, 0.7f)
-        canvas.drawPath(crown, paint)
+        canvas.drawPath(crownPath, paint)
         paint.style = Paint.Style.FILL
+        canvas.restore()
         // Two sparkles.
         listOf(Triple(96f, 44f, 5f), Triple(206f, 34f, 4f)).forEach { (sx, sy, r) ->
-            paint.color = Royal.alpha(Royal.metalLight, 0.9f)
-            canvas.drawPath(RoyalShapes.starPath(x(sx), y(sy), r * k, 4, 0.32f), paint)
+            if (g <= 0f) return@forEach
+            paint.color = Royal.alpha(Royal.metalLight, 0.9f * g)
+            canvas.drawPath(RoyalShapes.starPath(x(sx), y(sy), r * k * (0.4f + 0.6f * glow), 4, 0.32f), paint)
         }
+    }
+}
+
+/**
+ * The logo's entrance: the four cards are dealt from the bottom and swing open one after another on a spring, then
+ * the crown drops in and the light and sparkles come up. Drawn live only while it plays ([DURATION] ms).
+ */
+class SplashFanView(context: Context) : View(context) {
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val cards = FloatArray(4)
+    private var crown = 0f
+    private var glow = 0f
+    private var animator: android.animation.ValueAnimator? = null
+
+    /** Shows the finished picture at once (no motion). */
+    fun still() {
+        animator?.cancel()
+        cards.fill(1f); crown = 1f; glow = 1f
+        invalidate()
+    }
+
+    fun play() {
+        animator?.cancel()
+        animator = android.animation.ValueAnimator.ofFloat(0f, DURATION.toFloat()).apply {
+            duration = DURATION
+            interpolator = android.view.animation.LinearInterpolator()
+            addUpdateListener { a -> at(a.animatedValue as Float); invalidate() }
+            start()
+        }
+    }
+
+    private fun phase(t: Float, start: Float, length: Float, curve: android.animation.TimeInterpolator): Float =
+        if (t <= start) 0f else if (t >= start + length) 1f else curve.getInterpolation((t - start) / length)
+
+    private fun at(t: Float) {
+        for (i in 0 until 4) cards[i] = phase(t, 60f + i * 110f, 760f, Motion.JELLY)
+        crown = phase(t, 640f, 700f, Motion.JELLY)
+        glow = phase(t, 0f, 900f, Motion.EASE_OUT)
+    }
+
+    override fun onDraw(canvas: Canvas) = HeroCrestArt.draw(canvas, width, height, paint, cards, crown, glow)
+
+    override fun onDetachedFromWindow() {
+        animator?.cancel()
+        super.onDetachedFromWindow()
+    }
+
+    companion object {
+        const val DURATION = 1400L
     }
 }
 
