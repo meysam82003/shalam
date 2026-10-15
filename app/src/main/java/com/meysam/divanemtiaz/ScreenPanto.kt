@@ -396,23 +396,16 @@ class PantoCategoryScreen(host: MainActivity, matchId: Long) : PantoScreen(host,
         }
     }
 
-    /** The golden topic in one slim gold strip (crown, title and its terms). */
-    private fun goldenCard(o: PantoEngine.Option): View = kit.horizontal().apply {
+    private fun goldenCard(o: PantoEngine.Option): View = kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
         background = android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(0xFF8A6418.toInt(), 0xFF3E2C08.toInt())).apply { cornerRadius = kit.dpf(14f); setStroke(kit.dp(1), Royal.goldLight) }
-        setPadding(kit.dp(10), kit.dp(7), kit.dp(10), kit.dp(8))
-        layoutParams = kit.spaced(6)
+            intArrayOf(0xFF8A6418.toInt(), 0xFF3E2C08.toInt())).apply { cornerRadius = kit.dpf(18f); setStroke(kit.dp(2), Royal.goldLight) }
+        setPadding(kit.dp(12), kit.dp(12), kit.dp(12), kit.dp(14))
+        layoutParams = kit.spaced(8)
         alpha = if (o.enabled) 1f else 0.45f
-        addView(kit.icon(RoyalIcon.CROWN, Royal.goldLight, 22))
-        addView(kit.hgap(8))
-        addView(kit.weight(kit.vertical().apply {
-            addView(kit.text("موضوع طلایی", TextStyle.BODY_BOLD, Royal.goldLight))
-            addView(kit.text(if (o.enabled) "پاسخ نادرست = خروج از مسابقه" else "این تیم موضوع طلایی را انتخاب کرده است", TextStyle.CAPTION, Royal.ivory, maxLines = 1))
-        }))
-        addView(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
-            addView(kit.text(kit.n(30), TextStyle.HEADING, Royal.goldLight, Gravity.CENTER))
-            addView(kit.text("${kit.n(3)} دقیقه", TextStyle.CAPTION, Royal.ivory, Gravity.CENTER, 1))
-        })
+        addView(kit.icon(RoyalIcon.CROWN, Royal.goldLight, 30))
+        addView(kit.text("موضوع طلایی", TextStyle.TITLE, Royal.goldLight, Gravity.CENTER))
+        addView(kit.text("${kit.n(30)} امتیاز • ${kit.n(3)} دقیقه • پاسخ نادرست = خروج از مسابقه", TextStyle.LABEL, Royal.ivory, Gravity.CENTER))
+        if (!o.enabled) addView(kit.text("این تیم موضوع طلایی را انتخاب کرده است", TextStyle.CAPTION, Royal.muted, Gravity.CENTER))
         contentDescription = "موضوع طلایی"
         setOnClickListener {
             if (!o.enabled) { kit.toast("این تیم موضوع طلایی را قبلاً انتخاب کرده است"); return@setOnClickListener }
