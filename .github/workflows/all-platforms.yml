@@ -5,10 +5,6 @@ name: Build all versions (site APK, web/PWA, Windows, iPhone)
 # the fixed release key from the repository secrets and must carry the official certificate; without the key, or with
 # any other certificate, the run stops — a debug or temporary key is never used.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'desktop/package.json'
   workflow_dispatch:
     inputs:
       publish:
@@ -21,7 +17,6 @@ permissions:
 
 jobs:
   android-and-web:
-    if: "${{ github.event_name == 'workflow_dispatch' || github.event.head_commit.message == 'release: publish v5.5.1 final' }}"
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.ver.outputs.version }}
@@ -163,7 +158,7 @@ jobs:
 
   publish:
     needs: [android-and-web, windows]
-    if: "${{ inputs.publish == true || (github.event_name == 'push' && github.event.head_commit.message == 'release: publish v5.5.1 final') }}"
+    if: inputs.publish == true
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source
