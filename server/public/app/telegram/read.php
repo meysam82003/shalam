@@ -36,8 +36,9 @@ final class TgRead
             $field=['users'=>'username','transactions'=>'order_id','orders'=>'code','promos'=>'code','ads'=>'name','support'=>'username','audit'=>'action','security'=>'kind','media'=>'original_name','plans'=>'title','campaigns'=>'name','notices'=>'title'][$resource] ?? null;
             if($field){$where[]="(u.$field LIKE ? OR u.id=?)";$args[]='%'.str_replace(['\\','%','_'],['\\\\','\\%','\\_'],$q).'%';$args[]=ctype_digit($q)?(int)$q:0;}
             elseif($resource==='subscriptions'){$where[]='u.user_id=?';$args[]=(int)$q;}
+            elseif($resource==='ad_stats'){$where[]='u.ad_id=?';$args[]=Management::integer($q,0,2147483647);}
         }
-        if(!empty($in['id'])){$where[]='u.id=?';$args[]=(int)$in['id'];}
+        if(!empty($in['id'])){$where[]=$resource==='ad_stats'?'u.ad_id=?':'u.id=?';$args[]=(int)$in['id'];}
         if(!empty($in['user_id']) && in_array($resource,['transactions','orders','subscriptions','support'],true)){$where[]='u.user_id=?';$args[]=(int)$in['user_id'];}
         if($resource==='subscriptions' && in_array($in['status']??'',['expired','expiring','lifetime'],true)){
             $where[]="u.status='active'";
@@ -46,13 +47,23 @@ final class TgRead
             else{$where[]='u.expires_at>? AND u.expires_at<=?';$args[]=Clock::sql();$args[]=Clock::sql(Clock::now()+3*86400);}
         }elseif(!empty($in['status']) && in_array($resource,['users','transactions','orders','subscriptions','support'],true)){$where[]='u.status=?';$args[]=mb_substr((string)$in['status'],0,24);if($resource==='subscriptions'&&$in['status']==='active'){$where[]='u.starts_at<=? AND (u.expires_at IS NULL OR u.expires_at>?)';$args[]=Clock::sql();$args[]=Clock::sql();}}
         if(!empty($in['store']) && in_array($resource,['transactions','support','campaigns'],true)){$where[]='u.store=?';$args[]=(string)$in['store'];}
+        if(!empty($in['method']) && $resource==='orders'){$where[]='u.method=?';$args[]=mb_substr((string)$in['method'],0,24);}
+        if(isset($in['active']) && in_array((string)$in['active'],['0','1'],true) && in_array($resource,['plans','promos','campaigns','ads','notices'],true)){$where[]='u.active=?';$args[]=(int)$in['active'];}
+        if($resource==='ad_stats')foreach(['placement','source'] as $field)if(!empty($in[$field])){$where[]="u.$field=?";$args[]=mb_substr((string)$in[$field],0,48);}
         if($resource==='users' && in_array($in['pro'] ?? '',['pro','free'],true))$where[]=($in['pro']==='free'?'NOT ':'').self::proSql();
         if($resource==='users')$cols.=', '.self::proSql().' pro';
         if($resource==='support'){$cols.=", (SELECT priority FROM {tg_ticket_meta} tm WHERE tm.request_id=u.id) priority, (SELECT read_at FROM {tg_ticket_meta} tm WHERE tm.request_id=u.id) read_at";if(($in['unread'] ?? '')==='1')$where[]='NOT EXISTS(SELECT 1 FROM {tg_ticket_meta} tm WHERE tm.request_id=u.id AND tm.read_at IS NOT NULL)';}
+        if($resource==='support' && !empty($in['priority'])){
+            if(!in_array($in['priority'],['low','normal','high','urgent'],true))throw new ApiError('priority','اولویت معتبر نیست.');
+            $where[]="COALESCE((SELECT priority FROM {tg_ticket_meta} tm WHERE tm.request_id=u.id),'normal')=?";$args[]=$in['priority'];
+        }
+        Management::range(Management::date($in['from']??null),Management::date($in['to']??null));
         foreach(['from'=>'>=','to'=>'<'] as $key=>$op)if(!empty($in[$key])){$dt=Management::date($in[$key]);$where[]="u.$date $op ?";$args[]=$dt;}
         $where=implode(' AND ',$where);$page=max(1,min(100000,(int)($in['page'] ?? 1)));$size=max(1,min(1000,$size));$offset=($page-1)*$size;
-        $sort=$resource==='ad_stats'?'day':($resource==='plans'?'sort':'id');$dir=($in['sort'] ?? '')==='oldest'?'ASC':'DESC';
-        $rows=Db::all("SELECT $cols FROM {{$table}} u WHERE $where ORDER BY u.$sort $dir LIMIT $size OFFSET $offset",$args);
+        $dir=($in['sort'] ?? '')==='oldest'?'ASC':'DESC';
+        // Include the full key: equal days/plan positions must not shuffle between pages or exports.
+        $sort=$resource==='ad_stats'?"u.day $dir,u.ad_id $dir,u.source $dir,u.placement $dir":($resource==='plans'?"u.sort $dir,u.id $dir":"u.id $dir");
+        $rows=Db::all("SELECT $cols FROM {{$table}} u WHERE $where ORDER BY $sort LIMIT $size OFFSET $offset",$args);
         if($resource==='media')foreach($rows as &$r)$r['url']=App::baseUrl().'/media/'.$r['path'];
         return ['rows'=>$rows,'total'=>(int)Db::value("SELECT COUNT(*) FROM {{$table}} u WHERE $where",$args),'page'=>$page,'per_page'=>$size];
     }

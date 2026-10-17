@@ -33,6 +33,7 @@ final class TgApi
             case 'catalog':return TgRead::catalog($m);
             case 'dashboard':return TgRead::dashboard($m);
             case 'list':return TgRead::list($m,(string)($in['resource'] ?? ''),$in);
+            case 'report':return self::report($m,$in);
             case 'detail':return TgRead::detail($m,(string)($in['kind'] ?? ''),(int)($in['id'] ?? 0));
             case 'gateways':return TgRead::gateways($m);
             case 'status':return TgRead::status($m);
@@ -62,6 +63,15 @@ final class TgApi
             $result=Management::perform((int)$m['admin_id'],$action,$data,$live);
             Db::insert('tg_requests',['session_id'=>$m['session_id'],'request_key'=>$key,'request_hash'=>$hash,'result_json'=>json_encode($result,JSON_UNESCAPED_UNICODE),'created_at'=>Clock::sql()]);return $result;
         });
+    }
+    public static function report(array $m,array $in): array
+    {
+        TgPolicy::require($m,'reports');$resource=(string)($in['resource']??'');
+        TgLimit::require('report:'.$m['id'],10,300);
+        $in['page']=1;$result=TgRead::list($m,$resource,$in,500);
+        if($result['total']>500)throw new ApiError('range','برای پیش‌نمایش و چاپ، بازه را به حداکثر ۵۰۰ ردیف محدود کنید؛ CSV تا ۱۰هزار ردیف را پشتیبانی می‌کند.');
+        Audit::log('admin',(int)$m['admin_id'],'tg_report',$resource,null,'پیش‌نمایش خصوصی گزارش');
+        return ['resource'=>$resource,'rows'=>$result['rows'],'total'=>$result['total'],'generated_at'=>Clock::sql()];
     }
     public static function export(array $m,array $in): void
     {

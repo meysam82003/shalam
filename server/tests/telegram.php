@@ -196,3 +196,29 @@ scenario('telegram: installation diagnostics never substitute for real acceptanc
     $probe['at']=Clock::now();$probe['webhook_ok']=false;$probe['webhook_last_error']=Clock::now();Settings::set('tg_installation_probe',$probe);$checks=array_column(TgReadiness::report()['checks'],null,'key');check(!$checks['webhook']['ok']&&!$checks['webhook_error']['ok'],'wrong webhook and recent error block readiness');
     TgClient::$testTransport=null;Settings::set('tg_installation_probe',[]);
 });
+
+scenario('telegram: filtered private reports and stable aggregate pagination',function()use(&$owner,&$content,&$tgUser){
+    throws(fn()=>TgApi::handle($content,'report','GET',['resource'=>'ads']),'forbidden','preview requires reports permission as well as resource permission');
+    $narrow=$owner;$narrow['permissions']='["reports"]';
+    throws(fn()=>TgApi::handle($narrow,'report','GET',['resource'=>'users']),'forbidden','reports permission does not grant personal data access');
+    throws(fn()=>TgRead::list($owner,'users',['from'=>'2026-10-19 00:00:00','to'=>'2026-10-18 00:00:00']),'date','reversed report range rejected');
+    freshIp();$ticket=Support::create((int)$tgUser['id'],['username'=>'report_filter_customer','message'=>'پیگیری آزمایشی فیلتر گزارش','store'=>'bazaar']);
+    check(TgRead::list($owner,'support',['id'=>$ticket,'priority'=>'normal'])['total']===1,'ticket without metadata defaults to normal priority');
+    Db::insert('tg_ticket_meta',['request_id'=>$ticket,'priority'=>'urgent','read_at'=>null]);
+    $r=TgApi::handle($owner,'report','GET',['resource'=>'support','priority'=>'urgent','store'=>'bazaar','unread'=>'1','q'=>'report_filter_customer']);
+    check($r['total']===1 && (int)$r['rows'][0]['id']===$ticket,'preview preserves compound support filters');
+    check(!isset($r['rows'][0]['contact'],$r['rows'][0]['message']),'list report omits ticket contact and message');
+    check((int)Db::value("SELECT COUNT(*) FROM {audit_log} WHERE action='tg_report' AND entity='support'")===1,'preview recorded in existing audit');
+    $ad=Management::saveAd(['name'=>'report_filtered_ad','title'=>'گزارش','format'=>'text','placements'=>['home_inline'],'stores'=>['bazaar'],'active'=>0]);
+    check(TgRead::list($owner,'ads',['id'=>$ad,'active'=>'0'])['total']===1 && TgRead::list($owner,'ads',['id'=>$ad,'active'=>'1'])['total']===0,'disabled publication filter does not collapse false to empty');
+    foreach(['home_inline','pro_sheet_inline'] as $placement)Db::run('INSERT INTO {ad_stats} (day,ad_id,source,placement,impressions) VALUES (?,?,?,?,?)',['2026-10-18',$ad,'direct',$placement,3]);
+    $a=TgRead::list($owner,'ad_stats',['q'=>(string)$ad,'sort'=>'oldest'],1);$b=TgRead::list($owner,'ad_stats',['q'=>(string)$ad,'sort'=>'oldest','page'=>2],1);
+    check($a['total']===2 && $a['rows'][0]['placement']!==$b['rows'][0]['placement'],'same-day statistics paginate by full composite key');
+    check(TgRead::list($owner,'ad_stats',['id'=>$ad,'placement'=>'home_inline','source'=>'direct'])['total']===1,'ad statistics accept ad id and placement filters');
+    check(TgRead::list($owner,'ad_stats',['id'=>$ad,'source'=>"direct' OR 1=1 --"])['total']===0,'aggregate filter SQL is parameter bound');
+    Db::pdo()->beginTransaction();
+    try {
+        for($i=0;$i<501;$i++)Db::insert('users',['username'=>'report_limit_'.$i,'username_norm'=>'report_limit_'.$i,'password_hash'=>'not-a-real-account','created_at'=>Clock::sql(),'updated_at'=>Clock::sql()]);
+        throws(fn()=>TgApi::handle($owner,'report','GET',['resource'=>'users','q'=>'report_limit_']),'range','preview refuses truncating beyond 500 rows');
+    } finally {Db::pdo()->rollBack();}
+});
