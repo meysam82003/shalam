@@ -65,7 +65,7 @@ final class TgEvents
     {
         $map=['pay_order_paid'=>'purchase_success','purchase_refunded'=>'refund','activation_redeemed'=>'promo_used','device_bound'=>'device_changed','signed_out_elsewhere'=>'device_changed','user_release_device'=>'device_changed','user_transfer'=>'device_changed','notice_create'=>'notice_changed','notice_cancel'=>'notice_changed','notice_toggle'=>'notice_changed','tg_notice_save'=>'notice_changed','tg_notice_cancel'=>'notice_changed'];
         if(isset($map[$action]))self::emit($map[$action],$entity,(string)$id,$action.':'.$id.($map[$action]==='device_changed'?':'.$auditId:''));
-        elseif(preg_match('/^(plan_|store|paymethod|bridge_|admin_|tg_member|tg_plan|tg_gateway|tg_promo)/',$action))self::signal('sensitive_changed','audit',$auditId,'audit:'.$auditId);
+        elseif(preg_match('/^(plan_|store|paymethod|bridge_|admin_|tg_member|tg_plan|tg_gateway|tg_promo|telegram_(save|member|revoke|sessions|webhook))/',$action))self::signal('sensitive_changed','audit',$auditId,'audit:'.$auditId);
         if(str_starts_with($action,'ticket_') || $action==='tg_ticket_save')self::signal('ticket_updated','support',$id,'audit:'.$auditId);
     }
     public static function security(int $eventId,string $kind,?int $userId): void

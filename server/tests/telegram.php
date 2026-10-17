@@ -152,3 +152,7 @@ scenario('telegram: global search and CSV export boundary',function()use(&$owner
     $before=Db::value('SELECT COUNT(*) FROM {users}');TgRead::list($owner,'users',['q'=>"%' OR 1=1 --"]);check(Db::value('SELECT COUNT(*) FROM {users}')===$before,'search safely binds SQL input');
     throws(fn()=>TgApi::handle($owner,'action','GET',[]),'method','read request cannot mutate');
 });
+
+scenario('telegram: owner web settings produce redacted alert',function()use(&$owner){
+    $before=(int)Db::value("SELECT COUNT(*) FROM {tg_events} WHERE type='sensitive_changed'");Audit::log('admin',(int)$owner['admin_id'],'telegram_save','telegram',null,'test config change');check((int)Db::value("SELECT COUNT(*) FROM {tg_events} WHERE type='sensitive_changed'")===$before+1,'web Telegram setting changes emit sensitive alert');
+});
