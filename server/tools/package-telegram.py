@@ -20,9 +20,9 @@ for statement in statements:sql+=re.sub(r'\{([a-z_]+)\}',r'`dv_\1`',statement)+'
 sql+="INSERT IGNORE INTO `dv_migrations` (version,applied_at) SELECT 12,UTC_TIMESTAMP() WHERE (SELECT COUNT(*) FROM `dv_migrations` WHERE version BETWEEN 1 AND 11)=11;\n"
 entries['migration-12.sql']=sql.encode()
 entries['source-changes.patch']=git('diff','--binary',base,'--','server','.github/workflows/telegram-tests.yml')
-entries['PACKAGE.json']=json.dumps({'name':'Divan Telegram','version':'1.0.0-rc1','base_commit':base,'source_commit':git('rev-parse','HEAD').decode().strip(),'source_tree':git('write-tree').decode().strip(),'migration':12,'production_deployed':False,'install_guide':'docs/INSTALL.fa.md','status':'staging candidate; see test report and limitations'},ensure_ascii=False,indent=2).encode()
+entries['PACKAGE.json']=json.dumps({'name':'Divan Telegram','version':'1.0.0-rc2','base_commit':base,'source_commit':git('rev-parse','HEAD').decode().strip(),'source_tree':git('write-tree').decode().strip(),'migration':12,'production_deployed':False,'install_guide':'docs/INSTALL.fa.md','status':'staging candidate; see test report and limitations'},ensure_ascii=False,indent=2).encode()
 entries['SHA256SUMS.txt']=''.join(hashlib.sha256(data).hexdigest()+'  '+name+'\n' for name,data in sorted(entries.items())).encode()
-out=pathlib.Path(a.output).resolve();out.mkdir(parents=True,exist_ok=True);target=out/'Divan-Telegram-v1.0.0-rc1-cPanel.zip'
+out=pathlib.Path(a.output).resolve();out.mkdir(parents=True,exist_ok=True);target=out/'Divan-Telegram-v1.0.0-rc2-cPanel.zip'
 with zipfile.ZipFile(target,'w',zipfile.ZIP_DEFLATED,compresslevel=9) as z:
  for name,data in sorted(entries.items()):
   info=zipfile.ZipInfo(name,(2026,10,17,0,0,0));info.external_attr=0o100644<<16;info.compress_type=zipfile.ZIP_DEFLATED;z.writestr(info,data)
