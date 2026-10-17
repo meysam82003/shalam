@@ -23,6 +23,7 @@ require $src . '/app/site.php';
 require $src . '/app/backup.php';
 require $src . '/app/installer.php';
 require $src . '/app/api.php';
+require $src . '/app/telegram/load.php';
 
 // ---------------------------------------------------------------- environment
 $root = sys_get_temp_dir() . '/divan-test-' . bin2hex(random_bytes(4));
@@ -1308,6 +1309,8 @@ scenario('buying on the site: for an account by username, or an activation code 
     proc_terminate($proc); proc_close($proc);
     Http::$allowLocalHttpForTests = false;
 });
+
+require __DIR__ . '/telegram.php';
 
 // ---------------------------------------------------------------- report
 echo "\n" . ($failed ? "FAILED " . count($failed) . " of " . ($passed + count($failed)) . " checks\n" . implode("\n", $failed) . "\n" : "ALL $passed CHECKS PASSED\n");

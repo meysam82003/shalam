@@ -16,6 +16,7 @@ require_once __DIR__ . '/site.php';
 require_once __DIR__ . '/backup.php';
 require_once __DIR__ . '/installer.php';
 require_once __DIR__ . '/api.php';
+require_once __DIR__ . '/telegram/load.php';
 
 App::boot($__root);
 ini_set('display_errors', '0');

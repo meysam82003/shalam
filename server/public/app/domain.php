@@ -46,6 +46,7 @@ final class Users
         if ($email !== null && $email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) throw new ApiError('bad_email', 'ایمیل معتبر نیست.');
         $key = Crypto::recoveryKey();
         $now = Clock::sql();
+        return Db::tx(function () use ($username, $password, $email, $key, $now) {
         $id = Db::insert('users', [
             'username' => $username, 'username_norm' => self::normalize($username),
             'password_hash' => Crypto::passwordHash($password),
@@ -55,6 +56,7 @@ final class Users
         ]);
         Audit::security('register', $id, $username);
         return [self::byId($id), $key];
+        });
     }
 
     public static function login(string $username, string $password): array
@@ -376,11 +378,13 @@ final class Entitlements
             $start = max($now, (int)(Clock::ts($last) ?? 0));
             $end = $start + (int)$plan['duration_days'] * 86400;
         }
-        return Db::insert('entitlements', [
+        $id = Db::insert('entitlements', [
             'user_id' => $userId, 'source' => $source, 'purchase_id' => $purchaseId, 'plan_code' => $plan['code'],
             'starts_at' => Clock::sql($start), 'expires_at' => $end === null ? null : Clock::sql($end),
             'status' => 'active', 'created_at' => Clock::sql(), 'updated_at' => Clock::sql(),
         ]);
+        if (class_exists(TgEvents::class)) TgEvents::emit('pro_activated', 'user', $userId, 'entitlement:'.$id);
+        return $id;
     }
 
     /** Ends the entitlement of a refunded or revoked purchase; later periods move up to fill the gap. */
@@ -644,6 +648,7 @@ final class Promo
         if ($p['kind'] === 'discount') throw new ApiError('promo_is_discount', 'این کد تخفیف است؛ هنگام خرید پلن وارد شود.', 409);
         Db::tx(function () use ($p, $user) {
             Db::insert('promo_redemptions', ['code_id' => $p['id'], 'user_id' => $user['id'], 'created_at' => Clock::sql()]);
+            if (class_exists(TgEvents::class)) TgEvents::emit('promo_used','user',$user['id'],'promo:'.$p['id'].':'.$user['id']);
             Db::run('UPDATE {promo_codes} SET uses = uses + 1 WHERE id = ?', [$p['id']]);
             Db::insert('user_grants', [
                 'user_id' => $user['id'], 'feature_k' => $p['kind'] === 'gift_pro' ? 'pro' : $p['feature_k'],
@@ -661,6 +666,7 @@ final class Promo
         try {
             Db::insert('promo_redemptions', ['code_id' => $promoId, 'user_id' => $userId, 'purchase_id' => $purchaseId, 'created_at' => Clock::sql()]);
             Db::run('UPDATE {promo_codes} SET uses = uses + 1 WHERE id = ?', [$promoId]);
+            if (class_exists(TgEvents::class)) TgEvents::emit('promo_used','user',$userId,'promo:'.$promoId.':'.$userId);
         } catch (PDOException $e) { /* already recorded */ }
     }
 }
@@ -951,6 +957,7 @@ final class Media
         $m = Db::one('SELECT * FROM {media} WHERE id = ?', [$id]);
         if ($m === null) return;
         if ((int)Db::value('SELECT COUNT(*) FROM {ads} WHERE media_id = ?', [$id]) > 0) throw new ApiError('in_use', 'این فایل در یک تبلیغ استفاده می‌شود.');
+        if (Db::value('SELECT id FROM {notices} WHERE media_id = ? LIMIT 1', [$id]) !== null) throw new ApiError('in_use', 'این فایل در یک اعلان استفاده می‌شود.');
         @unlink(App::$root . '/media/' . $m['path']);
         Db::run('DELETE FROM {media} WHERE id = ?', [$id]);
     }
@@ -967,13 +974,17 @@ final class Support
         $msg = trim((string)($in['message'] ?? ''));
         if (mb_strlen($msg) < 10) throw new ApiError('short', 'شرح درخواست را کامل‌تر بنویسید.');
         $kind = array_key_exists($in['kind'] ?? '', self::KINDS) ? $in['kind'] : 'other';
-        return Db::insert('support_requests', [
+        return Db::tx(function () use ($userId, $in, $kind, $msg) {
+        $id = Db::insert('support_requests', [
             'user_id' => $userId, 'username' => mb_substr((string)($in['username'] ?? ''), 0, 64) ?: null,
             'contact' => mb_substr((string)($in['contact'] ?? ''), 0, 120) ?: null, 'kind' => $kind,
             'store' => in_array($in['store'] ?? '', Plans::STORES, true) ? $in['store'] : null,
             'order_id' => mb_substr((string)($in['order_id'] ?? ''), 0, 128) ?: null,
             'message' => mb_substr($msg, 0, 4000), 'status' => 'open', 'created_at' => Clock::sql(), 'updated_at' => Clock::sql(),
         ]);
+        if (class_exists(TgEvents::class)) TgEvents::emit('ticket_created', 'support', $id, 'ticket:'.$id);
+        return $id;
+        });
     }
 
     public static function action(?int $requestId, ?int $userId, int $adminId, string $action, string $reason, array $details = []): void

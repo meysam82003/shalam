@@ -387,7 +387,7 @@ final class Audit
 {
     public static function log(string $actorType, ?int $actorId, string $action, string $entity = '', $entityId = null, string $reason = '', $before = null, $after = null): void
     {
-        Db::insert('audit_log', [
+        $auditId = Db::insert('audit_log', [
             'actor_type' => $actorType,
             'actor_id' => $actorId,
             'action' => $action,
@@ -399,14 +399,16 @@ final class Audit
             'ip' => Http::ip(),
             'created_at' => Clock::sql(),
         ]);
+        if (class_exists(TgEvents::class)) TgEvents::audit($auditId, $action, $entity, $entityId);
     }
 
     public static function security(string $kind, ?int $userId, string $username = '', string $details = ''): void
     {
-        Db::insert('security_events', [
+        $eventId = Db::insert('security_events', [
             'kind' => $kind, 'user_id' => $userId, 'username' => mb_substr($username, 0, 64),
             'ip' => Http::ip(), 'details' => mb_substr($details, 0, 1000), 'created_at' => Clock::sql(),
         ]);
+        if (class_exists(TgEvents::class)) TgEvents::security($eventId, $kind, $userId);
     }
 }
 

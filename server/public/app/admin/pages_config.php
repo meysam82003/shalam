@@ -115,6 +115,8 @@ final class ConfigPages
                 $row += ["on_$s" => isset($_POST["on_$s"]) ? 1 : 0, "sku_$s" => $sku ?: null, "type_$s" => $type, "store_price_$s" => $price, "list_price_$s" => $list];
             }
             $row['base_price_toman'] = $row['store_price_bazaar'];
+            $shared = Management::planRow($row + ['id' => $plan['id']]);
+            $row = array_replace($row, $shared);
             $before = array_intersect_key($plan, $row);
             Db::update('plans', $row, 'id = ?', [$plan['id']]);
             Admin::audit('plan_update', 'plan', $plan['id'], $reason, $before, $row);
@@ -414,31 +416,12 @@ final class ConfigPages
                 Admin::flash('تبلیغ حذف شد.');
                 Admin::redirect('p=ads');
             }
-            $format = self::post('format');
-            if (!isset(Ads::FORMATS[$format])) throw new ApiError('format', 'قالب تبلیغ نامعتبر است.');
-            $mediaId = self::intOrNull('media_id');
-            if (!empty($_FILES['upload']['name'])) $mediaId = Media::store($_FILES['upload']);
-            if ($mediaId !== null && Db::value('SELECT id FROM {media} WHERE id = ?', [$mediaId]) === null) $mediaId = null;
-            if (in_array($format, ['image', 'video', 'corner', 'rewarded'], true) && $mediaId === null) throw new ApiError('media', 'این قالب به تصویر یا ویدئو نیاز دارد.');
-            $url = self::post('target_app') !== '' ? self::post('target_app') : self::post('target_url');
-            if (!safe_target_url($url)) throw new ApiError('url', 'نشانی مقصد باید http یا https و عمومی باشد، یا یکی از صفحه‌های داخل اپ.');
-            $valid = array_column(Ads::placements(), 'formats', 'k');
-            $places = array_values(array_filter((array)($_POST['placements'] ?? []), fn($p) => isset($valid[$p]) && in_array($format, explode(',', $valid[$p]), true)));
-            if (!$places) throw new ApiError('placements', 'دست‌کم یک جایگاه سازگار با این قالب انتخاب کنید.');
-            $stores = array_values(array_intersect((array)($_POST['stores'] ?? []), Plans::STORES));
-            if (!$stores) throw new ApiError('stores', 'دست‌کم یک فروشگاه را انتخاب کنید.');
-            $style = [];
-            foreach (['bg', 'fg', 'accent'] as $k) { $v = self::post('style_' . $k); if (preg_match('/^#[0-9a-fA-F]{6}$/', $v)) $style[$k] = $v; }
-            $starts = Admin::dtParse(self::post('starts_at')); $ends = Admin::dtParse(self::post('ends_at'));
-            $row = [
-                'name' => mb_substr(self::post('name'), 0, 80) ?: 'تبلیغ', 'title' => mb_substr(self::post('title'), 0, 80) ?: null,
-                'body' => mb_substr(self::post('body'), 0, 300) ?: null, 'format' => $format, 'media_id' => $mediaId,
-                'target_url' => $url ?: null, 'cta_text' => mb_substr(self::post('cta_text'), 0, 30) ?: null,
-                'style_json' => $style ? json_encode($style) : null, 'closable' => isset($_POST['closable']) || $format === 'interstitial' ? 1 : 0,
-                'starts_at' => $starts, 'ends_at' => $ends, 'total_cap' => self::intOrNull('total_cap'), 'daily_cap' => self::intOrNull('daily_cap'),
-                'min_interval_sec' => max(0, (int)self::post('min_interval_sec', '0')), 'priority' => (int)self::post('priority', '0'),
-                'placements' => implode(',', $places), 'stores' => implode(',', $stores), 'active' => isset($_POST['active']) ? 1 : 0, 'updated_at' => Clock::sql(),
-            ];
+            $data = $_POST;
+            if (!empty($_FILES['upload']['name'])) $data['media_id'] = Media::store($_FILES['upload']);
+            $data['target_url'] = self::post('target_app') !== '' ? self::post('target_app') : self::post('target_url');
+            $data['starts_at'] = Admin::dtParse(self::post('starts_at'));
+            $data['ends_at'] = Admin::dtParse(self::post('ends_at'));
+            $row = Management::ad($data);
             if ($ad !== null) { Db::update('ads', $row, 'id = ?', [$id]); Admin::audit('ad_update', 'ad', $id, $reason, $ad, $row); }
             else { $id = Db::insert('ads', $row + ['created_at' => Clock::sql()]); Admin::audit('ad_create', 'ad', $id, $reason, null, $row); }
             Admin::flash('تبلیغ ذخیره شد. اپ‌ها حداکثر چند دقیقه بعد (با باز شدن برنامه) آن را می‌گیرند.');

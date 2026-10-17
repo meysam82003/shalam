@@ -31,6 +31,7 @@ if ($page === 'logout') {
 }
 
 $pages = [
+    'telegram' => [TgPanel::class, 'page'],
     'dashboard' => [SalesPages::class, 'dashboard'],
     'users' => [SalesPages::class, 'users'],
     'user' => [SalesPages::class, 'user'],

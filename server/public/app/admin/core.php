@@ -202,6 +202,7 @@ final class Admin
         ['paymethods', 'روش‌های پرداخت'],
         ['backups', 'پشتیبان‌گیری'],
         ['audit', 'امنیت و گزارش تغییرات'],
+        ['telegram', 'مدیریت تلگرام'],
         ['admins', 'مدیران'],
         ['account', 'حساب من'],
     ];
