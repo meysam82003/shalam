@@ -8,6 +8,8 @@ declare(strict_types=1);
 
 if (!defined('DIVAN')) { http_response_code(403); exit; }
 
+require_once __DIR__ . '/telegram/schema.php';
+
 final class Migrations
 {
     /** @return array<int, string[]> */
@@ -461,6 +463,7 @@ final class Migrations
             11 => [
                 "ALTER TABLE {sessions} ADD COLUMN revoke_reason VARCHAR(20) NULL",
             ],
+            12 => TgSchema::sql(),
         ];
     }
 

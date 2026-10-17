@@ -1,0 +1,5 @@
+DirectoryIndex index.php
+<IfModule mod_headers.c>
+Header always unset X-Frame-Options
+Header unset X-Frame-Options
+</IfModule>

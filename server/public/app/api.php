@@ -41,6 +41,7 @@ final class Api
         } catch (ApiError $e) {
             Http::json(['ok' => false, 'error' => ['code' => $e->errorCode, 'message' => $e->getMessage()] + $e->extra, 'server_time' => Clock::now()], $e->status);
         } catch (Throwable $e) {
+            if (class_exists(TgEvents::class)) TgEvents::signal('backend_error','api',0,'api:'.intdiv(Clock::now(),300));
             error_log('[divan] ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
             Http::json(['ok' => false, 'error' => ['code' => 'server', 'message' => 'خطای سرور؛ لطفاً بعداً دوباره تلاش کنید.'], 'server_time' => Clock::now()], 500);
         }

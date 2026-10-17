@@ -17,7 +17,7 @@ final class Backup
     public const TABLES = [
         'settings', 'users', 'sessions', 'plans', 'campaigns', 'purchase_intents', 'purchases', 'entitlements', 'features',
         'user_grants', 'placements', 'media', 'ads', 'ad_stats', 'revenue', 'support_requests', 'support_actions', 'admins',
-        'audit_log', 'security_events', 'user_backups', 'promo_codes', 'promo_redemptions', 'notices', 'notice_events', 'pay_orders',
+        'tg_members', 'audit_log', 'security_events', 'user_backups', 'promo_codes', 'promo_redemptions', 'notices', 'notice_events', 'pay_orders',
     ];
     /** Natural keys used to recognise a row that already exists. */
     private const KEYS = [
@@ -56,6 +56,7 @@ final class Backup
         @chmod(self::dir() . '/' . $file, 0600);
         $id = Db::insert('backups', ['file' => $file, 'size' => strlen($blob), 'sha256' => hash('sha256', $blob), 'kind' => $kind, 'status' => 'ok', 'note' => $note ?: null, 'created_at' => Clock::sql()]);
         Settings::set('last_backup_at', Clock::now());
+        if (class_exists(TgEvents::class)) TgEvents::signal('backup_ok','backup',$id,'backup:'.$id);
         return ['id' => $id, 'file' => $file, 'size' => strlen($blob)];
     }
 
@@ -94,6 +95,7 @@ final class Backup
                         $added["$t:conflicts"] = ($added["$t:conflicts"] ?? 0) + 1;
                         continue;
                     }
+                    if ($t === 'tg_members') { $row['active'] = 0; $row['epoch'] = (int)$row['epoch'] + 1; }
                     Db::insert($t, $row);
                     $n++;
                 }
@@ -112,6 +114,13 @@ final class Backup
                 Installer::writeConfig($cfg);
             }
             $added['keys_adopted'] = 1;
+        }
+        // Restored authorization must never silently revive a Telegram administrator.
+        if (class_exists(TgConfig::class)) {
+            Settings::reset();
+            Settings::set('telegram', array_merge(TgConfig::get(), ['bot_enabled' => false, 'app_enabled' => false, 'paused' => true]));
+            Db::run('UPDATE {tg_members} SET epoch = epoch + 1');
+            Db::update('tg_links', ['used_at' => Clock::sql()], 'used_at IS NULL');
         }
         Audit::log('system', null, 'backup_restored', 'backup', null, 'rows added', null, $added);
         return $added;
@@ -155,6 +164,7 @@ final class Backup
                 Settings::set('last_backup_error', '');
             } catch (Throwable $e) {
                 Settings::set('last_backup_error', $e->getMessage());
+                if (class_exists(TgEvents::class)) TgEvents::signal('backup_failed','backup',0,'backup:'.gmdate('Y-m-d',Clock::now()));
                 $out['backup_error'] = $e->getMessage();
             }
         }

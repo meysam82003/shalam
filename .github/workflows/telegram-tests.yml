@@ -1,0 +1,54 @@
+name: Telegram backend and mobile browser
+on:
+  pull_request:
+    branches: [main]
+    paths: ['server/**', '.github/workflows/telegram-tests.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ci-only
+          MYSQL_DATABASE: divan_test2
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -pci-only"
+          --health-interval=10s --health-timeout=5s --health-retries=10
+    env:
+      DIVAN_TEST_DSN: host=127.0.0.1;port=3306;dbname=divan_test2
+      DIVAN_TEST_USER: root
+      DIVAN_TEST_PASS: ci-only
+      DIVAN_UI_ARTIFACTS: ${{ github.workspace }}/ui-evidence
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, curl, mbstring, fileinfo, gd, dom
+          coverage: none
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Backend integration and compatibility tests
+        run: |
+          find server -name '*.php' -print0 | xargs -0 -n1 php -l > /dev/null
+          php server/tests/run.php
+          php payment-bridge/divan-bridge/tests/run.php
+      - name: Browser dependencies (test environment only)
+        run: |
+          npm install --no-save --package-lock=false playwright@1.58.2
+          npx playwright install --with-deps chromium
+      - name: Mobile, tablet, RTL and real authenticated API
+        run: python3 server/tests/run-browser-local.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: telegram-ui-test-screenshots
+          path: ui-evidence/*.png
+          if-no-files-found: ignore

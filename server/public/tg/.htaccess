@@ -1,0 +1,8 @@
+Options -Indexes
+<IfModule mod_headers.c>
+Header always set Cache-Control "no-store, private"
+Header always set Referrer-Policy "no-referrer"
+</IfModule>
+<Files "worker.php">
+Require all denied
+</Files>

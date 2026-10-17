@@ -154,6 +154,7 @@ final class PaymentBridge
         else $s = ['last_ok_at' => time(), 'last_kind' => $r['kind']] + $s;
         if (!$bridgeFail && in_array($r['kind'], ['store_unreachable', 'store_auth', 'not_configured'], true)) $s = ['store_error' => $r['kind'] . ' ' . mb_substr((string)($r['error'] ?? ''), 0, 100), 'store_error_at' => time()] + $s;
         Settings::set('bridge_status', $s);
+        if ($bridgeFail && class_exists(TgEvents::class)) TgEvents::signal('bridge_error','bridge',0,'bridge:'.intdiv(Clock::now(),300));
         return $r;
     }
 
@@ -520,6 +521,7 @@ final class Purchases
                 if ($verdict->expiresAt !== null) self::grantStoreSubscription((int)$user['id'], $plan, $id, $verdict);
                 else Entitlements::grantForPurchase((int)$user['id'], $plan, $id);
             }
+            if (class_exists(TgEvents::class) && in_array($status, ['verified','rejected'], true)) TgEvents::emit($status === 'verified' ? 'purchase_success' : 'purchase_failed','purchase',$id,'purchase:'.$id);
             return Db::one('SELECT * FROM {purchases} WHERE id = ?', [$id]);
         });
 
@@ -535,7 +537,8 @@ final class Purchases
         $existing = Db::one('SELECT id FROM {entitlements} WHERE purchase_id = ?', [$purchaseId]);
         $row = ['starts_at' => Clock::sql($v->purchaseTime ?? Clock::now()), 'expires_at' => Clock::sql((int)$v->expiresAt), 'status' => 'active', 'updated_at' => Clock::sql()];
         if ($existing !== null) { Db::update('entitlements', $row, 'id = ?', [$existing['id']]); return; }
-        Db::insert('entitlements', $row + ['user_id' => $userId, 'source' => 'purchase', 'purchase_id' => $purchaseId, 'plan_code' => $plan['code'], 'created_at' => Clock::sql()]);
+        $eid=Db::insert('entitlements', $row + ['user_id' => $userId, 'source' => 'purchase', 'purchase_id' => $purchaseId, 'plan_code' => $plan['code'], 'created_at' => Clock::sql()]);
+        if(class_exists(TgEvents::class))TgEvents::emit('pro_activated','user',$userId,'entitlement:'.$eid);
     }
 
     /** Timed passes are consumed (so they can be bought again) only after the server stored the period. */
@@ -555,6 +558,7 @@ final class Purchases
             $token = Crypto::decrypt($p['token_enc']);
             if ($token === null) continue;
             $v = Stores::get($p['store'])->verify($p['sku'], $token, $p['product_type']);
+            Db::tx(function () use ($p, $v, &$done) {
             $attempts = (int)$p['verify_attempts'] + 1;
             $upd = ['verify_attempts' => $attempts, 'updated_at' => Clock::sql()];
             $plan = Plans::byId((int)$p['plan_id']);
@@ -578,7 +582,13 @@ final class Purchases
                 $delay = min(6 * 3600, 300 * (2 ** min(6, $attempts)));
                 Db::update('purchases', $upd + ['next_check_at' => Clock::sql(Clock::now() + $delay), 'note' => $v->message], 'id = ?', [$p['id']]);
             }
+            if (class_exists(TgEvents::class)) {
+                if ($v->state === StoreVerdict::VALID) TgEvents::emit('purchase_success','purchase',$p['id'],'purchase:'.$p['id']);
+                elseif ($v->state === StoreVerdict::UNAVAILABLE) TgEvents::signal('store_error','purchase',$p['id'],$p['store'].':'.intdiv(Clock::now(),300));
+                elseif ($v->state === StoreVerdict::INVALID && $p['status'] === 'pending') TgEvents::emit('purchase_failed','purchase',$p['id'],'purchase:'.$p['id']);
+            }
             $done[] = ['id' => (int)$p['id'], 'state' => $v->state];
+            });
         }
         return $done;
     }

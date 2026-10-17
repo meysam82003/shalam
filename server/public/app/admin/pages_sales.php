@@ -255,6 +255,16 @@ final class SalesPages
         $id = (int)$u['id'];
         $back = 'p=user&id=' . $id;
         $giftOnly = in_array(Admin::$me['role'], ['owner', 'manager'], true);
+        if (in_array($action, ['enable','disable','unlock','revoke_sessions','release_device','reset_moves','note','gift_pro','revoke_grant'], true)) {
+            if ($action === 'gift_pro' && !$giftOnly) throw new ApiError('role', 'هدیه دادن فقط برای مدیر اصلی و مدیر مجاز است.');
+            Db::tx(function () use ($adminId, $action, $id, $reason) {
+                Management::userAction($adminId, $action, array_merge($_POST, ['id' => $id, 'reason' => $reason]));
+                Admin::audit('user_' . $action, 'user', $id, $reason);
+            });
+            Admin::flash('اقدام ثبت شد.');
+            Admin::redirect($back);
+        }
+
         switch ($action) {
             case 'reset_password': {
                 $temp = 'Dv-' . substr(Crypto::token(9), 0, 12) . '7';
@@ -313,10 +323,7 @@ final class SalesPages
 
     public static function grant(int $userId, string $feature, ?int $days, string $reason): void
     {
-        Db::insert('user_grants', [
-            'user_id' => $userId, 'feature_k' => $feature, 'expires_at' => $days === null ? null : Clock::sql(Clock::now() + $days * 86400),
-            'reason' => mb_substr($reason, 0, 300), 'admin_id' => (int)Admin::$me['id'], 'created_at' => Clock::sql(),
-        ]);
+        Management::grant((int)Admin::$me['id'], $userId, $feature, $days, $reason);
     }
 
     // ================================================================ subscriptions

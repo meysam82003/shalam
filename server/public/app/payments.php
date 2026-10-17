@@ -521,6 +521,7 @@ final class PayRegistry
         $s = (array)Settings::get('pay_status_' . $id, []);
         $s = $ok ? ['last_ok_at' => time()] + $s : ['last_error_at' => time(), 'last_error' => mb_substr($msg, 0, 300)] + $s;
         Settings::set('pay_status_' . $id, $s);
+        if (!$ok && class_exists(TgEvents::class)) TgEvents::signal('gateway_error','gateway',$id,$id.':'.intdiv(Clock::now(),300));
     }
 }
 
@@ -601,6 +602,7 @@ final class PayOrders
         } catch (ApiError $e) {
             Db::update('pay_orders', ['status' => 'failed', 'last_error' => mb_substr($e->getMessage(), 0, 300), 'updated_at' => Clock::sql()], 'id = ?', [$id]);
             PayRegistry::note($method, false, $e->getMessage());
+            if (class_exists(TgEvents::class)) TgEvents::signal('purchase_failed','pay_order',$id,'order:'.$id);
             throw $e;
         }
         $host = strtolower((string)parse_url($r['url'], PHP_URL_HOST));
@@ -705,12 +707,16 @@ final class PayOrders
                     Db::run('UPDATE {promo_codes} SET uses = uses + 1 WHERE id = ?', [(int)$order['promo_id']]);
                     if ((int)$order['user_id'] > 0) Db::run('INSERT IGNORE INTO {promo_redemptions} (code_id, user_id, created_at) VALUES (?, ?, ?)', [(int)$order['promo_id'], (int)$order['user_id'], $now]);
                 }
+                if (!empty($order['promo_id']) && class_exists(TgEvents::class)) TgEvents::emit('promo_used','pay_order',$order['id'],'order:'.$order['id']);
                 // An activation-code order waits for the account that types the code; the others are granted now.
                 if ((int)$order['user_id'] > 0 && ($order['buyer'] ?? 'app') !== 'code') self::grant($order, (int)$order['user_id'], $c->refId, $now);
             });
             PayRegistry::note((string)$order['method'], true);
         } elseif ($c->state === PayCheck::FAILED) {
-            Db::run("UPDATE {pay_orders} SET status = 'failed', last_error = ?, attempts = attempts + 1, updated_at = ? WHERE id = ? AND status IN ('created','pending')", [mb_substr($c->message, 0, 300), $now, $order['id']]);
+            Db::tx(function() use($c,$now,$order){
+                $n=Db::run("UPDATE {pay_orders} SET status = 'failed', last_error = ?, attempts = attempts + 1, updated_at = ? WHERE id = ? AND status IN ('created','pending')", [mb_substr($c->message, 0, 300), $now, $order['id']])->rowCount();
+                if($n===1 && class_exists(TgEvents::class))TgEvents::emit('purchase_failed','pay_order',$order['id'],'order:'.$order['id']);
+            });
         } else {
             Db::run('UPDATE {pay_orders} SET attempts = attempts + 1, last_error = ?, updated_at = ? WHERE id = ?', [mb_substr($c->message, 0, 300), $now, $order['id']]);
             if ($c->state === PayCheck::UNAVAILABLE) PayRegistry::note((string)$order['method'], false, $c->message);
