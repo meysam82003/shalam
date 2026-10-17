@@ -11,6 +11,7 @@ final class TgEvents
         'payment_pending'=>['پرداخت طولانی در انتظار','sales.read',2],
         'refund'=>['بازپرداخت ثبت‌شده توسط فروشگاه','sales.read',3],
         'pro_activated'=>['فعال‌شدن Pro','users.read',1],
+        'subscription_extended'=>['تمدید مدیریتی اشتراک','users.read',1],
         'subscription_expired'=>['پایان دوره اشتراک','users.read',1],
         'subscription_expiring'=>['نزدیک‌شدن پایان دوره اشتراک','users.read',1],
         'promo_used'=>['استفاده از کد تخفیف یا هدیه','sales.read',1],
@@ -118,7 +119,7 @@ final class TgClient
     public static function call(string $method,array $params=[]): array
     {
         if(defined('DIVAN_TEST') && self::$testTransport) return (self::$testTransport)($method,$params);
-        $allowed=['sendMessage','getMe','setWebhook','getWebhookInfo','deleteWebhook','setChatMenuButton','setMyCommands','answerCallbackQuery'];
+        $allowed=['sendMessage','getMe','setWebhook','getWebhookInfo','getChatMenuButton','deleteWebhook','setChatMenuButton','setMyCommands','answerCallbackQuery'];
         if(!in_array($method,$allowed,true) || TgConfig::token()==='')return ['ok'=>false,'class'=>'permanent','error'=>'not_configured'];
         if(!function_exists('curl_init'))return ['ok'=>false,'class'=>'retry','error'=>'curl_missing'];
         $ch=curl_init('https://api.telegram.org/bot'.TgConfig::token().'/'.$method);

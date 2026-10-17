@@ -156,3 +156,43 @@ scenario('telegram: global search and CSV export boundary',function()use(&$owner
 scenario('telegram: owner web settings produce redacted alert',function()use(&$owner){
     $before=(int)Db::value("SELECT COUNT(*) FROM {tg_events} WHERE type='sensitive_changed'");Audit::log('admin',(int)$owner['admin_id'],'telegram_save','telegram',null,'test config change');check((int)Db::value("SELECT COUNT(*) FROM {tg_events} WHERE type='sensitive_changed'")===$before+1,'web Telegram setting changes emit sensitive alert');
 });
+
+scenario('telegram: additive extension preserves purchased time and rejects unauthorized changes',function()use(&$owner,&$support,&$tgUser){
+    $id=(int)$tgUser['id'];$before=Entitlements::summary($id);$paid=Db::all('SELECT * FROM {purchases} WHERE user_id=? ORDER BY id',[$id]);$periods=Db::all('SELECT * FROM {entitlements} WHERE user_id=? ORDER BY id',[$id]);
+    $data=['id'=>$id,'days'=>7,'reason'=>'تمدید آزمایشی بدون پرداخت'];
+    TgApi::mutate($owner,'user.extend_pro',$data,'extension_request_123','',true);
+    $e=Db::one("SELECT * FROM {entitlements} WHERE user_id=? AND source='admin_extension' ORDER BY id DESC LIMIT 1",[$id]);
+    check(Clock::ts($e['starts_at'])===max(Clock::now(),(int)$before['expires_at']),'extension starts after paid and gift chain');
+    check(Clock::ts($e['expires_at'])===Clock::ts($e['starts_at'])+7*86400,'extension adds requested days');
+    check($e['purchase_id']===null && $e['plan_code']==='gift','extension is explicitly unpaid');
+    check(Db::all('SELECT * FROM {purchases} WHERE user_id=? ORDER BY id',[$id])===$paid,'purchases unchanged by extension');
+    foreach($periods as $old)check(Db::one('SELECT * FROM {entitlements} WHERE id=?',[$old['id']])===$old,'existing paid period not rewritten');
+    TgApi::mutate($owner,'user.extend_pro',$data,'extension_request_123','',true);
+    check((int)Db::value("SELECT COUNT(*) FROM {entitlements} WHERE user_id=? AND source='admin_extension'",[$id])===1,'extension request replay cannot double time');
+    throws(fn()=>TgApi::mutate($support,'user.extend_pro',$data,'denied_extension_123','',true),'forbidden','support cannot extend');
+    throws(fn()=>TgApi::mutate($owner,'user.extend_pro',array_merge($data,['days'=>0]),'zero_extension_1234','',true),'number','zero duration rejected');
+    throws(fn()=>TgApi::mutate($owner,'user.revoke_extension',['id'=>$id,'entitlement'=>$periods[0]['id'],'reason'=>'دستکاری خرید'],'revoke_paid_denied12','',true),'not_found','extension cancellation cannot revoke paid periods');
+    TgApi::mutate($owner,'user.revoke_extension',['id'=>$id,'entitlement'=>$e['id'],'reason'=>'لغو تمدید آزمایشی'],'revoke_extension_123','',true);
+    check(Entitlements::summary($id)===$before,'canceling extension preserves original access');
+    $gift=Management::grant((int)$owner['admin_id'],$id,'pro',null,'آزمایش مادام العمر');
+    throws(fn()=>TgApi::mutate($owner,'user.extend_pro',$data,'lifetime_extension12','',true),'lifetime','lifetime cannot be extended');
+    Db::update('user_grants',['revoked_at'=>Clock::sql()],'id=?',[$gift]);
+    freshIp();[$free]=Users::register('extension_free','Strong-password-123');$eid=Management::extendPro((int)$owner['admin_id'],(int)$free['id'],3,'آزمایش حساب رایگان');
+    $f=Db::one('SELECT * FROM {entitlements} WHERE id=?',[$eid]);check($f['starts_at']===Clock::sql() && Entitlements::summary((int)$free['id'])['pro'],'free user extension starts now');
+    $next=Management::extendPro((int)$owner['admin_id'],(int)$free['id'],2,'تمدید دوم');check(Db::value('SELECT starts_at FROM {entitlements} WHERE id=?',[$next])===$f['expires_at'],'consecutive extensions stack');
+    check((int)Db::value("SELECT COUNT(*) FROM {tg_events} WHERE type='subscription_extended' AND entity_id=?",[$id])===1,'one event for one extension despite replay');
+});
+scenario('telegram: installation diagnostics never substitute for real acceptance',function(){
+    Settings::set('tg_installation_probe',[]);$r=TgReadiness::report();check(!$r['production_approved']&&!$r['checks_passed'],'missing host evidence is not approved');
+    $calls=[];TgClient::$testTransport=function($method,$params)use(&$calls){$calls[]=$method;
+        if($method==='getMe')return ['ok'=>true,'result'=>['is_bot'=>true,'username'=>'test_bot','secret_echo'=>'do-not-output']];
+        if($method==='getWebhookInfo')return ['ok'=>true,'result'=>['url'=>App::baseUrl().'/tg/webhook.php','pending_update_count'=>0,'last_error_message'=>'do-not-output']];
+        return ['ok'=>true,'result'=>['type'=>'web_app','web_app'=>['url'=>TgConfig::get()['app_url']]]];};
+    $r=TgReadiness::probe();$checks=array_column($r['checks'],null,'key');check($checks['connection']['ok']&&$checks['webhook']['ok']&&$checks['menu']['ok'],'real probe checks identity, URL and menu using transport');
+    check($calls===['getMe','getWebhookInfo','getChatMenuButton'],'diagnostic makes only read-only Telegram calls');
+    check(strpos(json_encode(Settings::get('tg_installation_probe')),'do-not-output')===false && strpos(json_encode($r),TgConfig::token())===false,'diagnostic contains neither raw remote bodies nor token');
+    check(!$r['production_approved'],'successful runtime checks cannot approve production');
+    $probe=Settings::get('tg_installation_probe');$probe['at']=Clock::now()-901;Settings::set('tg_installation_probe',$probe);$checks=array_column(TgReadiness::report()['checks'],null,'key');check(!$checks['connection']['ok'],'stale connection result requires retest');
+    $probe['at']=Clock::now();$probe['webhook_ok']=false;$probe['webhook_last_error']=Clock::now();Settings::set('tg_installation_probe',$probe);$checks=array_column(TgReadiness::report()['checks'],null,'key');check(!$checks['webhook']['ok']&&!$checks['webhook_error']['ok'],'wrong webhook and recent error block readiness');
+    TgClient::$testTransport=null;Settings::set('tg_installation_probe',[]);
+});

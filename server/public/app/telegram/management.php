@@ -6,7 +6,7 @@ final class Management
 {
     private const ACTIONS = [
         'user.enable'=>'users.write','user.disable'=>'users.write','user.unlock'=>'users.write','user.revoke_sessions'=>'users.write','user.release_device'=>'users.write','user.reset_moves'=>'users.write','user.note'=>'users.write',
-        'user.gift_pro'=>'pro.write','user.revoke_grant'=>'pro.write',
+        'user.gift_pro'=>'pro.write','user.revoke_grant'=>'pro.write','user.extend_pro'=>'pro.write','user.revoke_extension'=>'pro.write',
         'plan.save'=>'plans.write','promo.save'=>'plans.write','promo.toggle'=>'plans.write','campaign.save'=>'plans.write','gateway.toggle'=>'gateways.write','gateway.test'=>'sales.read',
         'ad.save'=>'content.write','ad.delete'=>'content.write','placement.save'=>'content.write','media.upload'=>'content.write','media.delete'=>'content.write','ads.settings'=>'content.write',
         'notice.save'=>'content.write','notice.cancel'=>'content.write','notice.toggle'=>'content.write','notices.settings'=>'content.write','site.save'=>'content.write',
@@ -63,6 +63,12 @@ final class Management
                 $days=self::nullableInt($d['days'] ?? null,3650);
                 // Same user_grants service as the web panel. Does not forge a purchase or rewrite paid periods.
                 self::grant($adminId,$id,'pro',$days,$reason);break;
+            case 'extend_pro':
+                self::extendPro($adminId,$id,self::integer($d['days'] ?? 0,1,3650),$reason);break;
+            case 'revoke_extension':
+                $e=Db::one("SELECT id FROM {entitlements} WHERE id=? AND user_id=? AND source='admin_extension' AND purchase_id IS NULL",[(int)($d['entitlement'] ?? 0),$id]);
+                if(!$e)throw new ApiError('not_found','دوره تمدید مدیریتی پیدا نشد.',404);
+                Db::update('entitlements',['status'=>'revoked','reason'=>$reason,'updated_at'=>Clock::sql()],'id=?',[$e['id']]);break;
             case 'revoke_grant':
                 $g=Db::one('SELECT id FROM {user_grants} WHERE id=? AND user_id=?',[(int)($d['grant'] ?? 0),$id]);
                 if(!$g) throw new ApiError('not_found','هدیه پیدا نشد.',404);
@@ -71,6 +77,25 @@ final class Management
         }
         Support::action(null,$id,$adminId,$action,$reason);
         return ['id'=>$id];
+    }
+    /** An unpaid, independently revocable period after existing paid/gift time. */
+    public static function extendPro(int $adminId,int $userId,int $days,string $reason): int
+    {
+        self::integer($days,1,3650);
+        return Db::tx(function()use($adminId,$userId,$days,$reason){
+            if(!Db::one('SELECT id FROM {users} WHERE id=? FOR UPDATE',[$userId]))throw new ApiError('not_found','کاربر پیدا نشد.',404);
+            // Locking reads see the latest committed periods even inside an existing API transaction.
+            $periods=Db::all("SELECT expires_at FROM {entitlements} WHERE user_id=? AND status='active' FOR UPDATE",[$userId]);
+            $gifts=Db::all("SELECT expires_at FROM {user_grants} WHERE user_id=? AND feature_k='pro' AND revoked_at IS NULL FOR UPDATE",[$userId]);
+            $start=Clock::now();
+            foreach(array_merge($periods,$gifts) as $p){
+                if($p['expires_at']===null)throw new ApiError('lifetime','اشتراک مادام‌العمر به تمدید زمانی نیاز ندارد.');
+                $start=max($start,(int)Clock::ts($p['expires_at']));
+            }
+            $id=Db::insert('entitlements',['user_id'=>$userId,'source'=>'admin_extension','purchase_id'=>null,'plan_code'=>'gift','starts_at'=>Clock::sql($start),'expires_at'=>Clock::sql($start+$days*86400),'status'=>'active','reason'=>mb_substr($reason,0,300),'admin_id'=>$adminId,'created_at'=>Clock::sql(),'updated_at'=>Clock::sql()]);
+            TgEvents::emit('subscription_extended','user',$userId,'extension:'.$id);
+            return $id;
+        });
     }
     public static function grant(int $adminId,int $userId,string $feature,?int $days,string $reason): int
     {
