@@ -76,9 +76,11 @@ final class Management
     {
         self::row('users',$userId);
         if($feature!=='pro' && Db::value('SELECT k FROM {features} WHERE k=?',[$feature])===null) throw new ApiError('feature','قابلیت نامعتبر است.');
-        $id=Db::insert('user_grants',['user_id'=>$userId,'feature_k'=>$feature,'expires_at'=>$days===null?null:Clock::sql(Clock::now()+$days*86400),'reason'=>mb_substr($reason,0,300),'admin_id'=>$adminId,'created_at'=>Clock::sql()]);
-        if($feature==='pro') TgEvents::emit('pro_activated','user',$userId,'grant:'.$id);
-        return $id;
+        return Db::tx(function()use($adminId,$userId,$feature,$days,$reason){
+            $id=Db::insert('user_grants',['user_id'=>$userId,'feature_k'=>$feature,'expires_at'=>$days===null?null:Clock::sql(Clock::now()+$days*86400),'reason'=>mb_substr($reason,0,300),'admin_id'=>$adminId,'created_at'=>Clock::sql()]);
+            if($feature==='pro') TgEvents::emit('pro_activated','user',$userId,'grant:'.$id);
+            return $id;
+        });
     }
     public static function ad(array $d): array
     {

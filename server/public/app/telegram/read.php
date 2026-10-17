@@ -39,7 +39,12 @@ final class TgRead
         }
         if(!empty($in['id'])){$where[]='u.id=?';$args[]=(int)$in['id'];}
         if(!empty($in['user_id']) && in_array($resource,['transactions','orders','subscriptions','support'],true)){$where[]='u.user_id=?';$args[]=(int)$in['user_id'];}
-        if(!empty($in['status']) && in_array($resource,['users','transactions','orders','subscriptions','support'],true)){$where[]='u.status=?';$args[]=mb_substr((string)$in['status'],0,24);}
+        if($resource==='subscriptions' && in_array($in['status']??'',['expired','expiring','lifetime'],true)){
+            $where[]="u.status='active'";
+            if($in['status']==='expired'){$where[]='u.expires_at<=?';$args[]=Clock::sql();}
+            elseif($in['status']==='lifetime')$where[]='u.expires_at IS NULL';
+            else{$where[]='u.expires_at>? AND u.expires_at<=?';$args[]=Clock::sql();$args[]=Clock::sql(Clock::now()+3*86400);}
+        }elseif(!empty($in['status']) && in_array($resource,['users','transactions','orders','subscriptions','support'],true)){$where[]='u.status=?';$args[]=mb_substr((string)$in['status'],0,24);if($resource==='subscriptions'&&$in['status']==='active'){$where[]='u.starts_at<=? AND (u.expires_at IS NULL OR u.expires_at>?)';$args[]=Clock::sql();$args[]=Clock::sql();}}
         if(!empty($in['store']) && in_array($resource,['transactions','support','campaigns'],true)){$where[]='u.store=?';$args[]=(string)$in['store'];}
         if($resource==='users' && in_array($in['pro'] ?? '',['pro','free'],true))$where[]=($in['pro']==='free'?'NOT ':'').self::proSql();
         if($resource==='users')$cols.=', '.self::proSql().' pro';

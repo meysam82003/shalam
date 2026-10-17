@@ -4,6 +4,7 @@ import argparse, hashlib, json, pathlib, re, subprocess, zipfile
 p=argparse.ArgumentParser();p.add_argument('--output',required=True);p.add_argument('--php',default='php');a=p.parse_args()
 repo=pathlib.Path(__file__).resolve().parents[2];base='ac784013c9a81d09b4c83dbe301cb4ed6398beaf'
 def git(*args):return subprocess.check_output(['git','-C',str(repo),*args])
+if git('status','--porcelain','--untracked-files=no').strip():raise SystemExit('Commit/synchronize tracked source changes before packaging.')
 files=git('ls-files','-z','server/public').decode().split('\0');entries={}
 for name in filter(None,files):
  rel=pathlib.PurePosixPath(name).relative_to('server/public');parts=rel.parts
