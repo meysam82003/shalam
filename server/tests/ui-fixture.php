@@ -11,6 +11,7 @@ file_put_contents($root.'/storage/config.php','<?php return '.var_export(App::$c
 Settings::setSecret('tg_bot_token','123456:abcdefghijklmnopqrstuvwxyz_123456789');Settings::set('telegram',['bot_enabled'=>true,'app_enabled'=>true,'paused'=>true,'app_url'=>App::baseUrl().'/tg/app/']);
 $aid=Db::insert('admins',['username'=>'test_owner','password_hash'=>Crypto::passwordHash('TestOnly-123'),'role'=>'owner','active'=>1,'created_at'=>Clock::sql()]);
 TgAuth::link(TgAuth::issueLink($aid,'700000001','owner'),'700000001');
+$image=imagecreatetruecolor(16,16);imagepng($image,$root.'/upload.png');imagedestroy($image);
 $hash=Crypto::passwordHash('Example-Pass-123');
 for($i=1;$i<=18;$i++){Db::insert('users',['username'=>'test_user_'.$i,'username_norm'=>'test_user_'.$i,'password_hash'=>$hash,'status'=>'active','created_at'=>Clock::sql(Clock::now()-$i*36000),'updated_at'=>Clock::sql(),'last_login_at'=>Clock::sql()]);}
 Management::grant($aid,1,'pro',30,'هدیه در دیتابیس تست');Management::grant($aid,2,'pro',null,'هدیه دائمی در دیتابیس تست');

@@ -8,4 +8,5 @@ if($path==='/divan/tg/api.php'){TgApi::dispatch();exit;}
 if($path==='/divan/tg/webhook.php'){TgBot::webhook();exit;}
 if($path==='/divan/tg/app/'||$path==='/divan/tg/app/index.php'){require $src.'/tg/app/index.php';exit;}
 if(preg_match('#^/divan/(tg/app/(?:app.js|app.css)|assets/fonts/[^/]+|assets/img/logo.png)$#D',$path,$m)){$file=$src.'/'.$m[1];if(!is_file($file)){http_response_code(404);exit;}$ext=pathinfo($file,PATHINFO_EXTENSION);header('Content-Type: '.(['js'=>'application/javascript','css'=>'text/css','png'=>'image/png','woff2'=>'font/woff2'][$ext]??'application/octet-stream'));readfile($file);exit;}
+if(preg_match('#^/divan/media/([a-zA-Z0-9_-]+\.(?:png|jpg|webp|gif|mp4))$#D',$path,$m)){ $f=App::$root.'/media/'.$m[1];if(is_file($f)){header('Content-Type: '.mime_content_type($f));readfile($f);exit;}}
 http_response_code(404);
