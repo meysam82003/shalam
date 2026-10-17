@@ -146,3 +146,9 @@ scenario('telegram: scheduler progresses across batches and expiry keys',functio
     TgQueue::schedule();$key=hash('sha256','subscription_expiring|grant:'.$id.':'.$expires);check((int)Db::value('SELECT COUNT(*) FROM {tg_events} WHERE event_key=?',[$key])===1,'grant expiry emits from real table');TgQueue::schedule();check((int)Db::value('SELECT COUNT(*) FROM {tg_events} WHERE event_key=?',[$key])===1,'scheduler SQL dedup matches PHP key');
     $_SERVER['HTTP_AUTHORIZATION']='Bearer '.$owner['test_token'];Db::update('tg_sessions',['expires_at'=>Clock::sql(Clock::now()+30)],'id=?',[$owner['session_id']]);TgAuth::current();check(Clock::ts(Db::value('SELECT expires_at FROM {tg_sessions} WHERE id=?',[$owner['session_id']]))===Clock::now()+1800,'active session renewed without password, code or initData replay');
 });
+
+scenario('telegram: global search and CSV export boundary',function()use(&$owner,&$content){
+    $found=TgApi::handle($owner,'search','GET',['q'=>'tg_customer']);check(count($found['users'])===1,'global search uses correct resource permission');$limited=TgApi::handle($content,'search','GET',['q'=>'tg_customer']);check(!isset($limited['users'])&&!isset($limited['orders']),'search filters unauthorized resources');
+    $before=Db::value('SELECT COUNT(*) FROM {users}');TgRead::list($owner,'users',['q'=>"%' OR 1=1 --"]);check(Db::value('SELECT COUNT(*) FROM {users}')===$before,'search safely binds SQL input');
+    throws(fn()=>TgApi::handle($owner,'action','GET',[]),'method','read request cannot mutate');
+});

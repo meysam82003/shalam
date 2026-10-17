@@ -258,7 +258,9 @@ final class SalesPages
         if (in_array($action, ['enable','disable','unlock','revoke_sessions','release_device','reset_moves','note','gift_pro','revoke_grant'], true)) {
             if ($action === 'gift_pro' && !$giftOnly) throw new ApiError('role', 'هدیه دادن فقط برای مدیر اصلی و مدیر مجاز است.');
             Db::tx(function () use ($adminId, $action, $id, $reason) {
-                Management::userAction($adminId, $action, array_merge($_POST, ['id' => $id, 'reason' => $reason]));
+                $data = array_merge($_POST, ['id' => $id, 'reason' => $reason]);
+                if ($action === 'gift_pro' && (int)($data['days'] ?? 0) <= 0) $data['days'] = null;
+                Management::userAction($adminId, $action, $data);
                 Admin::audit('user_' . $action, 'user', $id, $reason);
             });
             Admin::flash('اقدام ثبت شد.');

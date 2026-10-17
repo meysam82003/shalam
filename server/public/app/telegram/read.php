@@ -94,7 +94,7 @@ final class TgRead
             $out['channels']=Db::all("SELECT channel,COUNT(*) count,COALESCE(SUM(amount_toman),0) amount FROM ($sql) s GROUP BY channel");
             $out['by_plan']=Db::all("SELECT s.plan_id,p.title,COUNT(*) count,COALESCE(SUM(s.amount_toman),0) amount FROM ($sql) s LEFT JOIN {plans} p ON p.id=s.plan_id GROUP BY s.plan_id,p.title");
             $out['purchase_status']=Db::all('SELECT status,COUNT(*) count FROM {purchases} GROUP BY status');$out['order_status']=Db::all('SELECT status,COUNT(*) count FROM {pay_orders} GROUP BY status');
-            $out['entitlement_status']=Db::all("SELECT CASE WHEN status='active' AND expires_at IS NOT NULL AND expires_at<=? THEN 'expired' ELSE status END status,COUNT(*) count FROM {entitlements} GROUP BY CASE WHEN status='active' AND expires_at IS NOT NULL AND expires_at<=? THEN 'expired' ELSE status END",[Clock::sql(),Clock::sql()]);
+            $out['entitlement_status']=Db::all("SELECT effective_status status,COUNT(*) count FROM (SELECT CASE WHEN status='active' AND expires_at IS NOT NULL AND expires_at<=? THEN 'expired' ELSE status END effective_status FROM {entitlements}) periods GROUP BY effective_status",[Clock::sql()]);
             $days=Db::all("SELECT DATE(DATE_ADD(at,INTERVAL 210 MINUTE)) day,COALESCE(SUM(amount_toman),0) amount FROM ($sql) s WHERE at>=? GROUP BY day ORDER BY day",[Clock::sql($now-365*86400)]);$monthly=[];
             foreach($days as $d){$label=mb_substr(TgEvents::date($d['day'].' 08:00:00'),0,7);$monthly[$label]=($monthly[$label]??0)+(int)$d['amount'];}$out['monthly_sales']=[];foreach($monthly as $label=>$amount)$out['monthly_sales'][]=['month'=>$label,'amount'=>$amount];
         }
