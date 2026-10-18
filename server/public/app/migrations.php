@@ -461,6 +461,17 @@ final class Migrations
             11 => [
                 "ALTER TABLE {sessions} ADD COLUMN revoke_reason VARCHAR(20) NULL",
             ],
+            // Append-only anti-repeat ledger. Never cascade-delete this when an account/session is removed.
+            12 => [
+                "CREATE TABLE IF NOT EXISTS {mafia_trials} (
+                    device_hash CHAR(64) PRIMARY KEY,
+                    user_id BIGINT UNSIGNED NULL,
+                    started_at DATETIME NULL,
+                    expires_at DATETIME NULL,
+                    UNIQUE KEY uq_trial_user (user_id)
+                ) $e",
+                "ALTER TABLE {sessions} ADD COLUMN registration_id CHAR(64) NULL",
+            ],
         ];
     }
 

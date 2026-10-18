@@ -136,6 +136,75 @@ final class Users
     }
 }
 
+/** Registration and the one-off Mafia preview share one atomic, server-clock ledger.
+ * The client identifier is NOT hardware attestation. VPN changes do not change it; a modified
+ * client, another OS profile or factory reset can. See docs/ui-redesign/MAFIA_ACCESS.md.
+ */
+final class MafiaTrial
+{
+    public const SECONDS = 600;
+    public const USED_MESSAGE = 'با این دستگاه قبلاً ثبت‌نام شده است. وارد همان حساب شوید؛ تست مافیا فقط یک بار است و پس از آن باید اشتراک Pro بخرید.';
+
+    public static function identity($value): ?string
+    {
+        return is_string($value) && preg_match('/^[a-f0-9]{64}$/D', $value) ? $value : null;
+    }
+
+    public static function register(array $in): array
+    {
+        $identity = self::identity($in['registration_id'] ?? null);
+        if ($identity === null || Devices::clean($in['device_id'] ?? null) === null) {
+            throw new ApiError('device_required', 'شناسهٔ دستگاه دریافت نشد. برای ثبت‌نام، برنامه را به‌روز کنید.', 400);
+        }
+        $hash = Crypto::hash('mafia-trial-v1|' . $identity);
+        $pdo = Db::pdo();
+        $pdo->beginTransaction();
+        try {
+            // Unique primary key serializes concurrent registrations from this device. The provisional
+            // row and the account are rolled back together on any validation/uniqueness failure.
+            if (Db::one('SELECT user_id FROM {mafia_trials} WHERE device_hash = ?', [$hash]) !== null) {
+                throw new ApiError('device_registered', self::USED_MESSAGE, 409);
+            }
+            try {
+                Db::insert('mafia_trials', ['device_hash' => $hash, 'user_id' => null,
+                    'started_at' => null, 'expires_at' => null]);
+            } catch (PDOException $e) {
+                if (($e->errorInfo[1] ?? null) === 1062) throw new ApiError('device_registered', self::USED_MESSAGE, 409);
+                throw $e;
+            }
+            [$u, $key] = Users::register((string)($in['username'] ?? ''), (string)($in['password'] ?? ''), isset($in['email']) ? (string)$in['email'] : null);
+            // Registration reserves eligibility only. The app acknowledges a successful config fetch
+            // through the idempotent start endpoint; a failed/offline config fetch consumes no time.
+            Db::update('mafia_trials', ['user_id' => (int)$u['id']], 'device_hash = ?', [$hash]);
+            $pdo->commit();
+            return [$u, $key];
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            throw $e;
+        }
+    }
+
+    /** A login, recovery, new session, store switch or refresh NEVER starts or extends a trial. */
+    public static function forSession(int $uid, ?array $session): ?array
+    {
+        $identity = self::identity($session['registration_id'] ?? null);
+        if ($identity === null || empty($session['device_id'])) return null;
+        $r = Db::one('SELECT started_at, expires_at FROM {mafia_trials} WHERE device_hash = ? AND user_id = ?',
+            [Crypto::hash('mafia-trial-v1|' . $identity), $uid]);
+        return $r === null ? null : ['started_at' => Clock::ts($r['started_at']), 'expires_at' => Clock::ts($r['expires_at'])];
+    }
+
+    public static function start(int $uid, array $session): void
+    {
+        $identity = self::identity($session['registration_id'] ?? null);
+        if ($identity === null || empty($session['device_id'])) throw new ApiError('device_required', 'برای تست با همان دستگاه ثبت‌نام وارد شوید.', 403);
+        // One atomic conditional UPDATE: retries, simultaneous requests and reconnects cannot reset it.
+        Db::run('UPDATE {mafia_trials} SET started_at = ?, expires_at = ? WHERE device_hash = ? AND user_id = ? AND started_at IS NULL',
+            [Clock::sql(), Clock::sql(Clock::now() + self::SECONDS), Crypto::hash('mafia-trial-v1|' . $identity), $uid]);
+        if (self::forSession($uid, $session) === null) throw new ApiError('trial_unavailable', 'این حساب و دستگاه فرصت تست ندارد؛ اشتراک Pro بخرید.', 403);
+    }
+}
+
 final class Sessions
 {
     public static function create(int $userId, array $device): string
@@ -149,6 +218,7 @@ final class Sessions
             'app_version' => mb_substr((string)($device['app_version'] ?? ''), 0, 20) ?: null,
             'store' => in_array($device['store'] ?? '', ['bazaar', 'myket', 'direct', 'web'], true) ? $device['store'] : null,
             'device_id' => Devices::clean($device['device_id'] ?? null),
+            'registration_id' => MafiaTrial::identity($device['registration_id'] ?? null),
             'ip' => Http::ip(), 'created_at' => Clock::sql($now), 'last_seen_at' => Clock::sql($now),
             'expires_at' => Clock::sql($now + Users::SESSION_DAYS * 86400),
         ]);
@@ -460,6 +530,7 @@ final class Entitlements
             'policy' => 1,
             'device' => $device,
             'device_conflict' => $conflict,
+            'mafia_trial' => MafiaTrial::forSession((int)$user['id'], $session),
         ];
         $body = Crypto::b64u(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
         return ['certificate' => $body . '.' . Crypto::b64u(Crypto::sign($body)), 'summary' => $sum, 'server_time' => $now];
@@ -721,6 +792,13 @@ final class Features
         }
         $out = [];
         foreach (self::all() as $f) {
+            // Mafia is sold only as part of Pro. Individual module gifts and public free flags
+            // cannot bypass this policy; the app checks the separately signed, device-bound trial.
+            if ($f['k'] === 'mafia' || str_starts_with($f['k'], 'mafia_')) {
+                $out[$f['k']] = ['mode' => 'pro', 'allowed' => $pro, 'granted' => false,
+                    'limit' => null, 'pro_items' => [], 'items' => [], 'all_items' => !$pro];
+                continue;
+            }
             $mode = $f['mode'];
             $granted = isset($grants[$f['k']]);
             switch ($mode) {

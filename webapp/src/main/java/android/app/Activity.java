@@ -19,6 +19,7 @@ public class Activity extends android.view.ContextThemeWrapper {
     public Activity() {}
 
     public Window getWindow() { return window; }
+    public boolean dispatchTouchEvent(android.view.MotionEvent event) { return window.getDecorView().onTouchEvent(event); }
     private final android.window.SplashScreen splash = new android.window.SplashScreen() {
         private int theme;
         @Override public void setSplashScreenTheme(int themeId) { theme = themeId; }

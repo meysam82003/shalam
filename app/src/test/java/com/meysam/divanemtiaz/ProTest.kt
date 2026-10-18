@@ -207,14 +207,14 @@ class ProTest {
         // Every scenario is Pro when the section is Pro and no single scenario is ticked.
         assertTrue(Gate.itemLocked("mafia_scenarios", "classic"))
         assertTrue(Gate.itemLocked("mafia_scenarios", "godfather"))
-        // Ticked items only: the rest stays free and the section stays open.
+        // All Mafia content now requires Pro or the signed trial, including previously free cards.
         assertTrue(Gate.itemLocked("mafia_last_cards", "SILENCE"))
-        assertFalse(Gate.itemLocked("mafia_last_cards", "BEAUTIFUL_MIND"))
+        assertTrue(Gate.itemLocked("mafia_last_cards", "BEAUTIFUL_MIND"))
         assertTrue(ProState.feature("themes").second)
         assertTrue(Gate.itemLocked("themes", "neon"))
         assertFalse(Gate.itemLocked("themes", "cobalt"))
         assertTrue(Gate.itemLocked("panto_modes", "NORMAL"))
-        // Unknown modules stay free.
+        // Explicitly free modules remain usable offline.
         assertTrue(ProState.feature("spy").second)
         ProState.configJson = null
     }

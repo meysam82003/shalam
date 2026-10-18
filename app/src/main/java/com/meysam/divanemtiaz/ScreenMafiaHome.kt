@@ -7,7 +7,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 
 /** «راوی مافیا» start page (source: startup screen). */
-class MafiaHomeScreen(host: MainActivity) : Screen(host) {
+class MafiaHomeScreen(host: MainActivity) : MafiaSectionScreen(host) {
     override val adZone: String? get() = "hub"
     override val featureKey: String get() = "mafia"
     override fun build(): View = run { MafiaRoleRegistry.activate(null); page() }
@@ -66,7 +66,7 @@ class MafiaHomeScreen(host: MainActivity) : Screen(host) {
 }
 
 /** «نقش‌ها و قوانین»: every role card with its rules, filtered by side; add a role or edit any role's rules. */
-class MafiaRolesScreen(host: MainActivity) : Screen(host) {
+class MafiaRolesScreen(host: MainActivity) : MafiaSectionScreen(host) {
     private var side = MafiaSide.CITY
     private var query = ""
     private var grid: CardGrid? = null
@@ -115,7 +115,7 @@ class MafiaRolesScreen(host: MainActivity) : Screen(host) {
 }
 
 /** «کارت حرکت آخر» catalogue. */
-class MafiaCardsScreen(host: MainActivity) : Screen(host) {
+class MafiaCardsScreen(host: MainActivity) : MafiaSectionScreen(host) {
     override val featureKey: String get() = "mafia_last_cards"
     override fun build(): View = scaffold("کارت حرکت آخر", "${kit.n(MafiaLastCard.values().size)} کارت") {
         addView(kit.text("بازیکنی که در روز از بازی خارج می‌شود، در صورت داشتن حق انتخاب، یکی از کارت‌های برعکس را برمی‌دارد.", TextStyle.LABEL, Royal.muted, Gravity.CENTER), kit.spaced(10))
@@ -131,7 +131,7 @@ class MafiaCardsScreen(host: MainActivity) : Screen(host) {
 }
 
 /** Saved and finished narrator games. */
-class MafiaGamesScreen(host: MainActivity) : Screen(host) {
+class MafiaGamesScreen(host: MainActivity) : MafiaSectionScreen(host) {
     override fun build(): View = scaffold("بازی‌های گذشته", "ادامه یا گزارش بازی") {
         val games = host.mafia.games().filter { it.started }
         if (games.isEmpty()) {
@@ -167,7 +167,7 @@ class MafiaGamesScreen(host: MainActivity) : Screen(host) {
 }
 
 /** «گروه بازی»: saved line-ups with roles, options and cards; starting one goes straight to distribution. */
-class MafiaGroupsScreen(host: MainActivity) : Screen(host) {
+class MafiaGroupsScreen(host: MainActivity) : MafiaSectionScreen(host) {
     override val featureKey: String get() = "mafia_groups"
     override fun build(): View = scaffold("گروه بازی", "بازیکنان، نقش‌ها و کارت‌های ذخیره‌شده",
         bottom = kit.button("ساخت گروه جدید", ButtonKind.PRIMARY, RoyalIcon.PLUS, 52) { create() }) {
@@ -278,7 +278,7 @@ class MafiaGroupsScreen(host: MainActivity) : Screen(host) {
 }
 
 /** Short guide to the narrator flow. */
-class MafiaRulesScreen(host: MainActivity) : Screen(host) {
+class MafiaRulesScreen(host: MainActivity) : MafiaSectionScreen(host) {
     override fun build(): View = scaffold("قوانین بازی", "روند گردانندگی") {
         listOf(
             "طراحی بازی" to "بازیکنان را انتخاب کنید، نقش‌ها و قابلیت‌هایشان را تنظیم کنید و در صورت تمایل کارت‌های حرکت آخر را اضافه کنید. تعداد نقش‌ها باید با تعداد بازیکنان برابر باشد و نقش‌های شهروندی بیشتر از مافیا باشند.",

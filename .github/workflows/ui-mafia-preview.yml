@@ -1,0 +1,63 @@
+name: Divan isolated UI and Mafia preview checks
+on:
+  push:
+    branches: [feature/divan-ui-mafia-pro-trial]
+permissions:
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+      - name: Test every flavor and build isolated debug previews
+        run: gradle --no-daemon testReleaseUnitTest assembleRelease assembleDebug
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Divan-debug-preview-${{ github.sha }}
+          path: |
+            app/build/outputs/apk/*/debug/*.apk
+            app/build/reports/tests/
+          if-no-files-found: warn
+  server:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: divan-test-only
+          MYSQL_DATABASE: divan_test2
+        ports: ['3306:3306']
+        options: --health-cmd="mysqladmin ping -pdivan-test-only" --health-interval=10s --health-timeout=5s --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - name: PHP syntax and integration suite (isolated fake-store database)
+        env:
+          DIVAN_TEST_DSN: host=127.0.0.1;port=3306;dbname=divan_test2
+          DIVAN_TEST_USER: root
+          DIVAN_TEST_PASS: divan-test-only
+        run: |
+          find server/public -name '*.php' -print0 | xargs -0 -n1 php -l
+          php server/tests/run.php
+      - name: Payment bridge regressions
+        run: php payment-bridge/divan-bridge/tests/run.php
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+      - name: Compile shared application against browser stubs
+        run: gradle --no-daemon -p webapp compileKotlin

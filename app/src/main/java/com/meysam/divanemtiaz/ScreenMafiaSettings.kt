@@ -11,7 +11,7 @@ import android.widget.LinearLayout
  * «تنظیمات راوی»: the source app's settings plus a sound for every narrator moment (built-in, a file from the
  * phone or the narrator's own recorded voice) and the narrator's own picture for each role.
  */
-class MafiaSettingsScreen(host: MainActivity, private var tab: Int = 0) : Screen(host) {
+class MafiaSettingsScreen(host: MainActivity, private var tab: Int = 0) : MafiaSectionScreen(host) {
     private var side = MafiaSide.CITY
 
     private fun update(change: (MafiaSettings) -> MafiaSettings, refresh: Boolean = false) {

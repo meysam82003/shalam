@@ -42,6 +42,11 @@ data class DialogAction(val label: String, val kind: ButtonKind = ButtonKind.SEC
 
 /** Builders for every widget of the design system; all screens are composed from these. */
 class RoyalKit(val context: Context, private val settingsProvider: () -> AppSettings) {
+    private val dialogs = ArrayList<java.lang.ref.WeakReference<Dialog>>()
+    fun dismissDialogs() {
+        dialogs.mapNotNull { it.get() }.forEach { it.dismiss() }
+        dialogs.clear()
+    }
     val settings: AppSettings get() = settingsProvider()
     private val metrics get() = context.resources.displayMetrics
 
@@ -369,7 +374,14 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
     }
 
     fun dialog(title: String, message: String? = null, body: View? = null, actions: List<DialogAction>): Dialog {
-        val dialog = Dialog(context)
+        val dialog = object : Dialog(context) {
+            override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
+                if ((context as? MainActivity)?.enforceMafiaAccess() == true) { dismiss(); return true }
+                return super.dispatchTouchEvent(event)
+            }
+        }
+        dialogs.removeAll { it.get() == null }
+        dialogs += java.lang.ref.WeakReference(dialog)
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
         val content = panel(PanelStyle.RAISED, 16).apply { layoutDirection = View.LAYOUT_DIRECTION_RTL }
         content.addView(text(title, TextStyle.HEADING, Royal.goldLight, Gravity.CENTER))
