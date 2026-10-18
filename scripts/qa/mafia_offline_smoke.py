@@ -28,6 +28,12 @@ def tap(node):
 def wait_for(text, scroll=False):
     for attempt in range(16):
         root = snapshot()
+        welcome = match(root, 'به دیوان امتیاز خوش آمدید')
+        continue_style = next((n for n in root.iter('node') if n.get('text', '').startswith('ادامه با سبک')), None)
+        if welcome is not None and continue_style is not None:
+            tap(continue_style)
+            time.sleep(1)
+            continue
         consent = match(root, 'نه، ممنون')
         if consent is not None:
             tap(consent)
@@ -59,4 +65,5 @@ try:
         (OUT / f'offline-paywall-{iteration}.png').write_bytes(adb('exec-out', 'screencap', '-p'))
     print('PASS: fresh offline launch and process restart both keep Mafia behind Pro/sign-in.')
 finally:
+    (OUT / 'final-screen.png').write_bytes(adb('exec-out', 'screencap', '-p'))
     (OUT / 'logcat.txt').write_bytes(adb('logcat', '-d', '-t', '600'))

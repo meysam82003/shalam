@@ -1,0 +1,32 @@
+name: Offline Mafia smoke against verified application build
+on:
+  push:
+    branches: [qa/mafia-offline-check]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  offline-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: Divan-debug-preview-77d8f702d1eb3ad238e7393396935808bfa4c295
+          path: preview-apks
+          run-id: 39158737696
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Enable emulator acceleration on the isolated runner
+        run: sudo chmod a+rw /dev/kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          profile: pixel_2
+          script: python3 scripts/qa/mafia_offline_smoke.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Mafia-offline-verified-77d8f70
+          path: qa-mafia-offline/
