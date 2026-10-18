@@ -275,6 +275,7 @@ class MainActivity : Activity() {
         resumed = false
         if (audioUsed) {
             audio.stopMusic()
+            audio.stopCue()
             if (audio.isRecording) audio.stopRecording(discard = true)
         }
         super.onPause()
@@ -708,19 +709,22 @@ class MainActivity : Activity() {
             val left = ProState.mafiaTrialRemaining
             it.text = "تست مافیا · ${kit.n(left / 60)}:${kit.n((left % 60).toString().padStart(2, '0'))} باقی‌مانده"
         }
-        if (resumed && current?.mafiaArea == true) mafiaHandler.postDelayed(mafiaCheck, 200)
+        if (resumed && (current?.mafiaArea == true || (audioUsed && (audio.musicPlaying || audio.isPlaying || audio.isRecording)))) mafiaHandler.postDelayed(mafiaCheck, 200)
     }
 
     /** Re-check every route, back navigation, resume and live expiry. Never delete a saved game. */
     fun enforceMafiaAccess(): Boolean {
-        if (current?.mafiaArea != true || ProState.mafiaAllowed) return false
+        if (ProState.mafiaAllowed) return false
+        // Narrator music may continue while another app page is open. Its lease must expire too.
+        if (audioUsed) {
+            audio.stopMusic()
+            audio.stopCue()
+            if (audio.isRecording) audio.stopRecording(discard = true)
+        }
+        if (current?.mafiaArea != true) return false
         current?.onHide()
         kit.dismissDialogs()
         cancelPosts()
-        if (audioUsed) {
-            audio.stopMusic()
-            if (audio.isRecording) audio.stopRecording(discard = true)
-        }
         stack.removeAll { it.mafiaArea }
         stack += MafiaAccessScreen(this)
         render(animate = false)
