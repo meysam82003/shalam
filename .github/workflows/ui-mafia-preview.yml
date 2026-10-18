@@ -125,3 +125,26 @@ jobs:
       - name: Remove temporary signing key
         if: always()
         run: rm -f "$RUNNER_TEMP/divan-release.jks"
+  offline-smoke:
+    needs: android
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: Divan-debug-preview-${{ github.sha }}
+          path: preview-apks
+      - name: Enable emulator acceleration on the isolated runner
+        run: sudo chmod a+rw /dev/kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          profile: pixel_2
+          script: python3 scripts/qa/mafia_offline_smoke.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Mafia-offline-smoke-${{ github.sha }}
+          path: qa-mafia-offline/
