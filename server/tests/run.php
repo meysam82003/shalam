@@ -567,7 +567,12 @@ scenario('discount and gift codes', function () use ($storeKey, $bazaar) {
     $mk(['code' => 'CARDS', 'kind' => 'gift_feature', 'feature_k' => 'mafia_last_cards', 'days' => 7]);
     Db::update('features', ['mode' => 'pro'], 'k = ?', ['mafia_last_cards']);
     Promo::redeemGift('CARDS', $b);
-    check(Features::forUser((int)$b['id'], false)['mafia_last_cards']['allowed'] && !Entitlements::summary((int)$b['id'])['pro'], 'gift code for one module opens just that module');
+    check(!Features::forUser((int)$b['id'], false)['mafia_last_cards']['allowed'] && !Entitlements::summary((int)$b['id'])['pro'], 'a legacy Mafia item gift cannot bypass the full-section Pro rule');
+    $mk(['code' => 'PHOTOS', 'kind' => 'gift_feature', 'feature_k' => 'photos', 'days' => 7]);
+    Db::update('features', ['mode' => 'pro'], 'k = ?', ['photos']);
+    Promo::redeemGift('PHOTOS', $b);
+    check(Features::forUser((int)$b['id'], false)['photos']['allowed'] && !Entitlements::summary((int)$b['id'])['pro'], 'non-Mafia gift still opens just its module');
+    Db::update('features', ['mode' => 'free'], 'k = ?', ['photos']);
     Db::update('features', ['mode' => 'free'], 'k = ?', ['mafia_last_cards']);
     // Discount: Bazaar only, through the signed dynamic price.
     $mk(['code' => 'OFF20', 'kind' => 'discount', 'percent' => 20, 'plan_code' => 'm3']);
@@ -596,6 +601,14 @@ scenario('API end to end', function () use ($storeKey, $myket) {
     check(isset($reg['token'], $reg['recovery_key'], $reg['certificate']) && $reg['entitlement']['pro'] === false, 'register returns token, key and certificate');
     $tok = $reg['token'];
     $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $tok;
+    $registered = json_decode(Crypto::b64uDecode(explode('.', $reg['certificate'])[0]), true);
+    check($registered['mafia_trial']['started_at'] === null, 'API registration leaves trial pending');
+    apiGet('v1/config', ['store' => 'myket']);
+    $started = apiPost('v1/mafia/trial/start', []);
+    $trialProof = json_decode(Crypto::b64uDecode(explode('.', $started['certificate'])[0]), true);
+    check($trialProof['mafia_trial']['expires_at'] === Clock::now() + 600 && !$trialProof['pro'], 'authenticated start route returns signed Mafia-only deadline');
+    $again = apiPost('v1/mafia/trial/start', []);
+    check($again['certificate'] === $started['certificate'], 'duplicate start route response is idempotent');
     $intent = apiPost('v1/purchases/intent', ['plan' => 'm6', 'store' => 'myket']);
     $myket->answers['tok-api'] = 'valid';
     $v = apiPost('v1/purchases/verify', receipt('myket', $intent['sku'], 'tok-api', $intent['payload'], $storeKey));
