@@ -45,6 +45,7 @@ abstract class Screen(val host: MainActivity) {
 
     /** Module of this page for the free / Pro rules of the panel (null: always open). */
     open val featureKey: String? get() = null
+    open val mafiaArea: Boolean get() = false
 
     /** For count-limited modules: how many the player already has when this page creates a new one (-1: not a create page). */
     open val featureUsed: Int get() = -1
@@ -54,6 +55,8 @@ abstract class Screen(val host: MainActivity) {
 
     /** Subtitle of the page bar (pages update it in place). */
     var subtitleView: android.widget.TextView? = null
+        private set
+    var mafiaTrialView: TextView? = null
         private set
 
     fun scaffold(
@@ -98,6 +101,14 @@ abstract class Screen(val host: MainActivity) {
             if (large) alpha = 0f
         }
         root.addView(hairline, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(1)))
+        mafiaTrialView = null
+        if (mafiaArea && !ProState.isPro) {
+            mafiaTrialView = kit.text("", TextStyle.LABEL_BOLD, Royal.goldLight, Gravity.CENTER).apply {
+                setPadding(kit.dp(12), kit.dp(6), kit.dp(12), kit.dp(6))
+                background = android.graphics.drawable.ColorDrawable(Royal.scrim)
+            }
+            root.addView(mafiaTrialView)
+        }
         val header = if (large) kit.vertical().apply {
             setPadding(kit.dp(4), kit.dp(2), kit.dp(4), kit.dp(14))
             addView(kit.text(title, TextStyle.DISPLAY, Royal.title, maxLines = 2).apply { setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, kit.textSize(26f)) })
@@ -252,21 +263,26 @@ class MainActivity : Activity() {
         // Plans, module access and the account are refreshed in the background; games never wait for it.
         if (Build.FINGERPRINT != "robolectric") ProSync.onStart()
         resumed = true
+        if (enforceMafiaAccess()) return
         current?.onShow()
+        scheduleMafiaCheck()
     }
 
     override fun onPause() {
+        mafiaHandler.removeCallbacks(mafiaCheck)
         AdEngine.flush()
         current?.onHide()
         resumed = false
         if (audioUsed) {
             audio.stopMusic()
+            audio.stopCue()
             if (audio.isRecording) audio.stopRecording(discard = true)
         }
         super.onPause()
     }
 
     override fun onDestroy() {
+        mafiaHandler.removeCallbacks(mafiaCheck)
         ProState.listeners -= proListener
         ProSync.signedOutElsewhere = null
         if (audioUsed) audio.release()
@@ -624,6 +640,7 @@ class MainActivity : Activity() {
     private var pageFade: android.animation.ValueAnimator? = null
 
     private fun render(animate: Boolean = true, forward: Boolean = true, notify: Boolean = true) {
+        if (enforceMafiaAccess()) return
         val screen = current ?: return
         pageFade?.cancel()
         pageFade = null
@@ -676,6 +693,47 @@ class MainActivity : Activity() {
         }
         if (notify && resumed) screen.onShow()
         updateStickyAds()
+        scheduleMafiaCheck()
+    }
+
+    private val mafiaHandler = Handler(Looper.getMainLooper())
+    private val mafiaCheck = object : Runnable {
+        override fun run() {
+            if (!enforceMafiaAccess()) scheduleMafiaCheck()
+        }
+    }
+
+    private fun scheduleMafiaCheck() {
+        mafiaHandler.removeCallbacks(mafiaCheck)
+        current?.mafiaTrialView?.let {
+            val left = ProState.mafiaTrialRemaining
+            it.text = "تست مافیا · ${kit.n(left / 60)}:${kit.n((left % 60).toString().padStart(2, '0'))} باقی‌مانده"
+        }
+        if (resumed && (current?.mafiaArea == true || (audioUsed && (audio.musicPlaying || audio.isPlaying || audio.isRecording)))) mafiaHandler.postDelayed(mafiaCheck, 200)
+    }
+
+    /** Re-check every route, back navigation, resume and live expiry. Never delete a saved game. */
+    fun enforceMafiaAccess(): Boolean {
+        if (ProState.mafiaAllowed) return false
+        // Narrator music may continue while another app page is open. Its lease must expire too.
+        if (audioUsed) {
+            audio.stopMusic()
+            audio.stopCue()
+            if (audio.isRecording) audio.stopRecording(discard = true)
+        }
+        if (current?.mafiaArea != true) return false
+        current?.onHide()
+        kit.dismissDialogs()
+        cancelPosts()
+        stack.removeAll { it.mafiaArea }
+        stack += MafiaAccessScreen(this)
+        render(animate = false)
+        return true
+    }
+
+    override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
+        if (enforceMafiaAccess()) return true
+        return super.dispatchTouchEvent(event)
     }
 
     /** Fixed top / bottom ad bars for pages that allow them; an ad that is already showing is left in place. */
@@ -687,6 +745,7 @@ class MainActivity : Activity() {
 
     /** New plans, rules or ads from the server, Pro bought or ended: pages that show ads or Pro are redrawn. */
     private fun onProChanged() {
+        if (enforceMafiaAccess()) return
         val screen = current ?: return
         if (screen.adZone != null) refresh() else updateStickyAds()
     }

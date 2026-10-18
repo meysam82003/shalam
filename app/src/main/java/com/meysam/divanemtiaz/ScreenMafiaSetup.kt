@@ -8,7 +8,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 
 /** «طراحی بازی»: three tabs (players, roles, last-move cards) and «توزیع نقش». The draft is saved on every change. */
-class MafiaDesignScreen(host: MainActivity, private var tab: Int = 0) : Screen(host) {
+class MafiaDesignScreen(host: MainActivity, private var tab: Int = 0) : MafiaSectionScreen(host) {
     /** Re-read on every build: the reveal screen saves «دیدم» into the stored draft. */
     private var draft: MafiaGame = host.mafia.draft()
     private var side = MafiaSide.CITY
@@ -486,7 +486,7 @@ class MafiaDesignScreen(host: MainActivity, private var tab: Int = 0) : Screen(h
 }
 
 /** «توزیع نقش»: random or manual assignment, then each player sees his own card. */
-class MafiaDistributeScreen(host: MainActivity) : Screen(host) {
+class MafiaDistributeScreen(host: MainActivity) : MafiaSectionScreen(host) {
     /** Re-read on every build: the reveal screen saves «دیدم» into the stored draft. */
     private var draft: MafiaGame = host.mafia.draft()
     private var showAll = false
@@ -559,7 +559,7 @@ class MafiaDistributeScreen(host: MainActivity) : Screen(host) {
 }
 
 /** One player's private look at his role card («دیدم»). */
-class MafiaRevealScreen(host: MainActivity, private val playerId: Int) : Screen(host) {
+class MafiaRevealScreen(host: MainActivity, private val playerId: Int) : MafiaSectionScreen(host) {
     private val draft: MafiaGame = host.mafia.draft()
     private var shown = false
 

@@ -450,14 +450,14 @@ scenario('features, gifts and ads', function () use ($storeKey) {
     [$pro] = Users::register('feat_pro', 'secret123');
     buy($pro, 'm1', 'bazaar', 'tok-f1', $storeKey);
     $all = Features::forUser((int)$free['id'], false);
-    check(count($all) === 27 && !in_array(false, array_column($all, 'allowed'), true), 'all 27 modules free by default');
+    check(count($all) === 27 && !$all['mafia']['allowed'] && $all['shalam']['allowed'], 'Mafia defaults to Pro; free games remain open');
     // Single items as Pro: two mafia scenarios and one last-move card.
     Db::update('features', ['pro_items' => 'godfather,zodiac'], 'k = ?', ['mafia_scenarios']);
     Db::update('features', ['pro_items' => 'INTELLIGENCE'], 'k = ?', ['mafia_last_cards']);
     $fi = Features::forUser((int)$free['id'], false);
-    check($fi['mafia_scenarios']['pro_items'] === ['godfather', 'zodiac'] && $fi['mafia_scenarios']['allowed'], 'Pro-only scenarios listed for a free user; the module stays open');
+    check(!$fi['mafia_scenarios']['allowed'] && $fi['mafia_scenarios']['all_items'], 'all scenarios require Pro irrespective of individual flags');
     check(Features::forUser((int)$pro['id'], true)['mafia_scenarios']['pro_items'] === [], 'Pro user has no locked items');
-    check($fi['mafia_last_cards']['pro_items'] === ['INTELLIGENCE'], 'single last-move card as Pro');
+    check(!$fi['mafia_last_cards']['allowed'] && $fi['mafia_last_cards']['all_items'], 'all last-move cards require Pro');
     Db::update('features', ['mode' => 'pro', 'pro_items' => null], 'k = ?', ['themes']);
     $ft = Features::forUser((int)$free['id'], false)['themes'];
     check(!$ft['allowed'] && $ft['all_items'], 'a whole item module as Pro locks every item for a free user');
@@ -567,7 +567,12 @@ scenario('discount and gift codes', function () use ($storeKey, $bazaar) {
     $mk(['code' => 'CARDS', 'kind' => 'gift_feature', 'feature_k' => 'mafia_last_cards', 'days' => 7]);
     Db::update('features', ['mode' => 'pro'], 'k = ?', ['mafia_last_cards']);
     Promo::redeemGift('CARDS', $b);
-    check(Features::forUser((int)$b['id'], false)['mafia_last_cards']['allowed'] && !Entitlements::summary((int)$b['id'])['pro'], 'gift code for one module opens just that module');
+    check(!Features::forUser((int)$b['id'], false)['mafia_last_cards']['allowed'] && !Entitlements::summary((int)$b['id'])['pro'], 'a legacy Mafia item gift cannot bypass the full-section Pro rule');
+    $mk(['code' => 'PHOTOS', 'kind' => 'gift_feature', 'feature_k' => 'photos', 'days' => 7]);
+    Db::update('features', ['mode' => 'pro'], 'k = ?', ['photos']);
+    Promo::redeemGift('PHOTOS', $b);
+    check(Features::forUser((int)$b['id'], false)['photos']['allowed'] && !Entitlements::summary((int)$b['id'])['pro'], 'non-Mafia gift still opens just its module');
+    Db::update('features', ['mode' => 'free'], 'k = ?', ['photos']);
     Db::update('features', ['mode' => 'free'], 'k = ?', ['mafia_last_cards']);
     // Discount: Bazaar only, through the signed dynamic price.
     $mk(['code' => 'OFF20', 'kind' => 'discount', 'percent' => 20, 'plan_code' => 'm3']);
@@ -592,10 +597,18 @@ scenario('API end to end', function () use ($storeKey, $myket) {
     $cfg = apiGet('v1/config', ['store' => 'myket']);
     check(count($cfg['plans']) === 4 && $cfg['ads'] === ['enabled' => false], 'config without account');
     check($cfg['store_key'] === trim((string)(Settings::get('myket', [])['public_key'] ?? '')) && apiGet('v1/config', ['store' => 'direct'])['store_key'] === '', 'config carries the store RSA key from the panel (none for the site version)');
-    $reg = apiPost('v1/auth/register', ['username' => 'api_user', 'password' => 'secret123', 'device' => 'Pixel', 'store' => 'myket']);
+    $reg = apiPost('v1/auth/register', ['username' => 'api_user', 'password' => 'secret123', 'device' => 'Pixel', 'store' => 'myket', 'device_id' => str_repeat('c', 64), 'registration_id' => str_repeat('d', 64)]);
     check(isset($reg['token'], $reg['recovery_key'], $reg['certificate']) && $reg['entitlement']['pro'] === false, 'register returns token, key and certificate');
     $tok = $reg['token'];
     $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $tok;
+    $registered = json_decode(Crypto::b64uDecode(explode('.', $reg['certificate'])[0]), true);
+    check($registered['mafia_trial']['started_at'] === null, 'API registration leaves trial pending');
+    apiGet('v1/config', ['store' => 'myket']);
+    $started = apiPost('v1/mafia/trial/start', []);
+    $trialProof = json_decode(Crypto::b64uDecode(explode('.', $started['certificate'])[0]), true);
+    check($trialProof['mafia_trial']['expires_at'] === Clock::now() + 600 && !$trialProof['pro'], 'authenticated start route returns signed Mafia-only deadline');
+    $again = apiPost('v1/mafia/trial/start', []);
+    check($again['certificate'] === $started['certificate'], 'duplicate start route response is idempotent');
     $intent = apiPost('v1/purchases/intent', ['plan' => 'm6', 'store' => 'myket']);
     $myket->answers['tok-api'] = 'valid';
     $v = apiPost('v1/purchases/verify', receipt('myket', $intent['sku'], 'tok-api', $intent['payload'], $storeKey));
@@ -1307,6 +1320,47 @@ scenario('buying on the site: for an account by username, or an activation code 
     App::$config['base_url'] = $base;
     proc_terminate($proc); proc_close($proc);
     Http::$allowLocalHttpForTests = false;
+});
+
+scenario('Mafia trial: config acknowledgement, device ledger and exact server deadline', function () {
+    freshIp();
+    $clock = Clock::$fixed;
+    $body = ['username' => 'trial_one', 'password' => 'secret123', 'registration_id' => str_repeat('e', 64), 'device_id' => str_repeat('f', 64)];
+    [$u] = MafiaTrial::register($body);
+    $session = ['registration_id' => $body['registration_id'], 'device_id' => $body['device_id']];
+    $pending = MafiaTrial::forSession((int)$u['id'], $session);
+    check($pending !== null && $pending['started_at'] === null && $pending['expires_at'] === null, 'registration does not start the clock');
+    Clock::$fixed += 86400;
+    check(MafiaTrial::forSession((int)$u['id'], $session)['started_at'] === null, 'offline day consumes none of the trial');
+    freshIp();
+    throws(fn() => MafiaTrial::register(array_replace($body, ['username' => 'trial_duplicate'])), 'device_registered', 'VPN/new IP does not allow another account');
+    check(Users::byName('trial_duplicate') === null, 'duplicate creates no orphan account');
+    throws(fn() => MafiaTrial::register(['username' => 'missing_device', 'password' => 'secret123']), 'device_required', 'cannot omit identity');
+    $invalid = array_replace($body, ['username' => 'ab', 'registration_id' => str_repeat('1', 64)]);
+    throws(fn() => MafiaTrial::register($invalid), 'bad_username', 'invalid registration fails');
+    check(Db::one('SELECT * FROM {mafia_trials} WHERE device_hash = ?', [Crypto::hash('mafia-trial-v1|' . $invalid['registration_id'])]) === null, 'failed validation does not burn eligibility');
+    MafiaTrial::start((int)$u['id'], $session);
+    $trial = MafiaTrial::forSession((int)$u['id'], $session);
+    check($trial['started_at'] === Clock::now() && $trial['expires_at'] === Clock::now() + 600, 'config acknowledgement starts exactly 600 seconds');
+    $signed = Entitlements::certificate($u, 'bazaar', $session);
+    $payload = json_decode(Crypto::b64uDecode(explode('.', $signed['certificate'])[0]), true);
+    check($payload['mafia_trial'] === $trial && !$payload['pro'], 'signed preview never grants global Pro');
+    Clock::$fixed += 599;
+    MafiaTrial::start((int)$u['id'], $session);
+    check(MafiaTrial::forSession((int)$u['id'], $session) === $trial, 'retry cannot extend expiry');
+    Clock::$fixed += 1;
+    check($trial['expires_at'] === Clock::now(), 'exact expiry boundary');
+    Clock::$fixed += 1000;
+    MafiaTrial::start((int)$u['id'], $session);
+    check(MafiaTrial::forSession((int)$u['id'], $session) === $trial, 'expired trial never restarts');
+    check(MafiaTrial::forSession((int)$u['id'], array_replace($session, ['registration_id' => str_repeat('2', 64)])) === null, 'different device receives no trial');
+    [$other] = Users::register('trial_other', 'secret123');
+    check(MafiaTrial::forSession((int)$other['id'], $session) === null, 'different account receives no trial');
+    // Removing sessions and subscription-device bindings must not remove the registration ledger.
+    Devices::release((int)$u['id']);
+    freshIp();
+    throws(fn() => MafiaTrial::register(array_replace($body, ['username' => 'trial_after_release'])), 'device_registered', 'releasing subscription device cannot reset trial');
+    Clock::$fixed = $clock;
 });
 
 // ---------------------------------------------------------------- report

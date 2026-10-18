@@ -112,7 +112,7 @@ fun Screen.startScenario(s: MafiaScenario) {
 // ------------------------------------------------------------------ scenario list
 
 /** «انتخاب سناریو»: built-in scenarios (families together), the narrator's own ones and «سناریوی آزاد». */
-class MafiaScenarioListScreen(host: MainActivity, private val browse: Boolean = false) : Screen(host) {
+class MafiaScenarioListScreen(host: MainActivity, private val browse: Boolean = false) : MafiaSectionScreen(host) {
     private var query = ""
 
     /** A scenario is found by its name, summary or the names of its roles. */
@@ -172,7 +172,7 @@ class MafiaScenarioListScreen(host: MainActivity, private val browse: Boolean = 
 
 // ------------------------------------------------------------------ scenario detail
 
-class MafiaScenarioScreen(host: MainActivity, private val id: String) : Screen(host) {
+class MafiaScenarioScreen(host: MainActivity, private val id: String) : MafiaSectionScreen(host) {
     override fun build(): View {
         val saved = host.mafia.scenarios()
         val s = MafiaScenarios.find(id, saved) ?: return scaffold("سناریو پیدا نشد") {}
@@ -256,7 +256,7 @@ class MafiaScenarioScreen(host: MainActivity, private val id: String) : Screen(h
 // ------------------------------------------------------------------ scenario editor
 
 /** Edits a built-in scenario (saved as the narrator's version) or creates / edits his own scenario. */
-class MafiaScenarioEditScreen(host: MainActivity, id: String?) : Screen(host) {
+class MafiaScenarioEditScreen(host: MainActivity, id: String?) : MafiaSectionScreen(host) {
     override val featureKey: String get() = "mafia_custom"
     private val isNew = id == null
     private var s: MafiaScenario = id?.let { host.mafia.scenario(it) }
@@ -386,7 +386,7 @@ class MafiaScenarioEditScreen(host: MainActivity, id: String?) : Screen(host) {
 // ------------------------------------------------------------------ role editor
 
 /** «افزودن نقش» / «ویرایش قوانین نقش»: every rule of a role, for existing roles and the narrator's own roles. */
-class MafiaRoleEditScreen(host: MainActivity, role: MafiaRole?) : Screen(host) {
+class MafiaRoleEditScreen(host: MainActivity, role: MafiaRole?) : MafiaSectionScreen(host) {
     override val featureKey: String get() = "mafia_custom"
     private val slot: MafiaRole? = role ?: MafiaRoleRegistry.nextFreeSlot()
     private val isNew = role == null

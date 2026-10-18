@@ -309,7 +309,7 @@ object Features {
 }
 
 /**
- * Free / Pro rules from the panel. With no server configuration every module is free, as before.
+ * Free / Pro rules from the panel, with explicit safe defaults before the first successful fetch.
  * Whole modules are checked when their page opens ([Screen.featureKey]); single items (a mafia scenario,
  * a last-move card, a pantomime mode, a style) with [itemLocked].
  */
@@ -328,6 +328,10 @@ object Gate {
 
     /** True when the page may open; otherwise explains (or opens the Pro page) and returns false. */
     fun allows(host: MainActivity, screen: Screen): Boolean {
+        if (screen.mafiaArea && !ProState.mafiaAllowed) {
+            host.push(MafiaAccessScreen(host))
+            return false
+        }
         val key = screen.featureKey ?: return true
         val current = host.current ?: return true
         var ok = false
@@ -336,6 +340,10 @@ object Gate {
     }
 
     fun open(screen: Screen, key: String, used: Int = -1, onAllowed: () -> Unit) {
+        if ((key == "mafia" || key.startsWith("mafia_")) && !ProState.mafiaAllowed) {
+            screen.host.push(MafiaAccessScreen(screen.host))
+            return
+        }
         val (mode, allowed, limit) = ProState.feature(key)
         val title = Features.titles[key] ?: key
         when {
@@ -352,8 +360,8 @@ object Gate {
 class AccountScreen(host: MainActivity, private val then: (() -> Unit)? = null) : Screen(host) {
     private var mode = 1 // 0 login, 1 register, 2 recover
 
-    override fun build(): View = scaffold("حساب کاربری", "فقط برای خرید و نگهداری Pro") {
-        addView(kit.text("برای بازی کردن حساب لازم نیست. حساب فقط اشتراک Pro را نگه می‌دارد تا با عوض شدن گوشی یا پاک شدن برنامه از بین نرود. شماره تلفن و ایمیل نمی‌خواهیم.", TextStyle.LABEL, Royal.muted), kit.spaced(10))
+    override fun build(): View = scaffold("حساب کاربری", "اشتراک Pro و تست مافیا") {
+        addView(kit.text("بازی‌های امتیازی رایگان به حساب نیاز ندارند. مافیا با اشتراک Pro فعال است؛ پس از ثبت‌نام و دریافت موفق تنظیمات سرور یک فرصت تست ۱۰ دقیقه‌ای آغاز می‌شود. پس از شروع، زمان با خروج از برنامه متوقف نمی‌شود. هر دستگاه فقط یک ثبت‌نام دارد؛ برای حساب قبلی از ورود یا بازیابی استفاده کنید. ایمیل اختیاری است.", TextStyle.LABEL, Royal.muted), kit.spaced(10))
         val chips = listOf("ورود", "ساخت حساب", "بازیابی").mapIndexed { i, l -> kit.chip(l, i == mode) { mode = i; host.refresh() } }
         addView(kit.chipRail(chips, mode), kit.spaced(10))
         val err = errorLine()

@@ -292,6 +292,7 @@ final class ConfigPages
             $reason = Admin::requireReason();
             $changes = [];
             foreach (Features::all() as $f) {
+                if ($f['k'] === 'mafia' || str_starts_with($f['k'], 'mafia_')) continue;
                 $mode = (string)($_POST['mode'][$f['k']] ?? $f['mode']);
                 if (!in_array($mode, Features::MODES, true)) continue;
                 $limit = trim((string)($_POST['limit'][$f['k']] ?? ''));
@@ -317,15 +318,19 @@ final class ConfigPages
             <div class="alert info">
               <b>رایگان:</b> برای همه باز است. <b>فقط Pro:</b> کاربر رایگان صفحهٔ معرفی Pro را می‌بیند. <b>رایگان محدود:</b> کاربر رایگان تا «محدودیت» (مثلاً تعداد لیگ یا عکس) استفاده می‌کند.
               <b>غیرفعال:</b> برای همه بسته است. <b>فقط هدیه:</b> فقط کسانی که دسترسی ویژه گرفته‌اند.
-              <br><b>سناریوهای مافیا، کارت‌های حرکت آخر، نوع مسابقهٔ پانتومیم و سبک‌ها:</b> اگر موردی را تیک بزنید، <b>فقط همان موردها</b> Pro می‌شوند و بقیه رایگان می‌مانند. اگر هیچ موردی تیک نخورد و حالت «فقط Pro» باشد، <b>همهٔ موردها</b> Pro می‌شوند.
+              <br><b>مافیا:</b> همهٔ بخش‌ها فقط با Pro یا تست یک‌بارهٔ ۱۰ دقیقه‌ای باز می‌شوند. ثبت‌نام حق تست را ثبت می‌کند؛ زمان پس از دریافت تنظیمات سرور و تأیید شروع توسط اپ آغاز می‌شود. پایان تست، بازی باز را هم قفل می‌کند ولی داده‌ها حذف نمی‌شوند. این سیاست با انتخاب موردهای تکی تغییر نمی‌کند.
+              <br><b>نوع مسابقهٔ پانتومیم و سبک‌ها:</b> اگر موردی را تیک بزنید، <b>فقط همان موردها</b> Pro می‌شوند و بقیه رایگان می‌مانند. اگر هیچ موردی تیک نخورد و حالت «فقط Pro» باشد، <b>همهٔ موردها</b> Pro می‌شوند.
               <br>تغییرات حداکثر یک دقیقه بعد از باز کردن برنامه در گوشی کاربران اعمال می‌شود.
-              <br>بازی‌ای که کاربر شروع کرده و داده‌ای که ساخته هیچ‌وقت قفل یا پاک نمی‌شود؛ قانون فقط هنگام ورود به بخش یا شروع مورد تازه اعمال می‌شود.
+              <br>داده‌ها پاک نمی‌شوند. در بخش‌های غیرمافیا قانون مانند قبل هنگام ورود یا شروع مورد تازه اعمال می‌شود.
             </div>
             <form method="post"><?= Admin::csrfField() ?>
             <?php foreach (Features::SECTIONS as $sec => $secTitle): if (empty($groups[$sec])) continue; ?>
             <div class="card"><h3><?= e($secTitle) ?></h3>
             <div class="table-wrap"><table><thead><tr><th>قابلیت</th><th>حالت</th><th>محدودیت رایگان</th></tr></thead><tbody>
             <?php foreach ($groups[$sec] as $f): $catalog = Catalog::items($f['k']); $sel = array_filter(explode(',', (string)($f['pro_items'] ?? ''))); ?>
+              <?php if ($f['k'] === 'mafia' || str_starts_with($f['k'], 'mafia_')): ?>
+              <tr><td><b><?= e($f['title']) ?></b><br><code><?= e($f['k']) ?></code></td><td>فقط Pro</td><td>تست مشترک یک‌باره: ۱۰ دقیقه</td></tr>
+              <?php continue; endif; ?>
               <tr><td><b><?= e($f['title']) ?></b><br><small class="muted"><?= e($f['description']) ?></small> <code><?= e($f['k']) ?></code>
                 <?php if ($catalog): $extra = array_diff($sel, array_keys($catalog)); ?>
                   <details style="margin-top:6px"<?= $sel ? ' open' : '' ?>><summary>موردهای فقط Pro (<?= fa_digits(count($sel)) ?> از <?= fa_digits(count($catalog)) ?>)</summary>

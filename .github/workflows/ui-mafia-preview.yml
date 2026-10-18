@@ -1,0 +1,150 @@
+name: Divan isolated UI and Mafia preview checks
+on:
+  push:
+    branches: [feature/divan-ui-mafia-pro-trial]
+permissions:
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+      - name: Test every flavor and build isolated debug previews
+        run: gradle --no-daemon testReleaseUnitTest assembleRelease assembleDebug
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Divan-debug-preview-${{ github.sha }}
+          path: |
+            app/build/outputs/apk/*/debug/*.apk
+            app/build/reports/tests/
+          if-no-files-found: warn
+  server:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: divan-test-only
+          MYSQL_DATABASE: divan_test2
+        ports: ['3306:3306']
+        options: --health-cmd="mysqladmin ping -pdivan-test-only" --health-interval=10s --health-timeout=5s --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - name: PHP syntax and integration suite (isolated fake-store database)
+        env:
+          DIVAN_TEST_DSN: host=127.0.0.1;port=3306;dbname=divan_test2
+          DIVAN_TEST_USER: root
+          DIVAN_TEST_PASS: divan-test-only
+        run: |
+          find server/public -name '*.php' -print0 | xargs -0 -n1 php -l
+          php server/tests/run.php
+      - name: Payment bridge regressions
+        run: php payment-bridge/divan-bridge/tests/run.php
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+      - name: Compile shared application against browser stubs
+        run: gradle --no-daemon -p webapp compileKotlin
+  signed-preview:
+    needs: [android, server, web]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+      - name: Prepare release signing key
+        id: key
+        env:
+          DIVAN_KEYSTORE_BASE64: ${{ secrets.DIVAN_KEYSTORE_BASE64 }}
+          DIVAN_KEYSTORE_PASSWORD: ${{ secrets.DIVAN_KEYSTORE_PASSWORD }}
+          DIVAN_KEY_ALIAS: ${{ secrets.DIVAN_KEY_ALIAS }}
+          DIVAN_KEY_PASSWORD: ${{ secrets.DIVAN_KEY_PASSWORD }}
+        run: |
+          for v in DIVAN_KEYSTORE_BASE64 DIVAN_KEYSTORE_PASSWORD DIVAN_KEY_ALIAS DIVAN_KEY_PASSWORD; do
+            if [ -z "${!v}" ]; then echo "::error::Secret $v is missing: Android APKs are only signed with the official release key."; exit 1; fi
+          done
+          echo "$DIVAN_KEYSTORE_BASE64" | tr -d ' \r\n' | base64 -d > "$RUNNER_TEMP/divan-release.jks"
+          # The key itself must open and carry the official certificate before anything is built (nothing secret is printed).
+          FP=$(keytool -list -v -keystore "$RUNNER_TEMP/divan-release.jks" -storepass:env DIVAN_KEYSTORE_PASSWORD -alias "$DIVAN_KEY_ALIAS" 2>/dev/null | grep -m1 'SHA256:' | sed 's/.*SHA256: *//; s/://g' | tr 'a-f' 'A-F')
+          WANT=$(grep -oP "DIVAN_CERT_SHA256'\) \?: '\K[0-9A-F]{64}" app/build.gradle)
+          if [ -z "$FP" ]; then echo "::error::The keystore did not open with the stored password and alias."; exit 1; fi
+          if [ "$FP" != "$WANT" ]; then echo "::error::The stored key is not the official Divan Emtiaz key (certificate $FP)."; exit 1; fi
+          echo "Official release key verified (certificate SHA-256 $FP)."
+          echo "DIVAN_KEYSTORE_FILE=$RUNNER_TEMP/divan-release.jks" >> "$GITHUB_ENV"
+          echo "DIVAN_CERT_WANT=$WANT" >> "$GITHUB_ENV"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Build with the existing official key (artifacts only)
+        env:
+          DIVAN_KEYSTORE_PASSWORD: ${{ secrets.DIVAN_KEYSTORE_PASSWORD }}
+          DIVAN_KEY_ALIAS: ${{ secrets.DIVAN_KEY_ALIAS }}
+          DIVAN_KEY_PASSWORD: ${{ secrets.DIVAN_KEY_PASSWORD }}
+          DIVAN_MYKET_RSA_KEY: ${{ vars.DIVAN_MYKET_RSA_KEY || secrets.DIVAN_MYKET_RSA_KEY }}
+          DIVAN_TAPSELL_APP_ID: ${{ vars.DIVAN_TAPSELL_APP_ID || secrets.DIVAN_TAPSELL_APP_ID }}
+          DIVAN_LICENSE_KEY: ${{ vars.DIVAN_LICENSE_KEY || secrets.DIVAN_LICENSE_KEY }}
+        run: gradle --no-daemon assembleRelease
+      - name: Verify release signature
+        run: |
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          for F in bazaar myket direct; do
+            "$APKSIGNER" verify --print-certs app/build/outputs/apk/$F/release/app-$F-release.apk | tee cert.txt
+            GOT=$(grep -m1 'certificate SHA-256 digest' cert.txt | sed 's/.*: *//' | tr 'a-f' 'A-F')
+            if [ "$GOT" != "$DIVAN_CERT_WANT" ]; then echo "::error::$F APK is not signed with the official key ($GOT)"; exit 1; fi
+          done
+
+      - name: Package server for review (no deployment)
+        run: git archive --format=zip --prefix=divan/ HEAD:server/public -o Divan-Server-Mafia-preview.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Divan-signed-mafia-preview-${{ github.sha }}
+          path: |
+            app/build/outputs/apk/*/release/*.apk
+            Divan-Server-Mafia-preview.zip
+          if-no-files-found: error
+      - name: Remove temporary signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/divan-release.jks"
+  offline-smoke:
+    needs: android
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: Divan-debug-preview-${{ github.sha }}
+          path: preview-apks
+      - name: Enable emulator acceleration on the isolated runner
+        run: sudo chmod a+rw /dev/kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          profile: pixel_2
+          script: python3 scripts/qa/mafia_offline_smoke.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Mafia-offline-smoke-${{ github.sha }}
+          path: qa-mafia-offline/

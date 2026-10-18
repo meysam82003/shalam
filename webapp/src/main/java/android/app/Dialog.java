@@ -26,6 +26,7 @@ public class Dialog implements DialogInterface {
 
     public final Context getContext() { return context; }
     public Window getWindow() { return window; }
+    public boolean dispatchTouchEvent(android.view.MotionEvent event) { return window.getDecorView().onTouchEvent(event); }
     public final boolean requestWindowFeature(int featureId) { return true; }
 
     public void setContentView(View view) {

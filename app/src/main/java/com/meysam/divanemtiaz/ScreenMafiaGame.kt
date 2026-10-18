@@ -9,8 +9,13 @@ import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 
+/** All Mafia entry points, including static tools and nested game pages, share this gate. */
+abstract class MafiaSectionScreen(host: MainActivity) : Screen(host) {
+    final override val mafiaArea: Boolean get() = true
+}
+
 /** Loads the game for a mafia screen; every screen re-reads it so the stack never shows stale state. */
-abstract class MafiaScreen(host: MainActivity, val gameId: Long) : Screen(host) {
+abstract class MafiaScreen(host: MainActivity, val gameId: Long) : MafiaSectionScreen(host) {
     override val compactHeader: Boolean get() = true
 
     lateinit var g: MafiaGame

@@ -146,9 +146,16 @@ final class Api
 
             case 'v1/auth/register': {
                 self::post($method);
-                [$u, $key] = Users::register((string)($in['username'] ?? ''), (string)($in['password'] ?? ''), isset($in['email']) ? (string)$in['email'] : null);
+                [$u, $key] = MafiaTrial::register($in);
                 $token = self::open($u, $in);
                 return ['token' => $token, 'recovery_key' => $key] + self::account($u);
+            }
+
+            case 'v1/mafia/trial/start': {
+                self::post($method);
+                $u = self::user();
+                MafiaTrial::start((int)$u['id'], self::$auth[1]);
+                return self::account($u);
             }
 
             case 'v1/auth/login': {
