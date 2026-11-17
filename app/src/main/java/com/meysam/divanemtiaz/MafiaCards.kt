@@ -74,7 +74,7 @@ class RoleCardView(context: Context) : CachedArtView(context) {
         val w = width.toFloat(); val h = height.toFloat(); val u = w / 100f
         val r = DivanDesign.radius(t, 8f) * u
         val outer = RectF(u, u, w - u, h - u)
-        paint.shader = null; paint.style = Paint.Style.FILL; paint.color = t.surface
+        paint.shader = null; paint.style = Paint.Style.FILL; paint.color = CinemaLook.surface(t)
         canvas.drawRoundRect(outer, r, r, paint)
         paint.style = Paint.Style.STROKE; paint.strokeWidth = u; paint.color = t.border
         canvas.drawRoundRect(outer, r, r, paint)

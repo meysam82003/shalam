@@ -26,7 +26,7 @@ private val Screen.pantoSounds: GameAudio.Effects get() = host.gameAudio.panto
 
 /** Big emblem card used at the top of the game pages. */
 fun Screen.gameHero(glyph: MafiaGlyph, tint: Int, title: String, caption: String, action: View? = null): View =
-    hubBanner(RoleSealView(host, glyph, tint), title, caption, action)
+    cinemaHero(if (glyph == SpyLook.glyph) CinemaScene.SPY else CinemaScene.THEATRE, title, caption, action = action)
 
 /** Square menu tile (icon, title, caption). */
 fun Screen.menuTile(icon: RoyalIcon, title: String, caption: String, onClick: () -> Unit): View = kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
@@ -43,6 +43,7 @@ fun Screen.menuTile(icon: RoyalIcon, title: String, caption: String, onClick: ()
 
 /** «پانتومیم» home. */
 class PantoHomeScreen(host: MainActivity) : Screen(host) {
+    override val visualScene: CinemaScene get() = CinemaScene.THEATRE
     override val audioScope: String get() = "panto"
     override val adZone: String? get() = "hub"
     override val featureKey: String get() = "panto"
@@ -69,6 +70,7 @@ class PantoHomeScreen(host: MainActivity) : Screen(host) {
 
 /** «مسابقهٔ جدید»: match type, teams and their people, rounds, time and the referee. */
 class PantoSetupScreen(host: MainActivity) : Screen(host) {
+    override val visualScene: CinemaScene get() = CinemaScene.THEATRE
     override val audioScope: String get() = "panto"
     private var mode = PantoMode.NORMAL
     private val teams = ArrayList<PantoTeam>()
@@ -226,6 +228,7 @@ class PantoSetupScreen(host: MainActivity) : Screen(host) {
 
 /** Base of the match pages: loads and saves the match. */
 abstract class PantoScreen(host: MainActivity, protected val matchId: Long) : Screen(host) {
+    override val visualScene: CinemaScene get() = CinemaScene.THEATRE
     override val audioScope: String get() = "panto"
     override val compactHeader: Boolean get() = true
 
@@ -511,7 +514,8 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
 
     private fun wordCard(t: PantoTurn): View = kit.vertical(Gravity.CENTER).apply {
         val golden = t.choice?.golden == true
-        background = if (golden) android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+        val revealed = phase >= 1 && !wordHidden
+        background = if (revealed) CinemaPaperDrawable(kit.density, golden) else if (golden) android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
             intArrayOf(0xFF8A6418.toInt(), 0xFF3E2C08.toInt())).apply { cornerRadius = kit.dpf(22f); setStroke(kit.dp(2), Royal.goldLight) }
         else PanelDrawable(kit.density, PanelStyle.SELECTED, 22f)
         setPadding(kit.dp(14), kit.dp(18), kit.dp(14), kit.dp(20))
@@ -529,7 +533,7 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
         } else {
             if (golden) addView(kit.text("موضوع طلایی", TextStyle.LABEL_BOLD, Royal.goldLight, Gravity.CENTER))
             val word = t.word?.shown ?: "—"
-            addView(kit.text(word, TextStyle.DISPLAY, Royal.ivory, Gravity.CENTER).apply {
+            addView(kit.text(word, TextStyle.DISPLAY, 0xFF302217.toInt(), Gravity.CENTER).apply {
                 setTextSize(TypedValue.COMPLEX_UNIT_PX, kit.dpf(if (word.length > 28) 26f else if (word.length > 14) 32f else 40f))
             })
             t.previousWord?.let { previous ->
@@ -801,6 +805,7 @@ class PantoResultScreen(host: MainActivity, matchId: Long) : PantoScreen(host, m
 
 /** «کلمات من»: the players' own words in three levels (add, edit, delete, search). */
 class PantoWordsScreen(host: MainActivity) : Screen(host) {
+    override val visualScene: CinemaScene get() = CinemaScene.THEATRE
     override val audioScope: String get() = "panto"
     override val featureKey: String get() = "panto_words"
     private var level = 1
@@ -868,6 +873,7 @@ class PantoWordsScreen(host: MainActivity) : Screen(host) {
 
 /** Browse the whole bank by category and level, with search (read only). */
 class PantoBankScreen(host: MainActivity) : Screen(host) {
+    override val visualScene: CinemaScene get() = CinemaScene.THEATRE
     override val audioScope: String get() = "panto"
     private var cat = 1
     private var level = 0
@@ -948,6 +954,7 @@ class PantoBankScreen(host: MainActivity) : Screen(host) {
 }
 
 class PantoRulesScreen(host: MainActivity) : Screen(host) {
+    override val visualScene: CinemaScene get() = CinemaScene.THEATRE
     override val audioScope: String get() = "panto"
     override fun build(): View = scaffold("قوانین پانتومیم", "قوانین مشترک و هر نوع مسابقه") {
         addView(kit.section("قوانین مشترک", RoyalIcon.RULES))
@@ -961,6 +968,7 @@ class PantoRulesScreen(host: MainActivity) : Screen(host) {
 
 /** Past and unfinished matches. */
 class PantoMatchesScreen(host: MainActivity) : Screen(host) {
+    override val visualScene: CinemaScene get() = CinemaScene.THEATRE
     override val audioScope: String get() = "panto"
     override fun build(): View {
         val list = host.panto.matches()

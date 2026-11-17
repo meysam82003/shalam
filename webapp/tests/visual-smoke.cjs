@@ -63,17 +63,14 @@ const profiles=['cobalt','iranic','neon','emerald','copper','ivory'];
       await page.goto(origin);await page.locator('#loading').waitFor({state:'detached',timeout:30000});
       await page.waitForTimeout(1000);
       await shot('home');
-      assert((await labels()).includes('انتخاب بازی'),theme+' home missing');
+      assert((await labels()).includes('دیوان امتیاز'),theme+' home missing');
       await click('شلم');await shot('setup');
       await click('شروع داوری شلم');await shot('board');
       await click('ثبت دست جدید');await shot('score-entry');
       // In-app back preserves the running game and its settings.
       await page.keyboard.press('Escape');await page.waitForTimeout(400);
       await page.keyboard.press('Escape');await page.waitForTimeout(400);
-      if (theme === 'neon') {
-        // Orbit deliberately labels only the active tab; settings keeps the same fifth tab and hit area.
-        await page.mouse.click(49, 794); await page.waitForTimeout(450);
-      } else await click('تنظیمات');
+      await click('تنظیمات');
       await shot('settings');
       await page.mouse.move(190,500);await page.mouse.wheel(0,550);await page.waitForTimeout(400);
       await shot('settings-controls');

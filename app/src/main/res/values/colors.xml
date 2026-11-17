@@ -9,12 +9,12 @@
     <color name="divan_turquoise">#2ED3C6</color>
     <color name="divan_crimson">#D0414B</color>
     <color name="ic_launcher_background">#00287F</color>
-    <color name="divan_launch">#091827</color>
-    <color name="divan_launch_bar">#091827</color>
-    <color name="divan_launch_cobalt">#FF091827</color>
-    <color name="divan_launch_copper">#FF181A19</color>
-    <color name="divan_launch_iranic">#FFF3EEE5</color>
-    <color name="divan_launch_emerald">#FFEAF0E5</color>
-    <color name="divan_launch_ivory">#FFF0F6FB</color>
-    <color name="divan_launch_neon">#FF141126</color>
+    <color name="divan_launch">#020F10</color>
+    <color name="divan_launch_bar">#020F10</color>
+    <color name="divan_launch_cobalt">#FF020F10</color>
+    <color name="divan_launch_copper">#FF17060D</color>
+    <color name="divan_launch_iranic">#FFF3EDE1</color>
+    <color name="divan_launch_emerald">#FF040D19</color>
+    <color name="divan_launch_ivory">#FFEAF2F7</color>
+    <color name="divan_launch_neon">#FF080717</color>
 </resources>

@@ -641,25 +641,12 @@ class EmblemAvatarView(context: Context, avatar: Int = 0) : CachedArtView(contex
     override fun drawArt(canvas: Canvas) {
         val r = min(width, height) / 2f * .92f
         if (r <= 0f) return
-        val t = ThemeEngine.spec; val cx = width / 2f; val cy = height / 2f
-        paint.shader = null; paint.style = Paint.Style.FILL
-        paint.color = Royal.mix(t.surface, Emblems.hue(avatar), if (t.light) .13f else .25f)
-        val corner = DivanDesign.radius(t, 20f) * r / 24f
-        canvas.drawRoundRect(RectF(cx - r, cy - r, cx + r, cy + r), corner, corner, paint)
+        val cx = width / 2f; val cy = height / 2f
         val photo = PhotoStore.bitmap(avatar)
-        if (photo != null) {
-            PhotoStore.drawCircle(canvas, photo, cx, cy, r * .88f, paint)
-        } else {
-            canvas.save(); canvas.translate(cx - r * .7f, cy - r * .7f); canvas.scale(r * 1.4f / 100f, r * 1.4f / 100f)
-            paint.shader = null; paint.style = Paint.Style.FILL; paint.color = t.accent
-            canvas.drawPath(Emblems.motif(avatar), paint)
-            canvas.restore()
-        }
-        if (selectedRing) {
-            paint.shader = null; paint.style = Paint.Style.STROKE; paint.strokeWidth = r * .07f; paint.color = t.success
-            canvas.drawRoundRect(RectF(cx - r, cy - r, cx + r, cy + r), corner, corner, paint)
-            paint.style = Paint.Style.FILL
-        }
+        Emblems.drawMedallion(canvas, cx, cy, r, Emblems.hue(avatar), paint, selectedRing)
+        if (photo != null) PhotoStore.drawCircle(canvas, photo, cx, cy, r * .84f, paint)
+        else Emblems.drawRelief(canvas, Emblems.motif(avatar), cx, cy, r, paint)
+        Emblems.drawGloss(canvas, cx, cy, r * .83f, paint)
     }
 }
 
@@ -670,7 +657,7 @@ class GameSealView(context: Context, private val game: GameType?) : CachedArtVie
     override fun artKey(): Any = game?.key ?: "app"
 
     override fun drawArt(canvas: Canvas) {
-        DivanDesign.game(canvas, width, height, game, paint)
+        CinemaSymbols.game(canvas, width, height, game, paint)
     }
 
     /** Pasur identity of «هزارتایی»: three playing cards fanned out, the front one with a club, and «۱۰۰۰» beneath. */
@@ -735,7 +722,7 @@ class HeroCrestView(context: Context) : CachedArtView(context) {
 
     override fun artKey(): Any = "cards-crest"
 
-    override fun drawArt(canvas: Canvas) = DivanDesign.brand(canvas, width, height, paint)
+    override fun drawArt(canvas: Canvas) = HeroCrestArt.draw(canvas, width, height, paint)
 }
 
 /** The fan of four cards under a crown (logo screen and about page), drawn still or at any moment of its entrance. */

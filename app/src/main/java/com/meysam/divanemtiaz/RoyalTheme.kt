@@ -98,46 +98,51 @@ object Themes {
         edge: Long, radius: Float, frame: ThemeFrame, button: ThemeButton, pattern: ThemePattern): ThemeSpec {
         val bg = c(page); val surface = c(card); val text = c(ink); val a = c(accent); val onA = c(on)
         val line = c(edge)
-        val success = c(if (light) 0xFF14634E else 0xFF80E3BA)
-        val danger = c(if (light) 0xFFB42337 else 0xFFFFA0AC)
-        val depth = if (layout == ThemeLayout.VOLT) 4f else if (layout == ThemeLayout.PAPER) 0f else 2f
+        val success = c(if (light) 0xFF126348 else 0xFF6CE8BA)
+        val danger = c(if (light) 0xFFAE233B else 0xFFFF9DA7)
+        val metalLight = c(when (layout) {
+            ThemeLayout.ORBIT -> 0xFFF1D6FF
+            ThemeLayout.PALM, ThemeLayout.WAVE -> 0xFFE0F3FF
+            else -> if (light) 0xFFE5C67B else 0xFFFFE6A4
+        })
+        val metalDeep = c(when (layout) {
+            ThemeLayout.ORBIT -> 0xFF654083
+            ThemeLayout.PALM, ThemeLayout.WAVE -> 0xFF507897
+            else -> if (light) 0xFF9D7431 else 0xFF8B6028
+        })
         return ThemeSpec(id, title, latin, summary, light,
-            intArrayOf(bg, bg, bg),
-            if (layout == ThemeLayout.ORBIT) listOf(ThemeGlow(.1f, .1f, 1f, c(0x304F36B8)), ThemeGlow(.95f, .6f, .8f, c(0x202FE4CF))) else emptyList(),
-            0, pattern, a,
-            surface, surface, surface, surface, bg, bg, line, line, 0, false,
-            frame, if (layout == ThemeLayout.VOLT) 2f else .8f,
-            c(if (light) 0x18223140 else 0x40000000), depth, if (layout == ThemeLayout.ORBIT) .035f else 0f, radius,
-            a, a, a, a, line, line, line, line,
+            intArrayOf(bg, bg, bg), emptyList(), 0, pattern, a,
+            surface, surface, surface, surface, bg, bg, line, metalDeep, (a and 0x00FFFFFF) or 0x18000000, false,
+            frame, 1.2f, c(if (light) 0x30232116 else 0xAA000000), 4f, .12f, radius,
+            a, a, a, metalDeep, metalLight, if (layout == ThemeLayout.ATLAS || layout == ThemeLayout.VOLT || layout == ThemeLayout.PAPER) c(0xFFD3A851) else a, metalDeep, c(0xFF352716),
             success, success, success, danger, danger, danger,
             text, c(muted), c(muted), text, onA, bg, surface, surface,
-            button, intArrayOf(a, a, a), false, onA, line,
-            intArrayOf(surface, surface, surface), text, line,
-            intArrayOf(bg, bg, bg), text, line,
-            intArrayOf(success, success, success), if (light) c(0xFFFFFFFF) else c(0xFF08261C),
-            intArrayOf(danger, danger, danger), if (light) c(0xFFFFFFFF) else c(0xFF410914),
-            if (layout == ThemeLayout.WAVE) 3f else radius, layout == ThemeLayout.ORBIT,
-            intArrayOf(a, a, a), (a and 0x00FFFFFF) or 0x24000000, intArrayOf(bg, a, surface), layout)
+            button, if (light) intArrayOf(a, a, a) else intArrayOf(metalLight, a, c(when (layout) { ThemeLayout.ORBIT -> 0xFFBB85E4; ThemeLayout.PALM -> 0xFF76B9E4; else -> 0xFFD49C40 })), true, onA, metalDeep,
+            intArrayOf(surface, surface, bg), text, line,
+            intArrayOf(surface, surface, bg), text, line,
+            intArrayOf(c(if (light) 0xFF197B59 else 0xFF267F62), c(if (light) 0xFF126348 else 0xFF17543E), c(0xFF093C2A)), c(0xFFFFFFFF),
+            intArrayOf(c(0xFFCC344E), c(0xFFA6233B), c(0xFF651328)), c(0xFFFFFFFF),
+            radius, layout == ThemeLayout.ORBIT,
+            intArrayOf(c(0xFF57D9DC), a, success), (a and 0x00FFFFFF) or 0x24000000, intArrayOf(bg, a, surface), layout)
     }
-
-    val COBALT = style("cobalt", "اطلس", "ATLAS", "اتاق فرمان؛ شبکه‌ای، دقیق و آبیِ شب", ThemeLayout.ATLAS,
-        false, 0xFF091827, 0xFF12283B, 0xFFF2F7FC, 0xFFA4BACB, 0xFF72DDF1, 0xFF08212D, 0xFF294256,
-        .65f, ThemeFrame.HAIRLINE, ThemeButton.FLAT, ThemePattern.LATTICE)
-    val IRANIC = style("iranic", "کاغذ", "PAPER", "دفتر بازی؛ کاغذ گرم، جوهر و خطوط صریح", ThemeLayout.PAPER,
-        true, 0xFFF3EEE5, 0xFFFFFCF5, 0xFF24241F, 0xFF666359, 0xFF8F372B, 0xFFFFFCF5, 0xFFB7B0A2,
-        .16f, ThemeFrame.HAIRLINE, ThemeButton.MATTE, ThemePattern.GIRIH)
-    val NEON = style("neon", "اوربیت", "ORBIT", "مدار شب؛ شیشه‌ای، شناور و بنفش", ThemeLayout.ORBIT,
-        false, 0xFF141126, 0xFF27213F, 0xFFF7F2FF, 0xFFC0B4D6, 0xFFD1B5FF, 0xFF281445, 0xFF594577,
-        1.55f, ThemeFrame.GLOW, ThemeButton.GLASS, ThemePattern.NEON)
-    val EMERALD = style("emerald", "نخل", "PALM", "دورهمی آرام؛ سبز پسته‌ای و فرم‌های نرم", ThemeLayout.PALM,
-        true, 0xFFEAF0E5, 0xFFF9FCF4, 0xFF20342A, 0xFF53665A, 0xFF315C43, 0xFFFFFFFF, 0xFFCAD7C4,
-        1.8f, ThemeFrame.SOFT, ThemeButton.GRADIENT, ThemePattern.ARABESQUE)
-    val COPPER = style("copper", "ولتا", "VOLTA", "پرانرژی؛ زرد برقی، قاب محکم و زاویه‌های تیز", ThemeLayout.VOLT,
-        false, 0xFF181A19, 0xFF272A27, 0xFFF7F8EF, 0xFFB6BBAF, 0xFFD5F45B, 0xFF20250D, 0xFF858E73,
-        .12f, ThemeFrame.HAIRLINE, ThemeButton.MATTE, ThemePattern.DIAMOND)
-    val IVORY = style("ivory", "موج", "WAVE", "روشن و خلوت؛ آبی اقیانوس و کنترل‌های کپسولی", ThemeLayout.WAVE,
-        true, 0xFFF0F6FB, 0xFFFFFFFF, 0xFF15304A, 0xFF526C83, 0xFF175FC1, 0xFFFFFFFF, 0xFFD8E6F1,
-        1.25f, ThemeFrame.SOFT, ThemeButton.FLAT, ThemePattern.DOTS)
+    val COBALT = style("cobalt", "زمرد سلطنتی", "ROYAL EMERALD", "مخمل سبز، فلز طلایی و نور گرم", ThemeLayout.ATLAS,
+        false, 0xFF020F10, 0xFF082A26, 0xFFFFF5DD, 0xFFB2C8BF, 0xFFF2CA79, 0xFF271B08, 0xFF6B714D,
+        1f, ThemeFrame.ORNATE, ThemeButton.BEVEL, ThemePattern.LATTICE)
+    val IRANIC = style("iranic", "مروارید", "PEARL ATELIER", "مرمر روشن، قاب شامپاینی و بافت کاغذ", ThemeLayout.PAPER,
+        true, 0xFFF3EDE1, 0xFFFFFCF5, 0xFF28241F, 0xFF686057, 0xFF805522, 0xFFFFFFFF, 0xFFC4B18B,
+        .85f, ThemeFrame.HAIRLINE, ThemeButton.MATTE, ThemePattern.GIRIH)
+    val NEON = style("neon", "تئاتر نئون", "NEON THEATRE", "بنفش شب، شیشهٔ رنگی و نورهای صحنه", ThemeLayout.ORBIT,
+        false, 0xFF080717, 0xFF21173B, 0xFFF6F0FF, 0xFFC2B3DA, 0xFFE2BCFF, 0xFF21112F, 0xFF7956A2,
+        1.2f, ThemeFrame.GLOW, ThemeButton.GLASS, ThemePattern.NEON)
+    val EMERALD = style("emerald", "نیمه‌شب", "MIDNIGHT NOIR", "آبی نفتی، فولاد صیقلی و نور یخی", ThemeLayout.PALM,
+        false, 0xFF040D19, 0xFF10253B, 0xFFF1F8FF, 0xFFAABFD4, 0xFF9CD7FF, 0xFF0B1E33, 0xFF476A8C,
+        1.15f, ThemeFrame.GLOW, ThemeButton.GRADIENT, ThemePattern.ARABESQUE)
+    val COPPER = style("copper", "مخمل سرخ", "CRIMSON VELVET", "زرشکی عمیق، طلای سرخ و قاب‌های تراش‌خورده", ThemeLayout.VOLT,
+        false, 0xFF17060D, 0xFF351420, 0xFFFFF0E8, 0xFFD4B1B2, 0xFFF8C498, 0xFF30140F, 0xFF91614F,
+        .9f, ThemeFrame.ORNATE, ThemeButton.BEVEL, ThemePattern.DIAMOND)
+    val IVORY = style("ivory", "کریستال", "CRYSTAL PALACE", "شیشهٔ روشن، آبی بلوری و نور نقره‌ای", ThemeLayout.WAVE,
+        true, 0xFFEAF2F7, 0xFFFCFEFF, 0xFF172A42, 0xFF50677E, 0xFF245D9C, 0xFFFFFFFF, 0xFFA8C2D9,
+        1.1f, ThemeFrame.SOFT, ThemeButton.FLAT, ThemePattern.DOTS)
 
     val all = listOf(COBALT, IRANIC, NEON, EMERALD, COPPER, IVORY)
     val FALLBACK = COBALT
@@ -232,9 +237,9 @@ object NavBar {
         val host = screen.host
         val t = ThemeEngine.spec
         return android.widget.FrameLayout(host).apply {
-            setPadding(kit.dp(if (t.layout == ThemeLayout.PAPER || t.layout == ThemeLayout.VOLT) 0 else 16), kit.dp(6), kit.dp(if (t.layout == ThemeLayout.PAPER || t.layout == ThemeLayout.VOLT) 0 else 16), kit.dp(10))
+            setPadding(kit.dp(10), kit.dp(4), kit.dp(10), kit.dp(8))
             addView(kit.horizontal(android.view.Gravity.CENTER).apply {
-                background = PanelDrawable(kit.density, PanelStyle.NORMAL, if (t.layout == ThemeLayout.WAVE) 40f else 20f)
+                background = PanelDrawable(kit.density, PanelStyle.RAISED, 26f)
                 setPadding(kit.dp(6), kit.dp(5), kit.dp(6), kit.dp(9))
                 items.forEach { (id, icon, label) ->
                     val on = id == selected
@@ -242,11 +247,12 @@ object NavBar {
                         setPadding(0, kit.dp(5), 0, kit.dp(5))
                         if (on) background = android.graphics.drawable.GradientDrawable().apply {
                             cornerRadius = kit.dpf(DivanDesign.radius(t, if (t.layout == ThemeLayout.WAVE) 30f else 12f))
-                            setColor(if (t.layout == ThemeLayout.VOLT) t.accent else Royal.alpha(Royal.gold, if (t.light) 0.10f else 0.14f))
+                            colors = intArrayOf(Royal.alpha(t.accent, if (t.light) .15f else .23f), Royal.alpha(t.accent, .035f))
+                            setStroke(kit.dp(1), Royal.alpha(t.accent, .5f))
                         }
                         minimumHeight = kit.dp(46)
-                        addView(kit.icon(icon, if (on && t.layout == ThemeLayout.VOLT) t.onAccent else if (on) Royal.goldLight else Royal.muted, 22))
-                        if (t.layout != ThemeLayout.ORBIT || on) addView(kit.text(label, TextStyle.CAPTION, if (on && t.layout == ThemeLayout.VOLT) t.onAccent else if (on) Royal.goldLight else Royal.muted, android.view.Gravity.CENTER, 1).apply {
+                        addView(kit.icon(icon, if (on) Royal.goldLight else Royal.muted, 22))
+                        addView(kit.text(label, TextStyle.CAPTION, if (on) Royal.goldLight else Royal.muted, android.view.Gravity.CENTER, 1).apply {
                             if (on) typeface = RoyalFonts.get(context, true)
                         })
                         isClickable = true

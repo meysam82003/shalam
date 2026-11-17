@@ -270,8 +270,7 @@ class PanelDrawable(
     override fun draw(canvas: Canvas) {
         val b = bounds
         if (b.isEmpty) return
-        val t = ThemeEngine.spec
-        if (t.frame == ThemeFrame.ORNATE) ornate(canvas, t) else modern(canvas, t)
+        CinemaSurface.panel(canvas, b, density, style, radiusDp, paint)
         paint.shader = null
     }
 
@@ -450,11 +449,11 @@ class ButtonDrawable(
         kind == ButtonKind.CHIP_SELECTED || kind == ButtonKind.DANGER
 
     private fun colors(t: ThemeSpec): IntArray = when (kind) {
-        ButtonKind.PRIMARY, ButtonKind.CHIP_GOLD -> t.primary
+        ButtonKind.PRIMARY, ButtonKind.CHIP_GOLD -> CinemaLook.primary()
         ButtonKind.SUCCESS, ButtonKind.CHIP_SELECTED -> t.successFill
         ButtonKind.DANGER -> t.dangerFill
-        ButtonKind.SECONDARY -> t.secondary
-        ButtonKind.CHIP -> t.chip
+        ButtonKind.SECONDARY -> if (CinemaLook.scene in listOf(CinemaScene.MAFIA, CinemaScene.MENFI, CinemaScene.THEATRE, CinemaScene.SPY)) IntArray(3) { CinemaLook.surface(t) } else t.secondary
+        ButtonKind.CHIP -> if (CinemaLook.scene in listOf(CinemaScene.MAFIA, CinemaScene.MENFI, CinemaScene.THEATRE, CinemaScene.SPY)) IntArray(3) { CinemaLook.surface(t) } else t.chip
         ButtonKind.GHOST -> intArrayOf(0, 0, 0)
     }
 
@@ -470,7 +469,7 @@ class ButtonDrawable(
     private fun bevel(canvas: Canvas, t: ThemeSpec) {
         val b = bounds
         val a = alphaFraction * if (enabled) 1f else 0.42f
-        val r = radiusDp * density
+        val r = (radiusDp * density * 1.6f).coerceAtMost(b.height() / 2f)
         val depth = if (pressed) 0.6f * density else 2.4f * density
         val face = RectF(b.left + density, b.top + (if (pressed) 1.8f * density else 0f), b.right - density, b.bottom - depth)
         val colors = colors(t)
@@ -595,7 +594,7 @@ class ButtonDrawable(
         fun textColor(kind: ButtonKind): Int {
             val t = ThemeEngine.spec
             return when (kind) {
-                ButtonKind.PRIMARY, ButtonKind.CHIP_GOLD -> t.primaryText
+                ButtonKind.PRIMARY, ButtonKind.CHIP_GOLD -> CinemaLook.onPrimary()
                 ButtonKind.SUCCESS, ButtonKind.CHIP_SELECTED -> t.successOn
                 ButtonKind.DANGER -> t.dangerOn
                 ButtonKind.SECONDARY, ButtonKind.GHOST -> t.secondaryText

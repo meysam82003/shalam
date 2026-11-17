@@ -111,21 +111,23 @@ object DivanDesign {
     }
 
     fun role(canvas: Canvas, width: Int, height: Int, glyph: MafiaGlyph, hidden: Boolean, dead: Boolean, p: Paint, tint: Int = ThemeEngine.spec.accent) {
-        val t = ThemeEngine.spec
         val k = min(width, height) / 100f
         if (k <= 0f) return
+        val color = if (dead) Royal.crimson else if (hidden) Royal.gold else Royal.mix(tint, 0xFFFFFFFF.toInt(), .24f)
         canvas.save(); canvas.translate((width - 100f * k) / 2f, (height - 100f * k) / 2f); canvas.scale(k, k)
-        p.shader = null; p.style = Paint.Style.FILL; p.color = Royal.alpha(if (dead) t.danger else t.accent, .12f)
-        val r = radius(t, 26f)
-        canvas.drawRoundRect(RectF(4f, 4f, 96f, 96f), r, r, p)
-        canvas.save(); canvas.translate(22f, 22f); canvas.scale(.56f, .56f)
-        p.color = if (dead) t.danger else if (hidden) t.accent else if (t.light) tint else Royal.mix(tint, 0xFFFFFFFF.toInt(), .55f)
-        canvas.drawPath(MafiaArt.glyph(if (hidden) MafiaGlyph.QUESTION else glyph), p)
-        canvas.restore()
-        if (dead) {
-            p.style = Paint.Style.STROKE; p.strokeWidth = 6f; p.strokeCap = Paint.Cap.ROUND; p.color = t.danger
-            canvas.drawLine(22f, 78f, 78f, 22f, p)
-        }
+        p.shader = android.graphics.RadialGradient(50f, 48f, 48f, intArrayOf(Royal.alpha(color, .33f), 0), null, android.graphics.Shader.TileMode.CLAMP)
+        p.style = Paint.Style.FILL; canvas.drawCircle(50f, 48f, 48f, p)
+        canvas.translate(17f, 16f); canvas.scale(.66f, .66f)
+        val path = MafiaArt.glyph(if (hidden) MafiaGlyph.QUESTION else glyph)
+        p.shader = null; p.color = 0x99000000.toInt(); canvas.save(); canvas.translate(0f, 5f); canvas.drawPath(path, p); canvas.restore()
+        p.style = Paint.Style.STROKE; p.strokeWidth = 3.3f
+        p.shader = android.graphics.LinearGradient(0f, 0f, 90f, 100f, intArrayOf(0xFFFFFFFF.toInt(), color, Royal.mix(color, 0xFF000000.toInt(), .65f)), null, android.graphics.Shader.TileMode.CLAMP)
+        canvas.drawPath(path, p)
+        p.style = Paint.Style.FILL
+        p.shader = android.graphics.LinearGradient(0f, 0f, 80f, 100f, intArrayOf(Royal.mix(color, 0xFFFFFFFF.toInt(), .45f), color, Royal.mix(color, 0xFF000000.toInt(), .5f)), null, android.graphics.Shader.TileMode.CLAMP)
+        canvas.drawPath(path, p)
+        p.shader = null
+        if (dead) { p.style = Paint.Style.STROKE; p.strokeWidth = 6f; p.color = Royal.crimson; canvas.drawLine(5f, 90f, 90f, 5f, p) }
         p.style = Paint.Style.FILL; canvas.restore()
     }
 }

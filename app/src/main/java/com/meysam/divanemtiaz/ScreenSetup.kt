@@ -8,6 +8,7 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 
 class SetupScreen(host: MainActivity, private val game: GameType) : Screen(host) {
+    override val visualScene: CinemaScene get() = if (game == GameType.MENFI) CinemaScene.MENFI else CinemaScene.CARDS
     override val audioScope: String? get() = if (game == GameType.SHALAM) "shalam" else null
     override val featureKey: String get() = game.key
     private val sides: MutableList<Side> = initialSides()
@@ -35,6 +36,7 @@ class SetupScreen(host: MainActivity, private val game: GameType) : Screen(host)
         subtitle = game.subtitle,
         bottom = kit.button("شروع داوری ${game.title}", ButtonKind.PRIMARY, RoyalIcon.PLAY) { start() }
     ) {
+        addView(CinemaArtView(host, CinemaScene.CARDS, game), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(102)))
         addView(kit.section(if (game.isTeamGame) "تیم‌ها" else "بازیکنان (${kit.n(sides.size)})", RoyalIcon.PLAYERS))
         if (game == GameType.SHALAM) addView(kit.button("صداها و موسیقی شلم", ButtonKind.GHOST, RoyalIcon.PLAY) { host.push(GameAudioSettingsScreen(host, "shalam")) })
         if (game.isTeamGame) addView(versus())

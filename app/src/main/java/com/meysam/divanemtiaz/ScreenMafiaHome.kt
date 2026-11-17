@@ -44,12 +44,8 @@ class MafiaHomeScreen(host: MainActivity) : Screen(host) {
 
     private fun hero(): View = kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
         layoutParams = kit.spaced(8)
-        addView(FrameLayout(host).apply {
-            addView(roleCard(MafiaRole.GODFATHER).apply { rotation = 8f }, FrameLayout.LayoutParams(kit.dp(108), kit.dp(153), Gravity.CENTER).apply { leftMargin = kit.dp(110) })
-            addView(roleCard(MafiaRole.DETECTIVE).apply { rotation = -8f }, FrameLayout.LayoutParams(kit.dp(108), kit.dp(153), Gravity.CENTER).apply { rightMargin = kit.dp(110) })
-            addView(roleCard(MafiaRole.CITIZEN), FrameLayout.LayoutParams(kit.dp(120), kit.dp(170), Gravity.CENTER))
-        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(186)))
-        addView(kit.text("گردانندگی شب و روز، رأی‌گیری و کارت حرکت آخر", TextStyle.LABEL, Royal.muted, Gravity.CENTER), kit.spaced(12))
+        addView(CinemaArtView(host, CinemaScene.MAFIA), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(176)))
+        addView(kit.text("گردانندگی شب و روز، رأی‌گیری و کارت حرکت آخر", TextStyle.LABEL, Royal.muted, Gravity.CENTER), kit.spaced(10))
     }
 
     private fun tile(glyph: MafiaGlyph, title: String, caption: String, onClick: () -> Unit): View =

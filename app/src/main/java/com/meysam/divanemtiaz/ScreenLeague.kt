@@ -8,6 +8,7 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 
 class LeagueListScreen(host: MainActivity) : Screen(host) {
+    override val visualScene: CinemaScene get() = CinemaScene.TROPHY
     override val adZone: String? get() = "leagues"
     override val featureKey: String get() = "leagues"
     override val navTab: Int get() = NavBar.LEAGUES
@@ -57,6 +58,7 @@ class LeagueListScreen(host: MainActivity) : Screen(host) {
 fun formatTitle(format: Int): String = if (format == LeagueFormat.ROUND_ROBIN) "دوره‌ای (جدول)" else "حذفی دو برده"
 
 class LeagueSetupScreen(host: MainActivity, private val editing: Long? = null) : Screen(host) {
+    override val visualScene: CinemaScene get() = CinemaScene.TROPHY
     private val existing = editing?.let { host.repo.league(it) }
     override val featureKey: String get() = "leagues"
     override val featureUsed: Int get() = if (existing == null) host.repo.leagues().size else -1
@@ -219,6 +221,7 @@ class LeagueSetupScreen(host: MainActivity, private val editing: Long? = null) :
 }
 
 class LeagueScreen(host: MainActivity, private val leagueId: Long) : Screen(host) {
+    override val visualScene: CinemaScene get() = CinemaScene.TROPHY
     private val lookup: (Long) -> GameSession? = { host.repo.session(it) }
 
     override fun build(): View {

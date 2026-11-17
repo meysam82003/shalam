@@ -7,6 +7,7 @@ import android.widget.LinearLayout
 import kotlin.math.abs
 
 class ResultScreen(host: MainActivity, private val session: GameSession) : Screen(host) {
+    override val visualScene: CinemaScene get() = CinemaScene.TROPHY
     override val adZone: String? get() = if (session.finished) "result" else null
     override val sessionId: Long get() = session.id
 
@@ -211,6 +212,7 @@ fun Screen.describeRound(session: GameSession, round: Round): String {
 }
 
 class HistoryScreen(host: MainActivity) : Screen(host) {
+    override val visualScene: CinemaScene get() = CinemaScene.TROPHY
     override val adZone: String? get() = "history"
     override val featureKey: String get() = "history"
     override val navTab: Int get() = NavBar.HISTORY

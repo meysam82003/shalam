@@ -35,6 +35,14 @@ abstract class Screen(val host: MainActivity) {
     var savedScroll = 0
 
     /** Pages of a running game keep a compact page bar instead of the large title. */
+    open val visualScene: CinemaScene get() = when {
+        mafiaArea -> CinemaScene.MAFIA
+        audioScope == "panto" || featureKey?.startsWith("panto") == true -> CinemaScene.THEATRE
+        featureKey?.startsWith("spy") == true -> CinemaScene.SPY
+        sessionId != null -> CinemaScene.CARDS
+        else -> CinemaScene.GENERAL
+    }
+
     open val compactHeader: Boolean get() = sessionId != null
 
     /** Tab of the bottom navigation this page belongs to ([NavBar]); -1 = no navigation bar. */
@@ -79,12 +87,12 @@ abstract class Screen(val host: MainActivity) {
             bar.addView(kit.hgap(10))
         }
         // Game pages keep a compact title; other pages show a large title that slides into the bar on scroll.
-        val large = !compactHeader
+        val large = false
         val design = ThemeEngine.spec.layout
         val smallTitle = kit.vertical().apply {
-            addView(kit.text(title, if (large) TextStyle.HEADING else TextStyle.TITLE, Royal.title, maxLines = 1))
+            addView(kit.text(title, if (large) TextStyle.HEADING else TextStyle.TITLE, Royal.title, Gravity.CENTER, maxLines = 1))
             subtitleView = null
-            if (!large && !subtitle.isNullOrBlank()) addView(kit.text(subtitle, TextStyle.CAPTION, Royal.muted, maxLines = 1).also { subtitleView = it })
+            if (!large && !subtitle.isNullOrBlank()) addView(kit.text(subtitle, TextStyle.CAPTION, Royal.muted, Gravity.CENTER, maxLines = 1).also { subtitleView = it })
             if (large) alpha = 0f
         }
         bar.addView(smallTitle, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
@@ -351,7 +359,7 @@ class MainActivity : Activity() {
         if (next === ThemeEngine.spec) return
         ThemeEngine.apply(next)
         LaunchLook.remember(this, next)
-        rootView.background = BackdropDrawable(resources.displayMetrics.density)
+        rootView.background = CinemaBackdrop(resources.displayMetrics.density, current?.visualScene ?: CinemaScene.HOME)
         paintSystemBars()
         refresh()
     }
@@ -663,6 +671,8 @@ class MainActivity : Activity() {
         }
         pageFade?.cancel()
         pageFade = null
+        CinemaLook.scene = screen.visualScene
+        rootView.background = CinemaBackdrop(resources.displayMetrics.density, screen.visualScene)
         val view = screen.build()
         restoreScroll(view, screen.savedScroll)
         if (!animate || !settings.general.animations) {

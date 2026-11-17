@@ -92,6 +92,7 @@ class MafiaGameScreen(host: MainActivity, gameId: Long) : MafiaScreen(host, game
 
     private fun header(glyph: MafiaGlyph, title: String, line: String, cues: List<String>): View = kit.panel(PanelStyle.RAISED, 12).apply {
         layoutParams = kit.spaced(10)
+        addView(CinemaArtView(host, CinemaScene.MAFIA), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(126)))
         addView(kit.horizontal().apply {
             addView(seal(glyph, null, 58))
             addView(kit.hgap(10))

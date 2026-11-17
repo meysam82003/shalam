@@ -67,6 +67,7 @@ private fun Screen.watchPro(): () -> Unit = { host.post(0) { if (host.current ==
 
 // ================================================================ plans and purchase
 class ProScreen(host: MainActivity, private val reason: String? = null, private val focusPlan: String? = null) : Screen(host) {
+    override val visualScene: CinemaScene get() = CinemaScene.PRO
     private var busy = false
     /** Discount code accepted for this visit: code, percent and the plan it is for (null = all plans). */
     private var promo: Triple<String, Int, String?>? = null
@@ -77,7 +78,7 @@ class ProScreen(host: MainActivity, private val reason: String? = null, private 
 
     override fun build(): View = scaffold("دیوان Pro", "بدون تبلیغ، با همهٔ قابلیت‌ها") {
         addView(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
-            addView(HeroCrestView(host), LinearLayout.LayoutParams(kit.dp(190), kit.dp(140)))
+            addView(RegalCrownView(host), LinearLayout.LayoutParams(kit.dp(190), kit.dp(140)))
             addView(kit.text("دیوان Pro", TextStyle.DISPLAY, Royal.goldLight, Gravity.CENTER))
             addView(kit.text("حمایت از ساخت دیوان، بدون تبلیغ و با همهٔ قابلیت‌ها", TextStyle.BODY, Royal.muted, Gravity.CENTER))
         }, kit.spaced(12))
@@ -359,6 +360,7 @@ object Gate {
 
 // ================================================================ account: login, register, recover
 class AccountScreen(host: MainActivity, private val then: (() -> Unit)? = null) : Screen(host) {
+    override val visualScene: CinemaScene get() = CinemaScene.PRO
     private var mode = 1 // 0 login, 1 register, 2 recover
 
     override fun build(): View = scaffold("حساب کاربری", "خرید Pro و تست ۱۰ دقیقه‌ای مافیا") {
@@ -425,6 +427,7 @@ class AccountScreen(host: MainActivity, private val then: (() -> Unit)? = null) 
 
 /** Shows the recovery key once; the player confirms having written it down. */
 class RecoveryKeyScreen(host: MainActivity, private val key: String, private val then: (() -> Unit)?, private val recovered: Boolean = false) : Screen(host) {
+    override val visualScene: CinemaScene get() = CinemaScene.PRO
     private var confirmed = false
 
     override fun onBack(): Boolean { if (!confirmed) { kit.toast("اول کلید را یادداشت کنید و تأیید بزنید."); return true }; return false }
@@ -460,6 +463,7 @@ class RecoveryKeyScreen(host: MainActivity, private val key: String, private val
 
 // ================================================================ «اشتراک من»
 class SubscriptionScreen(host: MainActivity) : Screen(host) {
+    override val visualScene: CinemaScene get() = CinemaScene.PRO
     private val listener = watchPro()
     override fun onShow() { ProState.listeners += listener; if (ProState.loggedIn) ProSync.refreshAccount() }
     override fun onHide() { ProState.listeners -= listener }

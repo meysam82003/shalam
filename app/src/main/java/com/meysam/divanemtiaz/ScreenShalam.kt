@@ -12,6 +12,7 @@ import kotlin.math.abs
 
 /** Timer bookkeeping shared by the three live boards. */
 abstract class BoardScreen(host: MainActivity, val session: GameSession) : Screen(host) {
+    override val visualScene: CinemaScene get() = if (session.game == GameType.MENFI) CinemaScene.MENFI else CinemaScene.CARDS
     override val audioScope: String? get() = if (session.game == GameType.SHALAM) "shalam" else null
     override val sessionId: Long get() = session.id
     private var shownAt = 0L
@@ -130,6 +131,7 @@ class ShalamBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(
                 })
             }
         ) {
+            addView(CinemaArtView(host, CinemaScene.CARDS, GameType.SHALAM), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(110)))
             addView(kit.horizontal(Gravity.TOP).apply {
                 layoutParams = kit.spaced(8)
                 session.sides.forEachIndexed { i, side ->
@@ -248,6 +250,7 @@ fun Screen.shalamStatsDialog(session: GameSession) {
 
 /** Two-step hand entry: contractor + bid, then opponent points with a live result preview. */
 class ShalamHandScreen(host: MainActivity, private val session: GameSession, private val editIndex: Int?) : Screen(host) {
+    override val visualScene: CinemaScene get() = CinemaScene.CARDS
     private val rules get() = session.rules.shalam
     private val mode get() = rules.mode
     private val editing: Round? = editIndex?.let { session.rounds.getOrNull(it) }

@@ -58,6 +58,7 @@ class MenfiBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(h
                 })
             }
         ) {
+            addView(CinemaArtView(host, CinemaScene.CARDS, GameType.MENFI), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(95)))
             addView(kit.horizontal(Gravity.TOP).apply {
                 layoutParams = kit.spaced(8)
                 session.sides.forEachIndexed { i, side ->
@@ -139,6 +140,7 @@ fun menfiOutcomeTitle(session: GameSession, outcome: Int): String {
 }
 
 class MenfiHandScreen(host: MainActivity, private val session: GameSession, private val editIndex: Int?) : Screen(host) {
+    override val visualScene: CinemaScene get() = if (session.game == GameType.MENFI) CinemaScene.MENFI else CinemaScene.CARDS
     private val rules get() = session.rules.menfi
     private val editing = editIndex?.let { session.rounds.getOrNull(it) }
     private val numbers = arrayOf(editing?.numbers?.getOrNull(0), editing?.numbers?.getOrNull(1))
@@ -402,6 +404,7 @@ class HezarBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(h
 }
 
 class HezarRoundScreen(host: MainActivity, private val session: GameSession, private val editIndex: Int?) : Screen(host) {
+    override val visualScene: CinemaScene get() = if (session.game == GameType.MENFI) CinemaScene.MENFI else CinemaScene.CARDS
     private val rules get() = session.rules.hezar
     private val editing = editIndex?.let { session.rounds.getOrNull(it) }
     private val values = MutableList(session.sides.size) { editing?.raw?.getOrNull(it)?.let { v -> kotlin.math.abs(v).toString() } ?: "" }

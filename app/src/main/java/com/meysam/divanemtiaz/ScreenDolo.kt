@@ -174,6 +174,7 @@ class DoloBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(ho
 
 /** One hand: trump holder, minimum, declarations and results with the «همه … به جز» lists. */
 class DoloHandScreen(host: MainActivity, private val session: GameSession, private val editIndex: Int?) : Screen(host) {
+    override val visualScene: CinemaScene get() = CinemaScene.CARDS
     private val rules get() = session.rules.dolo
     private val editing = editIndex?.let { session.rounds.getOrNull(it) }
     private val players: List<Int> = if (editing != null && editing.numbers.isNotEmpty()) {
@@ -346,6 +347,7 @@ class DoloHandScreen(host: MainActivity, private val session: GameSession, priva
 
 /** Referee ticks who leaves; the lowest scores are pre-ticked and a tie at the cut can add hands. */
 class DoloEliminationScreen(host: MainActivity, private val session: GameSession, private val manual: Boolean) : Screen(host) {
+    override val visualScene: CinemaScene get() = CinemaScene.CARDS
     private val rules get() = session.rules.dolo
     private val state = DoloEngine.state(session)
     private val candidates = DoloEngine.candidates(session)

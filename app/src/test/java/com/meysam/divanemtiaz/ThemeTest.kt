@@ -49,7 +49,7 @@ class ThemeTest {
         assertTrue(Themes.all.map { it.button }.toSet().size >= 4)
         assertTrue(Themes.all.map { it.frame }.toSet().size >= 3)
         assertEquals(6, Themes.all.map { it.pattern }.toSet().size)
-        assertEquals(3, Themes.all.count { it.light })
+        assertEquals(2, Themes.all.count { it.light })
     }
 
     @Test fun redesignedLayoutsKeepAllSixSavedStyleIds() {

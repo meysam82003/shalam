@@ -20,51 +20,36 @@ class ThemePreviewView(context: Context, private val spec: ThemeSpec) : View(con
     private val rect = RectF()
 
     override fun onDraw(canvas: Canvas) {
-        val w = width.toFloat(); val h = height.toFloat()
-        if (w <= 0 || h <= 0) return
-        val t = spec; val k = w / 180f
-        canvas.save(); canvas.scale(k, k)
-        val height = h / k
-        paint.style = Paint.Style.FILL; paint.shader = null; paint.color = t.bg[0]
-        canvas.drawRect(0f, 0f, 180f, height, paint)
-        DivanDesign.background(canvas, 180f, height, .5f, t, paint)
-        fun box(x: Float, y: Float, bw: Float, bh: Float, color: Int, radius: Float = 12f) {
-            paint.style = Paint.Style.FILL; paint.color = color
-            val r = DivanDesign.radius(t, radius)
-            canvas.drawRoundRect(RectF(x, y, x + bw, y + bh), r, r, paint)
+        val w = width.toFloat(); val h = height.toFloat(); if (w <= 0 || h <= 0) return
+        val t = spec; val k = w / 180f; val height = h / k
+        canvas.save(); canvas.scale(k,k)
+        paint.style = Paint.Style.FILL; paint.shader = LinearGradient(0f,0f,180f,height,t.bg[0],t.surface,Shader.TileMode.CLAMP)
+        canvas.drawRoundRect(RectF(0f,0f,180f,height),14f,14f,paint)
+        paint.shader = android.graphics.RadialGradient(90f,24f,120f,intArrayOf(Royal.alpha(t.accent,.13f),0),null,Shader.TileMode.CLAMP)
+        canvas.drawRoundRect(RectF(0f,0f,180f,height),14f,14f,paint)
+        fun box(x:Float,y:Float,bw:Float,bh:Float,color:Int,r:Float=7f) {
+            paint.shader=null;paint.style=Paint.Style.FILL;paint.color=color
+            canvas.drawRoundRect(RectF(x,y,x+bw,y+bh),r,r,paint)
+            paint.style=Paint.Style.STROKE;paint.strokeWidth=.7f
+            paint.shader=LinearGradient(x,y,x+bw,y+bh,t.metalLight,t.border,Shader.TileMode.CLAMP)
+            canvas.drawRoundRect(RectF(x,y,x+bw,y+bh),r,r,paint);paint.shader=null;paint.style=Paint.Style.FILL
         }
-        fun line(x: Float, y: Float, length: Float, color: Int = t.muted) = box(x, y, length, 3f, color, 2f)
-        line(108f, 12f, 58f, t.text); line(128f, 20f, 38f)
-        val paper = t.layout == ThemeLayout.PAPER
-        val center = t.layout == ThemeLayout.PALM || t.layout == ThemeLayout.ORBIT
-        val heroH = if (center) 68f else 47f
-        if (!paper) box(10f, 33f, 160f, heroH, t.surface)
-        if (center) {
-            box(77f, 40f, 26f, 26f, t.accent)
-            line(56f, 76f, 68f, t.text); line(66f, 85f, 48f)
-        } else {
-            line(80f, 43f, 76f, t.accent); line(54f, 54f, 102f, t.text); line(99f, 65f, 57f)
-            if (!paper) box(19f, 45f, 27f, 27f, t.accent)
+        val crown=android.graphics.Path().apply {moveTo(76f,23f);lineTo(72f,9f);lineTo(83f,15f);lineTo(90f,4f);lineTo(97f,15f);lineTo(108f,9f);lineTo(104f,23f);close()}
+        paint.shader=LinearGradient(75f,4f,105f,26f,t.metalLight,t.accent,Shader.TileMode.CLAMP);canvas.drawPath(crown,paint)
+        paint.shader=null;paint.color=t.accent;canvas.drawRoundRect(RectF(52f,30f,128f,35f),2f,2f,paint)
+        val cellH=(height-88f)/3f
+        val icons=listOf(RoyalIcon.CARDS,RoyalIcon.SPADE,RoyalIcon.TROPHY,RoyalIcon.CLUB)
+        for(i in 0..3){val x=10f+(i%2)*83f;val y=45f+(i/2)*(cellH+5f)
+            box(x,y,77f,cellH,t.surface)
+            RoyalIcons.draw(canvas,icons[i],RectF(x+25f,y+6f,x+52f,y+33f),if(i%2==0)t.accent else t.success,paint,1.5f)
+            paint.color=t.text;canvas.drawRoundRect(RectF(x+20f,y+cellH-11f,x+57f,y+cellH-8f),1f,1f,paint)
         }
-        val start = 33f + heroH + 12f
-        if (paper || t.layout == ThemeLayout.WAVE) {
-            for (i in 0..2) {
-                box(10f, start + 31f * i, 160f, 26f, t.surface)
-                box(140f, start + 5f + 31f * i, 16f, 16f, t.accent)
-                line(74f, start + 8f + 31f * i, 56f, t.text)
-                line(94f, start + 16f + 31f * i, 36f)
-            }
-        } else {
-            val cardH = (height - start - 34f) / 2f
-            for (i in 0..3) {
-                val x = 10f + (i % 2) * 83f; val y = start + (i / 2) * (cardH + 6f)
-                box(x, y, 77f, cardH, t.surface)
-                box(x + 48f, y + 7f, 20f, 20f, t.accent)
-                line(x + 28f, y + cardH - 13f, 40f, t.text)
-            }
+        val y=45f+2*(cellH+5f)
+        for(i in 0..2){val x=10f+i*55f;box(x,y,50f,cellH*.72f,t.surface)
+            RoyalIcons.draw(canvas,listOf(RoyalIcon.USER,RoyalIcon.PLAY,RoyalIcon.EYE)[i],RectF(x+15f,y+6f,x+35f,y+26f),t.accent,paint,1.3f)
         }
-        box(10f, height - 22f, 160f, 16f, t.surface)
-        for (i in 0..4) box(25f + i * 30f, height - 17f, if (i == 4) 18f else 8f, 6f, if (i == 4) t.accent else t.muted, 3f)
+        box(10f,height-20f,160f,13f,t.surface)
+        for(i in 0..4){paint.color=if(i==4)t.accent else t.muted;canvas.drawCircle(30f+i*30f,height-13f,2.6f,paint)}
         canvas.restore()
     }
 }
@@ -90,7 +75,7 @@ class ThemeWelcomeScreen(host: MainActivity) : Screen(host) {
             host.resetTo(HomeScreen(host))
         }) {
         addView(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
-            addView(HeroCrestView(host), LinearLayout.LayoutParams(kit.dp(92), kit.dp(92)))
+            addView(RegalCrownView(host), LinearLayout.LayoutParams(kit.dp(92), kit.dp(92)))
         }, kit.spaced(4))
         addView(kit.text("یکی از شش سبک را لمس کنید تا همین حالا روی برنامه ببینید؛ بعداً هم از «تنظیمات ← ظاهر برنامه» قابل تغییر است.",
             TextStyle.LABEL, Royal.muted, Gravity.CENTER), kit.spaced(10))
