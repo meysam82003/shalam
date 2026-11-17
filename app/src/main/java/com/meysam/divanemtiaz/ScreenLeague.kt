@@ -67,10 +67,10 @@ class LeagueSetupScreen(host: MainActivity, private val editing: Long? = null) :
     private var winsNeeded = existing?.config?.winsNeeded ?: settings.league.winsNeeded
     private var doubleRoundRobin = existing?.config?.doubleRoundRobin ?: settings.league.doubleRoundRobin
     private var finalAfterTable = existing?.config?.finalAfterTable ?: settings.league.finalAfterTable
-    private var joker = settings.shalam.defaultJoker
-    private var endPoint = settings.shalam.mode(joker).defaultEndPoint
-    private var menfiHands = settings.menfi.hands
-    private var menfiHidden = settings.menfi.hidden
+    private var joker = existing?.rules?.shalam?.joker ?: settings.shalam.defaultJoker
+    private var endPoint = existing?.rules?.shalam?.endPoint ?: settings.shalam.mode(joker).defaultEndPoint
+    private var menfiHands = existing?.rules?.menfi?.hands ?: settings.menfi.hands
+    private var menfiHidden = existing?.rules?.menfi?.hidden ?: settings.menfi.hidden
 
     override fun build(): View = scaffold(
         title = if (existing == null) "لیگ تازه" else "ویرایش و افزودن تیم",
@@ -90,6 +90,7 @@ class LeagueSetupScreen(host: MainActivity, private val editing: Long? = null) :
             addView(kit.switchRow("رفت و برگشت", "هر دو تیم دو بار با هم بازی می‌کنند", doubleRoundRobin) { doubleRoundRobin = it })
             addView(kit.switchRow("فینال بین دو تیم اول جدول", "اگر خاموش باشد صدر جدول قهرمان است (در تساوی کامل فینال برگزار می‌شود)", finalAfterTable) { finalAfterTable = it })
         }
+        if (existing != null) addView(kit.text("قوانین تازه برای بازی‌های بعدی است؛ نتایج قبلی تغییر نمی‌کنند.", TextStyle.CAPTION, Royal.muted), kit.spaced(6))
         if (game == GameType.SHALAM) {
             addView(kit.choiceRow("جوکر", null, listOf(0 to "بدون جوکر", 1 to "با جوکر"), if (joker) 1 else 0) {
                 joker = it == 1
@@ -180,13 +181,19 @@ class LeagueSetupScreen(host: MainActivity, private val editing: Long? = null) :
             kit.toast("نام تیم‌ها نباید تکراری باشد")
             return
         }
-        val base = settings.rulesFor(game, joker, endPoint)
-        val rules = if (game == GameType.MENFI) base.copy(menfi = base.menfi.copy(hands = menfiHands, hidden = menfiHidden)) else base
+        val base = existing?.rules ?: settings.rulesFor(game, joker, endPoint)
+        val rules = when (game) {
+            GameType.MENFI -> base.copy(menfi = base.menfi.copy(hands = menfiHands, hidden = menfiHidden))
+            GameType.SHALAM -> base.copy(shalam = base.shalam.copy(joker = joker, endPoint = endPoint,
+                mode = if (existing != null && existing.rules.shalam.joker != joker) settings.shalam.mode(joker) else base.shalam.mode))
+            else -> base
+        }
         val config = (existing?.config ?: settings.league).copy(format = format, winsNeeded = winsNeeded, doubleRoundRobin = doubleRoundRobin, finalAfterTable = finalAfterTable)
         if (existing != null) {
             val scheduleChanged = clean != existing.teams || config != existing.config
             val apply = {
                 existing.name = name.trim().ifBlank { "لیگ" }
+                existing.rules = rules
                 if (scheduleChanged) LeagueEngine.reconfigure(existing, clean, config)
                 host.repo.saveLeague(existing)
                 SessionOps.rosterAdd(host, clean, true)
