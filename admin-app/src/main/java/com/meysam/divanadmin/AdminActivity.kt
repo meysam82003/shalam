@@ -87,6 +87,7 @@ class AdminActivity:Activity(){
     private fun nativePage(query:String,verb:String="GET",fields:JSONArray=JSONArray(),files:List<Triple<String,android.net.Uri,String>> = emptyList()){
         current="panel";panelQuery=query;page("مدیریت دیوان")
         api("POST","admin/mobile/panel",JSONObject().put("query",query).put("verb",verb).put("fields",fields),files){d->
+            if(d.optBoolean("logout")){token=null;saveToken(null);login();return@api}
             panelQuery=d.optString("query",query)
             d.optJSONObject("file")?.let{file->saveFile=file;startActivityForResult(android.content.Intent(android.content.Intent.ACTION_CREATE_DOCUMENT).addCategory(android.content.Intent.CATEGORY_OPENABLE).setType(file.optString("mime","application/octet-stream")).putExtra(android.content.Intent.EXTRA_TITLE,file.optString("name","divan-export")),72)}
             val nodes=d.optJSONArray("nodes")?:JSONArray();for(i in 0 until nodes.length())node(nodes.getJSONObject(i))
@@ -151,7 +152,22 @@ class AdminActivity:Activity(){
         body.addView(button("ذخیره و اعمال"){try{val data=JSONObject();getters.forEach{(key,get)->put(data,key,get())};api(method,route,data){open(current)}}catch(e:Exception){message("عدد یا مقدار واردشده معتبر نیست.")}})
     }
     private fun items(data:JSONObject,kind:String=""){val items=data.optJSONArray("items")?:return;if(items.length()==0)body.addView(text("هنوز موردی ثبت نشده است.",15f,muted));for(i in 0 until items.length()){val v=items.getJSONObject(i);val card=column().apply{background=shape();setPadding(dp(12),dp(9),dp(12),dp(12));layoutParams=LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(10)}};card.addView(text(v.optString("title"),17f,gold));card.addView(text(v.optString("body"),13f,muted));if(kind=="notices"||kind=="gifts"){val active=v.optBoolean("active");if(kind=="notices"||active)card.addView(button(if(kind=="gifts")"لغو هدیه" else if(active)"غیرفعال کردن" else "فعال کردن"){AlertDialog.Builder(this).setMessage("تغییر اعمال شود؟").setNegativeButton("انصراف",null).setPositiveButton("اعمال"){_,_->api("POST","admin/mobile/$kind",JSONObject().put(if(kind=="gifts")"revoke_id" else "toggle_id",v.getInt("id"))){open(kind)}}.show()})};body.addView(card)}}
-    private fun stats(d:JSONObject){body.addView(text("درآمد واقعی: "+d.optString("revenue_label","ناموجود"),21f,gold));body.addView(text(d.optString("verification"),13f,muted));val e=d.optJSONArray("events")?:JSONArray();for(i in 0 until e.length()){val v=e.getJSONObject(i);body.addView(text(v.optString("network")+" — "+v.optString("event")+": "+v.optLong("total")+if(v.optInt("test_mode")==1)" (آزمایشی)" else ""))};body.addView(text("پاداش‌های پرداخت‌شده",19f,gold));val history=d.optJSONArray("history")?:JSONArray();for(i in 0 until history.length()){val v=history.getJSONObject(i);body.addView(text(v.optString("username")+" — "+v.optInt("amount")+" سکه — "+v.optString("created_at"))}}
+    private fun stats(data: JSONObject) {
+        body.addView(text("درآمد واقعی: " + data.optString("revenue_label", "ناموجود"), 21f, gold))
+        body.addView(text(data.optString("verification"), 13f, muted))
+        val events = data.optJSONArray("events") ?: JSONArray()
+        for (i in 0 until events.length()) {
+            val event = events.getJSONObject(i)
+            val suffix = if (event.optInt("test_mode") == 1) " (آزمایشی)" else ""
+            body.addView(text(event.optString("network") + " — " + event.optString("event") + ": " + event.optLong("total") + suffix))
+        }
+        body.addView(text("پاداش‌های پرداخت‌شده", 19f, gold))
+        val history = data.optJSONArray("history") ?: JSONArray()
+        for (i in 0 until history.length()) {
+            val row = history.getJSONObject(i)
+            body.addView(text(row.optString("username") + " — " + row.optInt("amount") + " سکه — " + row.optString("created_at")))
+        }
+    }
     private fun saveToken(value:String?){AdminSessionVault.save(this,value)}
     private fun readToken():String?=AdminSessionVault.read(this)
     private val foreground=android.os.Handler(android.os.Looper.getMainLooper())

@@ -231,7 +231,7 @@ object AdEngine {
         val priority = c.optString("priority", "direct_first")
         val direct = if (priority != "network_only") slotFormats(c, key, false)?.let { pick(c, key, it) } else null
         if (direct != null && priority != "network_first") return render(screen, key, direct)
-        if (priority != "direct_only") AdsManager.banner(screen, key)?.let { return it }
+        if (priority != "direct_only") AdsManager.banner(screen, key) { direct?.let { render(screen, key, it) } }?.let { return it }
         val zone = c.optJSONObject("network")?.takeIf { it.optBoolean("enabled") }?.optJSONObject("zones")?.optString("banner").orEmpty()
         val netFormats = slotFormats(c, key, true).orEmpty()
         if (priority != "direct_only" && zone.isNotBlank() && "banner" in netFormats && network != null) {

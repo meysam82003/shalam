@@ -469,6 +469,7 @@ final class Migrations
                 "UPDATE {features} SET mode = 'pro', pro_items = NULL WHERE k = 'mafia' OR LEFT(k, 6) = 'mafia_'",
             ],
             13 => [
+                "ALTER TABLE {reward_watches} ADD COLUMN is_test TINYINT NOT NULL DEFAULT 0",
                 "CREATE TABLE IF NOT EXISTS {coin_wallets} (user_id BIGINT UNSIGNED PRIMARY KEY, balance BIGINT UNSIGNED NOT NULL DEFAULT 0, updated_at DATETIME NOT NULL) $e",
                 "CREATE TABLE IF NOT EXISTS {coin_watches} (id CHAR(32) PRIMARY KEY, user_id BIGINT UNSIGNED NOT NULL, device CHAR(64) NOT NULL, start_key VARCHAR(64) NOT NULL, network VARCHAR(16) NOT NULL, placement VARCHAR(100) NOT NULL, config_revision BIGINT NOT NULL, amount INT NOT NULL, daily_cap INT NOT NULL, test_mode TINYINT NOT NULL, started_at BIGINT NOT NULL, min_seconds INT NOT NULL, completed_at BIGINT NULL, claimed_at BIGINT NULL, UNIQUE KEY uq_start (user_id, start_key), KEY k_user (user_id, claimed_at), KEY k_device (device, claimed_at)) $e",
                 "CREATE TABLE IF NOT EXISTS {coin_transactions} (id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, user_id BIGINT UNSIGNED NOT NULL, watch_id CHAR(32) NOT NULL UNIQUE, amount INT NOT NULL, balance_after BIGINT UNSIGNED NOT NULL, network VARCHAR(16) NOT NULL, created_at DATETIME NOT NULL, KEY k_user (user_id, id)) $e",

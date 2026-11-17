@@ -46,6 +46,7 @@ class RewardScreen(host: MainActivity) : Screen(host) {
         addView(timer, kit.spaced(16))
         watch = kit.button(if (ProState.loggedIn) "تماشای ویدئو" else "ثبت‌نام یا ورود", ButtonKind.PRIMARY, RoyalIcon.PLAY, 54) {
             if (!ProState.loggedIn) host.push(AccountScreen(host))
+            else if (AdsManager.active()) AdsManager.reward(this@RewardScreen, { kit.toast(it) }, { host.refresh() }, proReward = true)
             else if (!AdEngine.rewardedAvailable()) kit.toast("فعلاً ویدئویی آماده نیست؛ کمی بعد دوباره امتحان کنید")
             else AdEngine.showRewarded(this@RewardScreen) { ok ->
                 kit.toast(if (ok) "یک ساعت Pro فعال شد" else "جایزه ثبت نشد؛ تماشای کامل لازم است")

@@ -77,6 +77,11 @@ final class AdminMobile
         }
         return $f;
     }
+    private static function panelInput(array $in): array {
+        $payload=isset($in['native_payload'])?json_decode((string)$in['native_payload'],true):$in;
+        if(!is_array($payload))throw new ApiError('panel','درخواست فرم نامعتبر است.');
+        return NativePanel::handle($payload);
+    }
     public static function handle(string $route,string $method,array $in): array
     {
         if ($route==='admin/mobile/login' && $method==='POST') { $r=self::login($in);if(isset($r['invalid'])) throw new ApiError('credentials','نام کاربری یا رمز درست نیست.',401);return $r; }
@@ -90,7 +95,7 @@ final class AdminMobile
         }
         if ($route==='admin/ads/stats') { self::auth('ads');if($method!=='GET')throw new ApiError('method','روش نامعتبر است.',405);return Monetization::stats(); }
         if ($route==='admin/mobile/menu' && $method==='GET') return NativePanel::menu();
-        if ($route==='admin/mobile/panel' && $method==='POST') return NativePanel::handle(isset($in['native_payload'])?json_decode((string)$in['native_payload'],true):$in);
+        if ($route==='admin/mobile/panel' && $method==='POST') return self::panelInput($in);
         if ($route==='admin/mobile/inbox') { $a=self::auth('dashboard');if($method==='GET')return AdminInbox::list($a,(int)($in['after']??0));if($method==='POST')return AdminInbox::read($a,(int)($in['read_through']??0));throw new ApiError('method','روش نامعتبر است.',405); }
         if ($route==='admin/mobile/download' && $method==='GET') {
             self::auth('backups');if(!Admin::owner())throw new ApiError('admin_forbidden','فقط مدیر اصلی می‌تواند پشتیبان دریافت کند.',403);

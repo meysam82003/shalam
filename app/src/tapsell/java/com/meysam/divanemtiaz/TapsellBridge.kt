@@ -19,7 +19,7 @@ class TapsellBridge : NetworkAds {
     override fun init(activity: Activity, appId: String, test: Boolean) {
         if (started) return
         // The SDK reads its key from the manifest (TapsellMediationAppKey) when its initializer runs.
-        ir.tapsell.mediation.core.internal.init.Initializer().initialize(activity.applicationContext)
+        Class.forName("ir.tapsell.mediation.core.internal.init.Initializer").getDeclaredConstructor().newInstance().let { initializer -> initializer.javaClass.getMethod("initialize", android.content.Context::class.java).invoke(initializer, activity.applicationContext) }
         Tapsell.setUserConsent(activity, true)
         started = true
     }

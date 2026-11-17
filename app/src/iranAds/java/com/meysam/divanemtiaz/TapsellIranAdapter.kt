@@ -15,15 +15,18 @@ class TapsellIranAdapter: IranianAdAdapter {
     override fun configure(activity:Activity,appId:String,test:Boolean):Boolean {
         val key=activity.packageManager.getApplicationInfo(activity.packageName,android.content.pm.PackageManager.GET_META_DATA).metaData?.getString("ir.tapsell.mediation.APPLICATION_KEY")
         if(key!=appId)return false
-        ir.tapsell.mediation.core.internal.init.Initializer().initialize(activity.applicationContext)
+        Class.forName("ir.tapsell.mediation.core.internal.init.Initializer").getDeclaredConstructor().newInstance().let { initializer -> initializer.javaClass.getMethod("initialize", android.content.Context::class.java).invoke(initializer, activity.applicationContext) }
         return true
     }
     override fun ready(format:String,zone:String)=loaded.containsKey("$format:$zone")
     override fun load(activity:Activity,format:String,zone:String,done:(Boolean)->Unit){
         if(ready(format,zone)){done(true);return}
+        var called=false
+        fun finish(ok:Boolean){if(!called){called=true;done(ok)}}
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({finish(false)},15000)
         val listener=object:RequestResultListener{
-            override fun onSuccess(adId:String){loaded["$format:$zone"]=adId;done(true)}
-            override fun onFailure(message:String){done(false)}
+            override fun onSuccess(adId:String){loaded["$format:$zone"]=adId;finish(true)}
+            override fun onFailure(message:String){finish(false)}
         }
         if(format=="rewarded")Tapsell.requestRewardedAd(zone,activity,listener) else Tapsell.requestInterstitialAd(zone,activity,listener)
     }

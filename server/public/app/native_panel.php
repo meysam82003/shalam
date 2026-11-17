@@ -63,7 +63,7 @@ final class NativePanel
                 Admin::checkPost($page==='account');
                 ob_start();
                 try {call_user_func(self::PAGES[$page]);$html=ob_get_clean();return ['query'=>$query,'nodes'=>self::document($html)];}
-                catch(NativePanelRedirect $e){ob_end_clean();$query=$e->query;$verb='GET';$post=[];continue;}
+                catch(NativePanelRedirect $e){ob_end_clean();if($e->query==='p=logout')return ['logout'=>true,'nodes'=>[]];$query=$e->query;$verb='GET';$post=[];continue;}
                 catch(NativePanelFile $e){ob_end_clean();return ['query'=>$query,'file'=>$e->payload,'nodes'=>[]];}
                 catch(Throwable $e){ob_end_clean();throw $e;}
             }

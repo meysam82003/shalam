@@ -23,3 +23,5 @@
 
 # Instantiated through the platform-neutral adapter boundary.
 -keep class com.meysam.divanemtiaz.*IranAdapter { *; }
+
+-keep class ir.tapsell.mediation.core.internal.init.Initializer { *; }

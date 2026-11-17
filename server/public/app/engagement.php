@@ -43,7 +43,7 @@ final class ProRewards
         return ['next_at' => $last ? $last + 86400 : 0];
     }
 
-    public static function start(array $u, array $session, int $adId): array
+    public static function start(array $u, array $session, int $adId, ?string $network = null): array
     {
         $device = Devices::clean($session['device_id'] ?? null);
         if ($device === null) throw new ApiError('no_device', 'شناسهٔ دستگاه دریافت نشد.');
@@ -54,16 +54,23 @@ final class ProRewards
         if (!$placement) throw new ApiError('no_ad', 'ویدئوی جایزه‌ای غیرفعال است.');
         $ad = null;
         foreach ($cfg['ads'] ?? [] as $candidate) if ($candidate['id'] === $adId && $candidate['format'] === 'rewarded' && ($candidate['media']['kind'] ?? '') === 'video' && in_array('rewarded_offer', $candidate['placements'], true)) $ad = $candidate;
-        if ($adId === 0 && !empty($cfg['network']['enabled']) && !empty($cfg['network']['zones']['rewarded'])) $ad = ['reward_seconds' => 1];
+        $isTest = false;
+        if ($adId === 0 && !empty($cfg['network']['enabled']) && !empty($cfg['network']['zones']['rewarded'])) { $ad = ['reward_seconds' => 10]; $isTest = !empty($cfg['network']['test']); }
+        $iran = Monetization::publicConfig(false);
+        if ($adId === 0 && $network !== null && in_array($network, [$iran['primary'], $iran['fallback']], true) && !empty($iran['enabled']) && !empty($iran['rewarded']['enabled'])) {
+            $n = $iran['networks'][$network] ?? [];
+            if (!empty($n['enabled']) && !empty($n['app_id']) && !empty($n['zones']['rewarded'])) { $ad = ['reward_seconds' => $iran['rewarded']['min_seconds']]; $isTest = !empty($n['test']); }
+        }
+
         if ($ad === null) throw new ApiError('no_ad', 'ویدئوی جایزه‌ای معتبر موجود نیست.');
         $token = bin2hex(random_bytes(32));
-        Db::insert('reward_watches', ['token_hash' => Crypto::hash($token), 'user_id' => $u['id'], 'device' => $device, 'ad_id' => $adId, 'started_at' => Clock::now(), 'min_seconds' => max(1, (int)($ad['reward_seconds'] ?? 30)), 'claimed_at' => null]);
-        return ['watch_token' => $token];
+        Db::insert('reward_watches', ['token_hash' => Crypto::hash($token), 'user_id' => $u['id'], 'device' => $device, 'ad_id' => $adId, 'started_at' => Clock::now(), 'min_seconds' => max(1, (int)($ad['reward_seconds'] ?? 30)), 'is_test' => $isTest ? 1 : 0, 'claimed_at' => null]);
+        return ['watch_token' => $token, 'test_mode' => $isTest];
     }
 
-    public static function claim(array $u, array $session, string $token): void
+    public static function claim(array $u, array $session, string $token): bool
     {
-        Db::tx(function () use ($u, $session, $token) {
+        return Db::tx(function () use ($u, $session, $token) {
             // Account and device locks serialize concurrent claims, including claims from different accounts.
             Db::one('SELECT id FROM {users} WHERE id = ? FOR UPDATE', [$u['id']]);
             $device = Devices::clean($session['device_id'] ?? null);
@@ -76,7 +83,9 @@ final class ProRewards
             if (self::status((int)$u['id'], $device)['next_at'] > Clock::now()) throw new ApiError('reward_cooldown', 'هر ۲۴ ساعت فقط یک جایزه می‌توانید بگیرید.');
             Db::update('reward_watches', ['claimed_at' => Clock::now()], 'token_hash = ?', [Crypto::hash($token)]);
             Db::update('reward_devices', ['user_id' => $u['id'], 'claimed_at' => Clock::now()], 'device = ?', [$device]);
+            if ((int)$w['is_test'] === 1) return true;
             Db::insert('user_grants', ['user_id' => $u['id'], 'feature_k' => 'pro', 'expires_at' => Clock::sql(Clock::now() + 3600), 'reason' => 'ویدئوی جایزه‌ای: یک ساعت Pro', 'created_at' => Clock::sql()]);
+            return false;
         });
     }
 }

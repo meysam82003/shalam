@@ -168,13 +168,13 @@ final class Api
                 self::post($method);
                 $u = self::user();
                 if (!RateLimit::hit('reward_start:' . $u['id'], 20, 3600)) throw new ApiError('rate_limited', 'کمی بعد دوباره تلاش کنید.', 429);
-                return ProRewards::start($u, self::$auth[1], (int)($in['ad_id'] ?? 0));
+                return ProRewards::start($u, self::$auth[1], (int)($in['ad_id'] ?? 0), isset($in['network']) ? (string)$in['network'] : null);
             }
             case 'v1/rewards/claim': {
                 self::post($method);
                 $u = self::user();
-                ProRewards::claim($u, self::$auth[1], (string)($in['watch_token'] ?? ''));
-                return self::account($u);
+                $test = ProRewards::claim($u, self::$auth[1], (string)($in['watch_token'] ?? ''));
+                return ['test_reward' => $test] + self::account($u);
             }
             case 'v1/auth/register': {
                 self::post($method);

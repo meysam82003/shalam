@@ -90,7 +90,7 @@ object AdsManager {
     }
     fun releaseBanners() { banners.forEach { runCatching { it.first.destroyBanner(it.second) } }; banners.clear() }
     fun release() { releaseBanners(); adapters.values.forEach { runCatching { it.release() } }; adapters.clear(); initialized.clear(); fullScreen=false; rewardBusy=false }
-    fun banner(screen: Screen, placement: String): View? {
+    fun banner(screen: Screen, placement: String, fallback: (() -> View?)? = null): View? {
         init(screen.host)
         val c = config() ?: return null
         val rules = c.optJSONObject("banner") ?: return null
@@ -104,7 +104,8 @@ object AdsManager {
         val box = FrameLayout(screen.host);wrap.addView(box)
         fun attempt(index: Int) {
             val activity = host.get() ?: return
-            if (activity.isFinishing || activity.current !== screen || index >= sources.size) { wrap.visibility = View.GONE;return }
+            if (activity.isFinishing || activity.current !== screen) { wrap.visibility = View.GONE;return }
+            if(index >= sources.size){val direct=fallback?.invoke();wrap.removeAllViews();if(direct!=null){wrap.addView(direct);wrap.visibility=View.VISIBLE}else wrap.visibility=View.GONE;return}
             val (name,n) = sources[index]; val zone = n.getJSONObject("zones").getString("banner")
             val impl = adapter(activity,name,n)
             if (impl == null) { attempt(index+1);return }
@@ -157,7 +158,7 @@ object AdsManager {
         }
         prepare(screen.host) // Never wait for a load at a game transition.
     }
-    fun reward(screen: Screen, status: (String) -> Unit, done: (Boolean) -> Unit) {
+    fun reward(screen: Screen, status: (String) -> Unit, done: (Boolean) -> Unit, proReward: Boolean = false) {
         if (rewardBusy || fullScreen) {status("یک تبلیغ دیگر در حال اجراست.");done(false);return}
         if(!ProState.loggedIn){screen.host.push(AccountScreen(screen.host));done(false);return}
         val sources=chain("rewarded");if(sources.isEmpty()){status("تبلیغی موجود نیست یا در انتظار تنظیمات ناشر است.");done(false);return}
@@ -172,19 +173,19 @@ object AdsManager {
             event(name,"rewarded",zone,"request")
             impl.load(host,"rewarded",zone){ready->
                 if(!ready){event(name,"rewarded",zone,"error");attempt(index+1)} else {
-                    Api.call("POST","ads/reward/start",JSONObject().put("network",name).put("request_id",id()),ProState.token){watch,err->
+                    Api.call("POST",if(proReward)"v1/rewards/start" else "ads/reward/start",JSONObject().put("network",name).put("ad_id",0).put("request_id",id()),ProState.token){watch,err->
                         if(watch==null||host.isFinishing||host.current!==screen){rewardBusy=false;status(err?.message?:"نمایش تبلیغ ممکن نشد.");done(false)}else{
-                            val watchId=watch.getString("watch_id");var completed=false;var ended=false
+                            val watchId=watch.getString(if(proReward)"watch_token" else "watch_id");var completed=false;var ended=false
                             fullScreen=true
                             impl.show(host,"rewarded",zone){kind->
                                 if(!ended){
                                     if(kind=="complete")completed=true
-                                    if(kind!="complete")event(name,"rewarded",zone,kind,watchId)
+                                    if(kind!="complete")event(name,"rewarded",zone,kind,if(proReward)null else watchId)
                                     if(kind=="close"||kind=="error"){
                                         ended=true;fullScreen=false;rewardBusy=false
                                         if(!completed){status("تبلیغ کامل دیده نشد؛ پاداش ثبت نشد.");done(false)}else{
-                                            val pending=JSONObject().put("watch_id",watchId).put("network",name).put("placement",zone).put("event_id",id())
-                                            prefs?.edit()?.putString("pending_${ProState.userId}",pending.toString())?.commit()
+                                            val pending=JSONObject().put("watch_id",watchId).put("network",name).put("placement",zone).put("event_id",id()).put("purpose",if(proReward)"pro" else "coins")
+                                            remember(pending)
                                             settle(host,pending){ok,message->status(message);done(ok)}
                                         }
                                     }
@@ -196,17 +197,35 @@ object AdsManager {
             }
         };attempt(0)
     }
+    private fun pending(uid:Long):JSONArray {
+        val raw=prefs?.getString("pending_$uid",null)?:return JSONArray()
+        return runCatching{if(raw.startsWith("{"))JSONArray().put(JSONObject(raw))else JSONArray(raw)}.getOrDefault(JSONArray())
+    }
+    private fun remember(w:JSONObject){val uid=ProState.userId;val q=pending(uid);if((0 until q.length()).none{q.getJSONObject(it).optString("watch_id")==w.optString("watch_id")})q.put(w);prefs?.edit()?.putString("pending_$uid",q.toString())?.commit()}
+    private fun forget(uid:Long,id:String){val q=pending(uid);val rest=JSONArray();for(i in 0 until q.length()){val w=q.getJSONObject(i);if(w.optString("watch_id")!=id)rest.put(w)};prefs?.edit()?.putString("pending_$uid",rest.toString())?.apply()}
     private fun settle(host:MainActivity,pending:JSONObject,done:((Boolean,String)->Unit)?=null){
-        val uid=ProState.userId
-        event(pending.getString("network"),"rewarded",pending.getString("placement"),"complete",pending.getString("watch_id"),pending.getString("event_id")){sent->
-            if(!sent){done?.invoke(false,"ثبت پاداش در انتظار اتصال است؛ دوباره بررسی می‌شود.");return@event}
-            Api.call("POST","ads/reward/claim",JSONObject().put("watch_id",pending.getString("watch_id")),ProState.token){data,err->
-                if(data!=null){prefs?.edit()?.remove("pending_$uid")?.apply();done?.invoke(true,if(data.optBoolean("test_reward"))"ویدئوی آزمایشی تکمیل شد؛ سکهٔ واقعی پرداخت نمی‌شود." else "سکه‌ها به حساب شما اضافه شد.")}
-                else done?.invoke(false,err?.message?:"ثبت پاداش در انتظار اتصال است.")
+        val uid=ProState.userId;val watch=pending.getString("watch_id");val pro=pending.optString("purpose")=="pro"
+        fun claim(){
+            Api.call("POST",if(pro)"v1/rewards/claim" else "ads/reward/claim",JSONObject().put(if(pro)"watch_token" else "watch_id",watch),ProState.token){data,err->
+                if(data!=null){
+                    forget(uid,watch)
+                    val test=data.optBoolean("test_reward")
+                    if(pro){AdEngine.event("reward","rewarded_offer",network=true);ProState.applyAccount(data)}
+                    done?.invoke(true,if(test)"ویدئوی آزمایشی تکمیل شد؛ جایزهٔ واقعی پرداخت نمی‌شود." else if(pro)"یک ساعت Pro فعال شد." else "سکه‌ها به حساب شما اضافه شد.")
+                } else {
+                    if(err?.code in setOf("reward_limit","reward_cooldown","watch"))forget(uid,watch)
+                    done?.invoke(false,err?.message?:"ثبت پاداش در انتظار اتصال است.")
+                }
             }
         }
+        if(pro){claim();return}
+        event(pending.getString("network"),"rewarded",pending.getString("placement"),"complete",watch,pending.getString("event_id")){sent->
+            if(!sent){done?.invoke(false,"ثبت پاداش در انتظار اتصال است؛ دوباره بررسی می‌شود.");return@event}
+            claim()
+        }
     }
-    fun recover(host:MainActivity){if(!ProState.loggedIn)return;val s=prefs?.getString("pending_${ProState.userId}",null)?:return;runCatching{settle(host,JSONObject(s))}}
+    fun recover(host:MainActivity){if(!ProState.loggedIn)return;val q=pending(ProState.userId);for(i in 0 until q.length())runCatching{settle(host,q.getJSONObject(i))}}
+
 }
 
 class CoinScreen(host:MainActivity):Screen(host){

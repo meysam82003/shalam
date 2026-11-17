@@ -136,6 +136,7 @@ final class Monetization
                     if ($w['completed_at']===null) Db::update('coin_watches',['completed_at'=>Clock::now()],'id = ?',[$watch]);
                 }
                 $stmt=Db::run('INSERT IGNORE INTO {network_ad_events} (event_key,user_id,network,format,placement,event,watch_id,test_mode,created_at) VALUES (?,?,?,?,?,?,?,?,?)',[$key,$uid,$network,$format,$placement,$event,is_string($watch)?$watch:null,$test,Clock::sql()]);
+                if($stmt->rowCount()===0){$old=Db::one('SELECT * FROM {network_ad_events} WHERE user_id=? AND event_key=?',[$uid,$key]);if($old===null||$old['network']!==$network||$old['format']!==$format||$old['placement']!==$placement||$old['event']!==$event||$old['watch_id']!==$watch)throw new ApiError('event_conflict','شناسهٔ رویداد قبلاً برای درخواست دیگری ثبت شده است.',409);}
                 $accepted += $stmt->rowCount();
             });
         }
