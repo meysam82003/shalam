@@ -28,7 +28,8 @@ $cfg = [
     'allow_set_price' => false,
     'rate_per_minute' => 1000,
 ];
-Bridge::$now = 1800000000;
+// Nonce pruning uses filesystem mtime: keep the frozen request clock aligned with newly created files.
+Bridge::$now = time();
 $calls = [];
 // Fake stores: the purchase token decides the answer.
 Bridge::$transport = function (string $m, string $url, array $h, ?string $b, int $t) use (&$calls) {

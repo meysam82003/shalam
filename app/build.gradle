@@ -15,7 +15,7 @@ def divanLicenseKey = setting('divan.licenseKey', 'DIVAN_LICENSE_KEY') ?: 'MIIBI
 def divanBazaarKey = setting('divan.bazaarKey', 'DIVAN_BAZAAR_RSA_KEY') ?: 'MIHNMA0GCSqGSIb3DQEBAQUAA4G7ADCBtwKBrwCbivNO6KdM5zzuOw4Z3AKHzSETm5dTZhlPV3dNARx/Ae+ny+AMGuO6DXyW5FSMwOBhs4k0wNwseEBkU1V1II7IRmna/2S/95Gqz+DcUA5ilxkxLlIpLAwi+D429RWYEMfx05ndBv4z0vjmDGb+2J9U21RCLLWXZL01ZkiopXS0zULVMPKTJU4dvIqtjV3rTvkoE+NPd42wsJ5fD6k4RCiHK0dba8ILe4lc75CGbx0CAwEAAQ=='
 // Myket's public RSA key (safe to commit); per-build property or environment variable takes precedence.
 def divanMyketKey = setting('divan.myketKey', 'DIVAN_MYKET_RSA_KEY') ?: 'MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCADyNgGC9nxkQGOJhwp/8wyI7aaftQ9v7E2PBaktHfIss9ZcD01MD0i1H2EVyaEPJRXgMiTaQMvdF7u1BP8V4IlcxR9HF17x0Il22eBL+q7nTTDFr5vkNJDi2wUzmMIRQzJAFkQHIeUKSkcY8i68GYCSS5lVtDMzi72F7uB3F3XQIDAQAB'
-def divanTapsell = setting('divan.tapsellAppId', 'DIVAN_TAPSELL_APP_ID')
+def divanTapsell = setting('divan.tapsellAppId', 'DIVAN_TAPSELL_APP_ID') ?: '76798342-99a7-4a5f-bf5a-60a088d5dcfb'
 // SHA-256 of the official release signing certificate (the key of every published APK since 4.9.1). Release builds
 // refuse Pro when the installed APK is signed with another key, and CI refuses to publish an APK that is not.
 def divanCertSha256 = setting('divan.certSha256', 'DIVAN_CERT_SHA256') ?: 'BDF49332DE48F6E06E3D55C380A11479243AB404291151DF8DE1F9F4BF25D0AA'
@@ -33,8 +33,8 @@ android {
         applicationId 'com.meysam.divanemtiaz'
         minSdk 21
         targetSdk 35
-        versionCode 25
-        versionName '5.6.0'
+        versionCode 28
+        versionName '5.6.1'
         manifestPlaceholders = basePlaceholders
 
         testInstrumentationRunner 'android.test.InstrumentationTestRunner'
@@ -91,7 +91,7 @@ android {
 
     // The Tapsell ad network is compiled in only when an app key is given; otherwise no ad SDK is in the APK at all.
     if (divanTapsell) {
-        sourceSets.main.java.srcDirs += 'src/tapsell/java'
+        sourceSets.main.java.srcDirs += ['src/tapsell/java', 'src/iranAds/java']
     }
 
     compileOptions {
@@ -108,6 +108,7 @@ dependencies {
     myketImplementation 'com.github.myketstore:myket-billing-client:1.19'
     if (divanTapsell) {
         implementation 'ir.tapsell.mediation:tapsell:1.3.0'
+        implementation 'com.adivery:sdk:4.10.0'
         implementation 'ir.tapsell.mediation.adapter:legacy:1.3.0'
     }
     testImplementation 'junit:junit:4.13.2'

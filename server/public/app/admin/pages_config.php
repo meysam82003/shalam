@@ -1417,6 +1417,7 @@ final class ConfigPages
             $path = $b ? Backup::dir() . '/' . basename($b['file']) : '';
             if ($b === null || !is_file($path)) throw new ApiError('missing', 'فایل پشتیبان پیدا نشد.');
             Admin::audit('backup_download', 'backup', $b['id'], 'download');
+            if (Admin::$native) throw new NativePanelFile(['name'=>basename($b['file']),'mime'=>'application/octet-stream','url'=>App::baseUrl().'/api/index.php?r=admin/mobile/download&id='.(int)$b['id']]);
             header('Content-Type: application/octet-stream');
             header('Content-Disposition: attachment; filename="' . basename($b['file']) . '"');
             header('Content-Length: ' . filesize($path));

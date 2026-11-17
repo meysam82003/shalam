@@ -8,6 +8,7 @@ if (!App::installed()) { header('Location: ../install/'); exit; }
 require_once App::$root . '/app/admin/core.php';
 require_once App::$root . '/app/admin/pages_sales.php';
 require_once App::$root . '/app/admin/pages_config.php';
+require_once App::$root . '/app/admin/iran_ads.php';
 
 Db::pdo();
 Migrations::run();
@@ -50,6 +51,7 @@ $pages = [
     'placements' => [ConfigPages::class, 'placements'],
     'media' => [ConfigPages::class, 'media'],
     'adnetwork' => [ConfigPages::class, 'adnetwork'],
+    'iranads' => [IranAdsPage::class, 'show'],
     'notices' => [ConfigPages::class, 'notices'],
     'site' => [ConfigPages::class, 'site'],
     'stores' => [ConfigPages::class, 'stores'],

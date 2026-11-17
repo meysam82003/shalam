@@ -54,6 +54,7 @@ final class Users
             'created_at' => $now, 'updated_at' => $now,
         ]);
         Audit::security('register', $id, $username);
+        AdminInbox::registration($id);
         return [self::byId($id), $key];
     }
 

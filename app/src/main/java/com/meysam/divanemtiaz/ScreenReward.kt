@@ -53,6 +53,7 @@ class RewardScreen(host: MainActivity) : Screen(host) {
             }
         }
         addView(watch)
+        addView(kit.button("سکهٔ رایگان", ButtonKind.SECONDARY, RoyalIcon.STAR) { host.push(CoinScreen(host)) }, kit.spaced(10))
     }
     override fun onShow() {
         active = true; handler.removeCallbacks(tick); handler.post(tick)

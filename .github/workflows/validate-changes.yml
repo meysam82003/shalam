@@ -19,7 +19,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
-          extensions: mbstring, pdo_mysql, openssl
+          extensions: mbstring, pdo_mysql, openssl, dom
       - name: Lint all PHP files
         run: find server payment-bridge -name '*.php' -print0 | xargs -0 -n1 php -l
       - name: Server regression tests
@@ -89,6 +89,10 @@ jobs:
           done
 
 
+      - name: Verify the dedicated administration APK
+        run: |
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          "$APKSIGNER" verify --print-certs admin-app/build/outputs/apk/release/admin-app-release.apk
       - name: Build web/PWA from the shared game code
         env:
           JAVA_HOME: ${{ env.JAVA_HOME_21_X64 }}
@@ -96,7 +100,10 @@ jobs:
         run: python3 build-play.py
       - uses: actions/upload-artifact@v4
         with:
-          name: Divan-5.6-review-builds
+          name: Divan-5.6.1-app-admin-server
           path: |
             app/build/outputs/apk/*/release/*.apk
             webapp/build/play/
+            admin-app/build/outputs/apk/release/*.apk
+            server/public/
+            docs/iran-ads-admin-5.6.1.md

@@ -73,6 +73,7 @@ final class Api
         return [
             'rewards' => ProRewards::status((int)$u['id'], self::$auth[1]['device_id'] ?? null),
             'user' => Users::publicView($u),
+            'wallet' => Monetization::wallet((int)$u['id']),
             'entitlement' => $cert['summary'],
             'certificate' => $cert['certificate'],
             'purchases' => array_map([Purchases::class, 'publicView'], Purchases::forUser((int)$u['id'])),
@@ -82,6 +83,18 @@ final class Api
     public static function handle(string $route, string $method): array
     {
         $in = $method === 'GET' ? $_GET : Http::body();
+        $normalized = preg_replace('#^v1/#', '', $route);
+        if (strpos($normalized, 'admin/') === 0) return AdminMobile::handle($normalized, $method, $in);
+        if ($normalized === 'ads/config') return Monetization::publicConfig(($u = self::optionalUser()) !== null && Entitlements::summary((int)$u['id'], self::store($in))['pro']);
+        if (in_array($normalized, ['ads/reward/start','ads/reward/claim','ads/events','coins/wallet'], true) && $route !== 'v1/ads/events') {
+            $u = self::user();
+            if (!RateLimit::hit('iran_ads:' . $u['id'], 180, 3600)) throw new ApiError('rate_limited','درخواست زیاد است.',429);
+            if ($normalized === 'coins/wallet' && $method === 'GET') return Monetization::wallet((int)$u['id']);
+            self::post($method);
+            if ($normalized === 'ads/reward/start') return Monetization::start($u, self::$auth[1], $in);
+            if ($normalized === 'ads/reward/claim') return Monetization::claim($u, self::$auth[1], $in);
+            return Monetization::events($u, self::$auth[1], $in);
+        }
         // Keep pending store checks moving even without cron.
         if (random_int(1, 20) === 1) { try { Purchases::recheck(3); } catch (Throwable $e) { error_log('[divan] recheck ' . $e->getMessage()); } }
 
@@ -100,6 +113,7 @@ final class Api
                     'plans' => Plans::offers($store),
                     'features' => Features::forUser($u === null ? null : (int)$u['id'], $pro),
                     'ads' => Ads::configFor($store, $pro),
+                    'iran_ads' => Monetization::publicConfig($pro),
                     'cross_store' => (bool)Settings::get('cross_store', true),
                     // The store's public RSA key from the panel (public by design): the app checks each purchase's
                     // signature with it too, so a key changed in the panel reaches installed apps without a new APK.

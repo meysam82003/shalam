@@ -468,6 +468,17 @@ final class Migrations
                 "ALTER TABLE {ads} ADD COLUMN close_delay_seconds INT NOT NULL DEFAULT 5, ADD COLUMN reward_seconds INT NOT NULL DEFAULT 30",
                 "UPDATE {features} SET mode = 'pro', pro_items = NULL WHERE k = 'mafia' OR LEFT(k, 6) = 'mafia_'",
             ],
+            13 => [
+                "CREATE TABLE IF NOT EXISTS {coin_wallets} (user_id BIGINT UNSIGNED PRIMARY KEY, balance BIGINT UNSIGNED NOT NULL DEFAULT 0, updated_at DATETIME NOT NULL) $e",
+                "CREATE TABLE IF NOT EXISTS {coin_watches} (id CHAR(32) PRIMARY KEY, user_id BIGINT UNSIGNED NOT NULL, device CHAR(64) NOT NULL, start_key VARCHAR(64) NOT NULL, network VARCHAR(16) NOT NULL, placement VARCHAR(100) NOT NULL, config_revision BIGINT NOT NULL, amount INT NOT NULL, daily_cap INT NOT NULL, test_mode TINYINT NOT NULL, started_at BIGINT NOT NULL, min_seconds INT NOT NULL, completed_at BIGINT NULL, claimed_at BIGINT NULL, UNIQUE KEY uq_start (user_id, start_key), KEY k_user (user_id, claimed_at), KEY k_device (device, claimed_at)) $e",
+                "CREATE TABLE IF NOT EXISTS {coin_transactions} (id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, user_id BIGINT UNSIGNED NOT NULL, watch_id CHAR(32) NOT NULL UNIQUE, amount INT NOT NULL, balance_after BIGINT UNSIGNED NOT NULL, network VARCHAR(16) NOT NULL, created_at DATETIME NOT NULL, KEY k_user (user_id, id)) $e",
+                "CREATE TABLE IF NOT EXISTS {network_ad_events} (id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, event_key VARCHAR(64) NOT NULL, user_id BIGINT UNSIGNED NOT NULL, network VARCHAR(16) NOT NULL, format VARCHAR(20) NOT NULL, placement VARCHAR(100) NOT NULL, event VARCHAR(20) NOT NULL, watch_id CHAR(32) NULL, test_mode TINYINT NOT NULL, created_at DATETIME NOT NULL, UNIQUE KEY uq_event (user_id, event_key), KEY k_stats (created_at, network, event)) $e",
+                "CREATE TABLE IF NOT EXISTS {coin_device_locks} (device CHAR(64) PRIMARY KEY) $e",
+                "CREATE TABLE IF NOT EXISTS {admin_mobile_sessions} (token_hash CHAR(64) PRIMARY KEY, admin_id BIGINT UNSIGNED NOT NULL, password_stamp CHAR(64) NOT NULL, created_at BIGINT NOT NULL, seen_at BIGINT NOT NULL, expires_at BIGINT NOT NULL, revoked_at BIGINT NULL, KEY k_admin (admin_id)) $e",
+                "CREATE TABLE IF NOT EXISTS {admin_mobile_challenges} (token_hash CHAR(64) PRIMARY KEY, admin_id BIGINT UNSIGNED NOT NULL, expires_at BIGINT NOT NULL, attempts INT NOT NULL DEFAULT 0) $e",
+                "CREATE TABLE IF NOT EXISTS {admin_inbox} (id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, source_key VARCHAR(100) NOT NULL UNIQUE, title VARCHAR(120) NOT NULL, body VARCHAR(500) NOT NULL, created_at DATETIME NOT NULL) $e",
+                "CREATE TABLE IF NOT EXISTS {admin_inbox_reads} (admin_id BIGINT UNSIGNED PRIMARY KEY, last_id BIGINT UNSIGNED NOT NULL DEFAULT 0) $e",
+            ],
         ];
     }
 

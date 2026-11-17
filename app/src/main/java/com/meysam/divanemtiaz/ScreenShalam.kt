@@ -44,6 +44,7 @@ abstract class BoardScreen(host: MainActivity, val session: GameSession) : Scree
 
     /** Called after any change; saves and moves to the result page when the game ended. */
     protected fun afterChange() {
+        AdsManager.handFinished(host, session)
         if (session.game == GameType.SHALAM) host.gameAudio.play("shalam", "score")
         val ended = SessionOps.commitAndCheck(host, session)
         if (ended) host.replace(ResultScreen(host, session)) else host.refresh()

@@ -17,7 +17,7 @@ final class Backup
     public const TABLES = [
         'settings', 'users', 'sessions', 'plans', 'campaigns', 'purchase_intents', 'purchases', 'entitlements', 'features',
         'user_grants', 'placements', 'media', 'ads', 'ad_stats', 'revenue', 'support_requests', 'support_actions', 'admins',
-        'audit_log', 'security_events', 'user_backups', 'promo_codes', 'promo_redemptions', 'notices', 'notice_events', 'pay_orders',
+        'coin_wallets', 'coin_watches', 'coin_transactions', 'coin_device_locks', 'network_ad_events', 'admin_inbox', 'admin_inbox_reads', 'audit_log', 'security_events', 'user_backups', 'promo_codes', 'promo_redemptions', 'notices', 'notice_events', 'pay_orders',
     ];
     /** Natural keys used to recognise a row that already exists. */
     private const KEYS = [

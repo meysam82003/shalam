@@ -423,6 +423,9 @@ final class Audit
             'ip' => Http::ip(),
             'created_at' => Clock::sql(),
         ]);
+        if ($action==='purchase_verified') AdminInbox::purchase((int)$entityId);
+        elseif ($action==='pay_order_paid') AdminInbox::purchase((int)$entityId,true);
+
     }
 
     public static function security(string $kind, ?int $userId, string $username = '', string $details = ''): void

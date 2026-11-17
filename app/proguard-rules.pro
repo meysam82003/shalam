@@ -20,3 +20,6 @@
 -dontwarn ir.cafebazaar.poolakey.**
 -dontwarn ir.myket.billingclient.**
 -dontwarn ir.tapsell.**
+
+# Instantiated through the platform-neutral adapter boundary.
+-keep class com.meysam.divanemtiaz.*IranAdapter { *; }

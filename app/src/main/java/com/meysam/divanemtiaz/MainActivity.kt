@@ -276,6 +276,8 @@ class MainActivity : Activity() {
         gameAudio.enter(current?.audioScope)
         current?.onShow()
         Notices.check(this)
+        AdsManager.refresh(this)
+        AdsManager.recover(this)
     }
 
     override fun onPause() {
@@ -292,6 +294,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        AdsManager.release()
         ProState.listeners -= proListener
         ProSync.signedOutElsewhere = null
         gameAudio.release()
@@ -661,6 +664,7 @@ class MainActivity : Activity() {
         }
         pageFade?.cancel()
         pageFade = null
+        AdsManager.releaseBanners()
         val view = screen.build()
         restoreScroll(view, screen.savedScroll)
         if (!animate || !settings.general.animations) {

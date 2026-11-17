@@ -17,6 +17,10 @@ require $src . '/app/migrations.php';
 require $src . '/app/catalog.php';
 require $src . '/app/domain.php';
 require $src . '/app/engagement.php';
+require $src . '/app/monetization.php';
+require $src . '/app/admin_mobile.php';
+require $src . '/app/native_panel.php';
+require $src . '/app/admin_inbox.php';
 require $src . '/app/markets.php';
 require $src . '/app/payments.php';
 require $src . '/app/paypages.php';
@@ -1401,6 +1405,8 @@ scenario('Iran hosting package: legacy domain moves and all payment routes are d
 });
 
 // ---------------------------------------------------------------- report
+require __DIR__ . '/iran_ads.php';
+
 echo "\n" . ($failed ? "FAILED " . count($failed) . " of " . ($passed + count($failed)) . " checks\n" . implode("\n", $failed) . "\n" : "ALL $passed CHECKS PASSED\n");
 foreach ($pdo->query("SHOW TABLES LIKE 'dvt\\_%'")->fetchAll(PDO::FETCH_COLUMN) as $t) $pdo->exec("DROP TABLE `$t`");
 exit($failed ? 1 : 0);

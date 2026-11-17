@@ -67,6 +67,7 @@ private fun Screen.watchPro(): () -> Unit = { host.post(0) { if (host.current ==
 
 // ================================================================ plans and purchase
 class ProScreen(host: MainActivity, private val reason: String? = null, private val focusPlan: String? = null) : Screen(host) {
+    override val adZone: String get() = "shop"
     private var busy = false
     /** Discount code accepted for this visit: code, percent and the plan it is for (null = all plans). */
     private var promo: Triple<String, Int, String?>? = null
@@ -76,6 +77,8 @@ class ProScreen(host: MainActivity, private val reason: String? = null, private 
     override fun onHide() { ProState.listeners -= listener }
 
     override fun build(): View = scaffold("دیوان Pro", "بدون تبلیغ، با همهٔ قابلیت‌ها") {
+        addView(kit.button("سکهٔ رایگان", ButtonKind.SECONDARY, RoyalIcon.STAR) { host.push(CoinScreen(host)) }, kit.spaced(10))
+        AdsManager.banner(this@ProScreen, "shop_bottom")?.let { addView(it, kit.spaced(10)) }
         addView(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
             addView(HeroCrestView(host), LinearLayout.LayoutParams(kit.dp(190), kit.dp(140)))
             addView(kit.text("دیوان Pro", TextStyle.DISPLAY, Royal.goldLight, Gravity.CENTER))

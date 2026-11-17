@@ -231,6 +231,7 @@ object AdEngine {
         val priority = c.optString("priority", "direct_first")
         val direct = if (priority != "network_only") slotFormats(c, key, false)?.let { pick(c, key, it) } else null
         if (direct != null && priority != "network_first") return render(screen, key, direct)
+        if (priority != "direct_only") AdsManager.banner(screen, key)?.let { return it }
         val zone = c.optJSONObject("network")?.takeIf { it.optBoolean("enabled") }?.optJSONObject("zones")?.optString("banner").orEmpty()
         val netFormats = slotFormats(c, key, true).orEmpty()
         if (priority != "direct_only" && zone.isNotBlank() && "banner" in netFormats && network != null) {
@@ -461,6 +462,7 @@ object AdEngine {
     // ---------------------------------------------------------------- full-screen
     /** Between two activities (after closing a finished result), within the panel's caps. */
     fun maybeInterstitial(screen: Screen) {
+        if (AdsManager.active()) { AdsManager.maybeInterstitial(screen); return }
         val c = cfg() ?: return
         val key = "between_games"
         val formats = slotFormats(c, key, false) ?: return
