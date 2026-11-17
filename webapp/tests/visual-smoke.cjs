@@ -70,7 +70,11 @@ const profiles=['cobalt','iranic','neon','emerald','copper','ivory'];
       // In-app back preserves the running game and its settings.
       await page.keyboard.press('Escape');await page.waitForTimeout(400);
       await page.keyboard.press('Escape');await page.waitForTimeout(400);
-      await click('تنظیمات');await shot('settings');
+      if (theme === 'neon') {
+        // Orbit deliberately labels only the active tab; settings keeps the same fifth tab and hit area.
+        await page.mouse.click(49, 794); await page.waitForTimeout(450);
+      } else await click('تنظیمات');
+      await shot('settings');
       await page.mouse.move(190,500);await page.mouse.wheel(0,550);await page.waitForTimeout(400);
       await shot('settings-controls');
       assert.deepEqual(errors,[],`${theme}: browser exceptions`);
