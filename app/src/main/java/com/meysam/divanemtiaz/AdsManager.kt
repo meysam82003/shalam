@@ -37,6 +37,7 @@ object AdsManager {
     private var fetching = false
     private var fullScreen = false
     private var rewardBusy = false
+    private var bannerEpoch = 0
     private val banners = ArrayList<Pair<IranianAdAdapter, FrameLayout>>()
     private val prefs get() = context?.getSharedPreferences("divan_network_ads", Context.MODE_PRIVATE)
     private fun id() = UUID.randomUUID().toString()
@@ -85,13 +86,23 @@ object AdsManager {
         }
         return impl
     }
+    private fun sdkLoad(impl:IranianAdAdapter,host:Activity,format:String,zone:String,done:(Boolean)->Unit){
+        var settled=false
+        fun finish(ok:Boolean){if(!settled){settled=true;done(ok)}}
+        runCatching{impl.load(host,format,zone,::finish)}.onFailure{finish(false)}
+    }
+    private fun sdkShow(impl:IranianAdAdapter,host:Activity,format:String,zone:String,event:(String)->Unit){
+        var ended=false
+        fun deliver(kind:String){if(!ended){if(kind=="close"||kind=="error")ended=true;event(kind)}}
+        runCatching{impl.show(host,format,zone,::deliver)}.onFailure{deliver("error")}
+    }
     private fun event(name: String, format: String, zone: String, kind: String, watch: String? = null, eventId: String = id(), done: ((Boolean) -> Unit)? = null) {
         if (!ProState.loggedIn) { done?.invoke(false); return }
         val e = JSONObject().put("id", eventId).put("network", name).put("format", format).put("placement", zone).put("event", kind)
         if (watch != null) e.put("watch_id", watch)
         Api.call("POST", "ads/events", JSONObject().put("events", JSONArray().put(e)), ProState.token) { data, _ -> done?.invoke(data != null) }
     }
-    fun releaseBanners() { AdEngine.invalidateNetworkSticky(); banners.forEach { runCatching { it.first.destroyBanner(it.second) } }; banners.clear() }
+    fun releaseBanners() { bannerEpoch++; AdEngine.invalidateNetworkSticky(); banners.forEach { runCatching { it.first.destroyBanner(it.second) } }; banners.clear() }
     fun release() { releaseBanners(); adapters.values.forEach { runCatching { it.release() } }; adapters.clear(); initialized.clear(); fullScreen=false; rewardBusy=false }
     fun banner(screen: Screen, placement: String, fallback: (() -> View?)? = null): View? {
         init(screen.host)
@@ -100,6 +111,9 @@ object AdsManager {
         val pages = rules.optJSONArray("pages")?.let { a -> (0 until a.length()).map { a.optString(it) }.toSet() }.orEmpty()
         if (!rules.optBoolean("enabled") || !NetworkAdPolicy.canBanner(screen.adZone, screen.sessionId != null || screen.mafiaArea && screen.adZone == null, ProState.isPro, c.optBoolean("vip_ads"), pages)) return null
         if (!rules.optJSONObject("placements").let { it != null && it.optBoolean(placement, false) }) return null
+        val width=screen.host.resources.displayMetrics.widthPixels/screen.host.resources.displayMetrics.density-(if(placement.startsWith("sticky_"))0 else 32)
+        if(width<320)return null // A standard 320dp SDK creative must fit without covering controls.
+        val epoch=bannerEpoch
         val sources = chain("banner"); if (sources.isEmpty()) return null
         val host = WeakReference(screen.host)
         val wrap = screen.kit.vertical().apply { layoutParams = screen.kit.spaced(10); visibility = View.GONE }
@@ -107,7 +121,7 @@ object AdsManager {
         val box = FrameLayout(screen.host);wrap.addView(box)
         fun attempt(index: Int) {
             val activity = host.get() ?: return
-            if (activity.isFinishing || activity.current !== screen) { wrap.visibility = View.GONE;return }
+            if (epoch!=bannerEpoch || activity.isFinishing || activity.current !== screen) { wrap.visibility = View.GONE;return }
             if(index >= sources.size){val direct=fallback?.invoke();wrap.removeAllViews();if(direct!=null){wrap.addView(direct);wrap.visibility=View.VISIBLE}else wrap.visibility=View.GONE;return}
             val (name,n) = sources[index]; val zone = n.getJSONObject("zones").getString("banner")
             val impl = adapter(activity,name,n)
@@ -115,13 +129,18 @@ object AdsManager {
             banners += impl to box
             event(name,"banner",zone,"request")
             var failed = false
-            impl.banner(activity,zone,box) { kind ->
-                if (!failed && activity.current === screen && !activity.isFinishing) {
+            var visible = false
+            fun callback(kind:String) {
+                if (!failed && epoch==bannerEpoch && activity.current === screen && !activity.isFinishing) {
                     event(name,"banner",zone,kind)
-                    if (kind == "impression") wrap.visibility = View.VISIBLE
-                    if (kind == "error") { failed = true;impl.destroyBanner(box);box.removeAllViews();attempt(index+1) }
+                    // Loading must reveal the SDK view before it can observe visibility and report an impression.
+                    if (kind == "loaded" || kind == "impression") { visible=true;wrap.visibility = View.VISIBLE }
+                    if (kind == "error") { failed = true;runCatching{impl.destroyBanner(box)};box.removeAllViews();attempt(index+1) }
                 }
             }
+            runCatching { impl.banner(activity,zone,box,::callback) }.onFailure {callback("error")}
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({if(!visible)callback("error")},15000)
+
         }
         attempt(0)
         return wrap
@@ -141,7 +160,7 @@ object AdsManager {
             if(impl==null){attempt(index+1);return}
             if(impl.ready("interstitial",zone))return
             event(name,"interstitial",zone,"request")
-            impl.load(host,"interstitial",zone){ok->event(name,"interstitial",zone,if(ok)"loaded" else "error");if(!ok)attempt(index+1)}
+            sdkLoad(impl,host,"interstitial",zone){ok->event(name,"interstitial",zone,if(ok)"loaded" else "error");if(!ok)attempt(index+1)}
         };attempt(0)
     }
     fun maybeInterstitial(screen: Screen) {
@@ -151,9 +170,9 @@ object AdsManager {
         if(fullScreen || rewardBusy || !NetworkAdPolicy.canInterstitial(p.getInt("hands",0),rules.optInt("hands",3),now,p.getLong("int_last",0),count,rules.optInt("daily_cap",10),safe) || now-p.getLong("int_last",0)<rules.optLong("min_seconds",180)&&p.getLong("int_last",0)>0) return
         for((name,n) in chain("interstitial")){
             val zone=n.getJSONObject("zones").getString("interstitial");val impl=adapter(screen.host,name,n)?:continue
-            if(!impl.ready("interstitial",zone))continue
+            if(!runCatching{impl.ready("interstitial",zone)}.getOrDefault(false))continue
             fullScreen=true
-            impl.show(screen.host,"interstitial",zone){kind->
+            sdkShow(impl,screen.host,"interstitial",zone){kind->
                 event(name,"interstitial",zone,kind)
                 if(kind=="impression")p.edit().putLong("int_last",now).putLong("int_day",day).putInt("int_count",count+1).putInt("hands",0).apply()
                 if(kind=="close"||kind=="error"){fullScreen=false;prepare(screen.host)}
@@ -174,13 +193,13 @@ object AdsManager {
             val(name,n)=sources[index];val zone=n.getJSONObject("zones").getString("rewarded");val impl=adapter(host,name,n)
             if(impl==null){attempt(index+1);return}
             event(name,"rewarded",zone,"request")
-            impl.load(host,"rewarded",zone){ready->
+            sdkLoad(impl,host,"rewarded",zone){ready->
                 if(!ready){event(name,"rewarded",zone,"error");attempt(index+1)} else {
                     Api.call("POST",if(proReward)"v1/rewards/start" else "ads/reward/start",JSONObject().put("network",name).put("ad_id",0).put("request_id",id()),ProState.token){watch,err->
                         if(watch==null||host.isFinishing||host.current!==screen){rewardBusy=false;status(err?.message?:"نمایش تبلیغ ممکن نشد.");done(false)}else{
                             val watchId=watch.getString(if(proReward)"watch_token" else "watch_id");var completed=false;var ended=false
                             fullScreen=true
-                            impl.show(host,"rewarded",zone){kind->
+                            sdkShow(impl,host,"rewarded",zone){kind->
                                 if(!ended){
                                     if(kind=="complete")completed=true
                                     if(kind!="complete")event(name,"rewarded",zone,kind,if(proReward)null else watchId)

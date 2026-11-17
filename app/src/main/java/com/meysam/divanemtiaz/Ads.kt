@@ -400,7 +400,7 @@ object AdEngine {
      */
     fun sticky(screen: Screen?, key: String, bar: FrameLayout) {
         val zone = screen?.adZone
-        if (screen != null && key == "sticky_bottom" && zone !in setOf("home", "shop") && AdsManager.active()) {
+        if (screen != null && key == "sticky_bottom" && (zone !in setOf("home", "shop") || screen.host.resources.displayMetrics.widthPixels/screen.host.resources.displayMetrics.density<352) && AdsManager.active()) {
             val tag = "iran:${System.identityHashCode(screen)}:${ProState.isPro}"
             if (stickyShown[key] == tag && bar.childCount > 0) return
             val networkBar = AdsManager.banner(screen, key)
