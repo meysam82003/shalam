@@ -216,6 +216,7 @@ final class Admin
           <nav>
           <?php foreach (self::MENU as [$k, $label]):
               if ($k === '') { echo '<div class="group">' . e($label) . '</div>'; continue; }
+              if ($k === 'bridge' && App::directPayments()) continue;
               if (!self::can($k)) continue; ?>
             <a href="index.php?p=<?= e($k) ?>" class="<?= $active === $k ? 'on' : '' ?>"><?= e($label) ?></a>
           <?php endforeach; ?>

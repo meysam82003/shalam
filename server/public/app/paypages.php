@@ -52,7 +52,7 @@ final class PayPages
     public static function siteHome(): string
     {
         $origin = (string)Settings::get('public_origin', '');
-        if ($origin !== '') return rtrim($origin, '/') . '/';
+        if ($origin !== '') return rtrim(App::deploymentUrl($origin), '/') . '/';
         $p = (string)parse_url(App::baseUrl(), PHP_URL_PATH);
         return rtrim(substr(App::baseUrl(), 0, strlen(App::baseUrl()) - strlen($p)), '/') . '/';
     }

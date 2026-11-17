@@ -32,6 +32,7 @@ App::$root = $root;
 App::$config = [
     'db_prefix' => 'dvt_', 'app_key' => base64_encode(random_bytes(32)), 'backup_key' => base64_encode(random_bytes(32)),
     'cron_key' => 'test', 'base_url' => 'https://example.test/divan',
+    'deployment' => ['direct_payments' => false],
 ];
 file_put_contents("$root/storage/config.php", '<?php return ' . var_export(App::$config, true) . ';');
 $dsn = 'mysql:' . (getenv('DIVAN_TEST_DSN') ?: 'host=127.0.0.1;port=3306;dbname=divan_test2') . ';charset=utf8mb4';
@@ -1370,6 +1371,33 @@ scenario('panel domain settings: site, API, admin and payment URLs move together
     check($view['siteUrl'] === 'https://divan-emtiaz.ir/' && $view['adminUrl'] === 'https://divan-emtiaz.ir/divan/admin/' && $view['buyUrl'] === 'https://divan-emtiaz.ir/divan/pay/buy.php', 'site, management and checkout links use the new domain');
     throws(fn() => SiteSettings::save('addresses', ['public_origin' => 'javascript:alert(1)']), 'bad_origin', 'unsafe domains refused');
     Settings::set('service_base', $service); Settings::set('public_origin', $origin);
+});
+
+scenario('Iran hosting package: legacy domain moves and all payment routes are direct', function () {
+    $config = App::$config;
+    $service = Settings::get('service_base', ''); $origin = Settings::get('public_origin', '');
+    $bridge = Settings::get('payment_bridge', []);
+    $zarin = Settings::get('pay_zarinpal', []); $aban = Settings::get('pay_aban', []);
+    App::$config['deployment'] = [];
+    App::$config['base_url'] = 'https://httpuser87890.ir/divan';
+    Settings::set('service_base', ''); Settings::set('public_origin', '');
+    check(App::baseUrl() === 'https://divan-emtiaz.ir/divan', 'replacing files migrates the old private config without changing its credentials');
+    Settings::set('service_base', 'https://www.httpuser87890.ir/divan');
+    Settings::set('public_origin', 'https://httpuser87890.ir');
+    check(PayPages::siteHome() === 'https://divan-emtiaz.ir/' && App::baseUrl() === 'https://divan-emtiaz.ir/divan', 'saved panel settings for the old domain are migrated in responses');
+    check(App::deploymentUrl('https://httpuser87890.ir/downloads/a.apk?q=1#x') === 'https://divan-emtiaz.ir/downloads/a.apk?q=1#x', 'download path, query and fragment preserved');
+    check(App::deploymentUrl('https://httpuser87890.ir.evil.test/a') === 'https://httpuser87890.ir.evil.test/a' && App::deploymentUrl('https://example.org/a') === 'https://example.org/a', 'other hosts are never rewritten');
+    Settings::set('payment_bridge', ['route_myket' => 'bridge', 'route_bazaar' => 'bridge']);
+    Settings::set('pay_zarinpal', ['route' => 'bridge']); Settings::set('pay_aban', ['route' => 'bridge']);
+    check(PaymentBridge::route('myket') === 'direct' && PaymentBridge::route('bazaar') === 'direct', 'store verification ignores obsolete bridge settings');
+    check(PayRegistry::cfg('zarinpal')['route'] === 'direct' && PayRegistry::cfg('aban')['route'] === 'direct', 'gateway creation and verification use the Iranian server directly');
+    $siteCfg = Settings::get('site_cfg', []);
+    SiteSettings::save('downloads', ['android' => ['url' => 'https://httpuser87890.ir/downloads/a.apk']]);
+    check(SiteSettings::publicView(false)['downloads']['android']['url'] === 'https://divan-emtiaz.ir/downloads/a.apk', 'saved site download URLs point to the new host');
+    Settings::set('site_cfg', $siteCfg);
+    App::$config = $config;
+    Settings::set('service_base', $service); Settings::set('public_origin', $origin);
+    Settings::set('payment_bridge', $bridge); Settings::set('pay_zarinpal', $zarin); Settings::set('pay_aban', $aban);
 });
 
 // ---------------------------------------------------------------- report

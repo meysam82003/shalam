@@ -189,6 +189,15 @@ final class SiteSettings
             foreach (self::AD_SLOTS as $slot) { $a = Ads::pick($slot, $countAds); if ($a !== null) $ads[$slot] = $a; }
             if ($ads) $out['ads'] = $ads;
         }
-        return $out;
+        return self::deploymentLinks($out);
+    }
+
+    private static function deploymentLinks(array $values): array
+    {
+        foreach ($values as $key => $value) {
+            if (is_array($value)) $values[$key] = self::deploymentLinks($value);
+            elseif (is_string($value)) $values[$key] = App::deploymentUrl($value);
+        }
+        return $values;
     }
 }

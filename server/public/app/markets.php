@@ -94,7 +94,7 @@ final class PaymentBridge
     }
 
     /** «bridge» or «direct» for one store. */
-    public static function route(string $store): string { return (self::cfg()['route_' . $store] ?? 'direct') === 'bridge' ? 'bridge' : 'direct'; }
+    public static function route(string $store): string { return App::directPayments() ? 'direct' : ((self::cfg()['route_' . $store] ?? 'direct') === 'bridge' ? 'bridge' : 'direct'); }
 
     public static function ready(): bool { return self::validUrl(self::url()) && Settings::secret('bridge_key') !== ''; }
 

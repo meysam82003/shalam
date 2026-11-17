@@ -883,7 +883,11 @@ final class ConfigPages
                   <div class="row">
                     <label class="check" style="flex:0;white-space:nowrap"><input type="checkbox" name="sandbox" <?= $c['sandbox'] ? 'checked' : '' ?>> حالت آزمایشی (Sandbox)</label>
                     <?php if ($id === 'zarinpal' || $id === 'aban'): ?>
-                    <div><label>مسیر ارتباط</label><select name="route"><option value="bridge">از راه واسط ایران (پیشنهادی)</option><option value="direct"<?= $c['route'] === 'direct' ? ' selected' : '' ?>>مستقیم از هلند</option></select></div>
+                    <?php if (App::directPayments()): ?>
+                    <input type="hidden" name="route" value="direct"><div class="hint">اتصال مستقیم از همین هاست ایرانی؛ بدون واسط</div>
+                    <?php else: ?>
+                    <div><label>مسیر ارتباط</label><select name="route"><option value="bridge">از راه واسط ایران</option><option value="direct"<?= $c['route'] === 'direct' ? ' selected' : '' ?>>مستقیم</option></select></div>
+                    <?php endif; ?>
                     <?php endif; ?>
                   </div>
                   <?php if ($a instanceof PayEndpointAdapter): ?>
@@ -1243,6 +1247,13 @@ final class ConfigPages
     // ================================================================ payment gateway in Iran
     public static function bridge(): void
     {
+        if (App::directPayments()) {
+            Admin::layout('اتصال مستقیم پرداخت', function () {
+                echo '<div class="alert ok">سایت و پنل روی هاست ایران اجرا می‌شوند. پرداخت و بررسی خرید بازار و مایکت مستقیم انجام می‌شود؛ واسط، دامنهٔ جداگانه یا کلید واسط لازم نیست.</div>';
+                echo '<a class="btn gold" href="index.php?p=paymethods">تنظیمات درگاه‌ها</a> <a class="btn ghost" href="index.php?p=stores">تنظیمات بازار و مایکت</a>';
+            }, 'bridge');
+            return;
+        }
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             self::managerOnly();
             $reason = Admin::requireReason();
