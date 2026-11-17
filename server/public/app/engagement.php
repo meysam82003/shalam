@@ -51,13 +51,15 @@ final class ProRewards
         $cfg = Ads::configFor($session['store'] ?? 'bazaar', false);
         if (empty($cfg['enabled'])) throw new ApiError('no_ad', 'ویدئویی برای جایزه موجود نیست.');
         $placement = array_values(array_filter($cfg['placements'] ?? [], fn($p) => $p['key'] === 'rewarded_offer' && $p['active']));
-        if (!$placement) throw new ApiError('no_ad', 'ویدئوی جایزه‌ای غیرفعال است.');
+        $iran = Monetization::publicConfig(false);
+        $usingIran = $adId === 0 && $network !== null && in_array($network, [$iran['primary'], $iran['fallback']], true) && !empty($iran['enabled']) && !empty($iran['rewarded']['enabled']);
+        if ($network !== null && !$usingIran) throw new ApiError('no_ad', 'شبکهٔ جایزه‌ای غیرفعال است.');
+        if (!$placement && !$usingIran) throw new ApiError('no_ad', 'ویدئوی جایزه‌ای غیرفعال است.');
         $ad = null;
         foreach ($cfg['ads'] ?? [] as $candidate) if ($candidate['id'] === $adId && $candidate['format'] === 'rewarded' && ($candidate['media']['kind'] ?? '') === 'video' && in_array('rewarded_offer', $candidate['placements'], true)) $ad = $candidate;
         $isTest = false;
-        if ($adId === 0 && !empty($cfg['network']['enabled']) && !empty($cfg['network']['zones']['rewarded'])) { $ad = ['reward_seconds' => 10]; $isTest = !empty($cfg['network']['test']); }
-        $iran = Monetization::publicConfig(false);
-        if ($adId === 0 && $network !== null && in_array($network, [$iran['primary'], $iran['fallback']], true) && !empty($iran['enabled']) && !empty($iran['rewarded']['enabled'])) {
+        if ($adId === 0 && $network === null && !empty($cfg['network']['enabled']) && !empty($cfg['network']['zones']['rewarded'])) { $ad = ['reward_seconds' => 10]; $isTest = !empty($cfg['network']['test']); }
+        if ($usingIran) {
             $n = $iran['networks'][$network] ?? [];
             if (!empty($n['enabled']) && !empty($n['app_id']) && !empty($n['zones']['rewarded'])) { $ad = ['reward_seconds' => $iran['rewarded']['min_seconds']]; $isTest = !empty($n['test']); }
         }

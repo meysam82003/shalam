@@ -48,8 +48,7 @@ class RewardScreen(host: MainActivity) : Screen(host) {
             if (!ProState.loggedIn) host.push(AccountScreen(host))
             else if (AdsManager.active()) AdsManager.reward(this@RewardScreen, { kit.toast(it) }, { host.refresh() }, proReward = true)
             else if (!AdEngine.rewardedAvailable()) kit.toast("فعلاً ویدئویی آماده نیست؛ کمی بعد دوباره امتحان کنید")
-            else AdEngine.showRewarded(this@RewardScreen) { ok ->
-                if (ok) kit.toast("یک ساعت Pro فعال شد")
+            else AdEngine.showRewarded(this@RewardScreen) { _ ->
                 host.refresh()
             }
         }

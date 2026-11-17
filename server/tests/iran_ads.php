@@ -72,3 +72,17 @@ scenario('native admin: TOTP, same permissions, all panel forms and genuine even
     throws(fn()=>AdminMobile::auth('dashboard'),'admin_unauthorized','logout revokes server token');
     if($previous===null)unset($_SERVER['HTTP_AUTHORIZATION']);else $_SERVER['HTTP_AUTHORIZATION']=$previous;
 });
+
+scenario('Pro video: independent network controls and short completed-video settlement',function(){
+    [$u]=Users::register('pro_video_network','VeryStrong_password_907');$session=['device_id'=>hash('sha256','pro-video-device'),'store'=>'bazaar'];
+    $old=Settings::get('iran_ads');$enabled=Settings::get('ads_enabled');$placement=Db::one('SELECT * FROM {placements} WHERE k=?',['rewarded_offer']);
+    Settings::set('iran_ads',Monetization::defaults());Monetization::save(['enabled'=>true]);
+    Db::update('placements',['active'=>0],'k=?',['rewarded_offer']);
+    $watch=ProRewards::start($u,$session,0,'adivery');
+    check($watch['claim_after']===Clock::now()+30,'server tells client when a completed short video can settle without rewatching');
+    Clock::$fixed+=30;check(ProRewards::claim($u,$session,$watch['watch_token']),'official test video completion accepted');
+    check(!Entitlements::summary((int)$u['id'])['pro']&&ProRewards::status((int)$u['id'],$session['device_id'])['next_at']===0,'test Pro video neither grants actual Pro nor consumes 24h availability');
+    Monetization::save(['rewarded'=>['enabled'=>false]]);
+    throws(fn()=>ProRewards::start($u,$session,0,'adivery'),'no_ad','panel disabling network rewarded stops Pro starts');
+    Settings::set('iran_ads',$old);Settings::set('ads_enabled',$enabled);Db::update('placements',['active'=>$placement['active']],'k=?',['rewarded_offer']);
+});

@@ -295,7 +295,7 @@ object AdEngine {
             path == "pro" -> host.push(ProScreen(host))
             path.startsWith("plan/") -> host.push(ProScreen(host, focusPlan = path.removePrefix("plan/")))
             path == "subscription" -> host.push(SubscriptionScreen(host))
-            path == "rewarded" -> host.current?.let { screen -> showRewarded(screen) { ok -> screen.kit.toast(if (ok) "یک ساعت Pro فعال شد" else "ویدئو کامل نشد") } }
+            path == "rewarded" -> host.current?.let { screen -> showRewarded(screen) { _ -> } }
             path == "screen/mafia" -> host.push(MafiaHomeScreen(host))
             path == "screen/panto" -> host.push(PantoHomeScreen(host))
             path == "screen/spy" -> host.push(SpyHomeScreen(host))
@@ -515,7 +515,7 @@ object AdEngine {
             if (token.isBlank()) { rewardBusy = false; screen.kit.toast(err?.message ?: "آغاز ویدئو ممکن نشد"); done(false) }
             else {
                 val grant: (Boolean) -> Unit = { complete ->
-                    if (!complete) { rewardBusy = false; done(false) }
+                    if (!complete) { rewardBusy = false; screen.kit.toast("پخش ویدئو کامل نشد؛ پاداشی ثبت نشد."); done(false) }
                     else AdsManager.completeDirect(screen.host, data!!) { ok, message ->
                         rewardBusy = false
                         screen.kit.toast(message)
