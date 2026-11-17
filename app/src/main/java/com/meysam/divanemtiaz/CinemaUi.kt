@@ -46,7 +46,7 @@ class CinemaBackdrop(private val context: Context, private val density: Float, p
         val w = bounds.width(); val h = bounds.height()
         if (w <= 0 || h <= 0) return
         val palace = if (ThemeEngine.spec.light) null else CinemaAssets.get(context, "palace")
-        val key = "$w.$h.${ThemeEngine.version}.$scene.${palace?.generationId ?: 0}"
+        val key = "$w.$h.${ThemeEngine.version}.$scene.${palace != null}.${palace?.generationId ?: 0}"
         if (stamp != key || cached == null) {
             cached?.recycle()
             cached = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also { paintScene(Canvas(it), w.toFloat(), h.toFloat()) }
@@ -227,7 +227,7 @@ class CinemaArtView(context: Context, private val scene: CinemaScene, private va
             CinemaScene.THEATRE -> CinemaAssets.get(context, "panto")
             else -> null
         }
-        return listOf(scene, game, image?.generationId ?: 0)
+        return listOf(scene, game, image != null, image?.generationId ?: 0)
     }
     override fun drawArt(canvas: Canvas) {
         val w = width.toFloat(); val h = height.toFloat(); if (w <= 0 || h <= 0) return
