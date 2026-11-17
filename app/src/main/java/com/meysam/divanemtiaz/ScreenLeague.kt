@@ -103,7 +103,7 @@ class LeagueSetupScreen(host: MainActivity, private val editing: Long? = null) :
         }), kit.spaced(10))
         addView(kit.field("نام لیگ", name).apply { addTextChangedListener(watcher { name = it }) }, kit.spaced(8))
         if (existing == null) addView(kit.grid(2, listOf(GameType.MENFI, GameType.SHALAM).map { g ->
-            kit.chip(g.title, game == g, ButtonKind.CHIP_GOLD) { game = g; host.refresh() }
+            kit.chip(g.title, game == g, ButtonKind.CHIP_GOLD) { game = g; presetRules = null; host.refresh() }
         }, 6), kit.spaced(6))
         addView(kit.choiceRow("قالب مسابقه", null, listOf(
             LeagueFormat.KNOCKOUT to "حذفی دو برده",

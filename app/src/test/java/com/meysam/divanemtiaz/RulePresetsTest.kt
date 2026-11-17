@@ -13,11 +13,11 @@ class RulePresetsTest {
     @Test fun fourNamedPresetsKeepIndependentMenfiScores() {
         val store = Memory()
         val book = RulePresetBook(store)
-        val success = AppSettings().menfi.success.toMutableList().apply { this[11] = 33 }
+        val success = AppSettings().menfi.success.toMutableList().apply { this[11 - 3] = 33 }
         val custom = AppSettings().copy(menfi = AppSettings().menfi.copy(success = success))
         for (slot in 0..3) book.save("menfi", slot, "گروه $slot", RulePresetPolicy.capture(custom, "menfi"))
         assertEquals(4, book.entries("menfi").size)
-        assertEquals(33, RulePresetPolicy.apply(AppSettings(), "menfi", book.entries("menfi")[0].rules).menfi.success[11])
+        assertEquals(33, RulePresetPolicy.apply(AppSettings(), "menfi", book.entries("menfi")[0].rules).menfi.success[11 - 3])
         book.save("shalam", 0, "شلم", RulePresetPolicy.capture(AppSettings(), "shalam"))
         book.delete("shalam", 0)
         assertEquals(4, book.entries("menfi").size)
@@ -26,13 +26,14 @@ class RulePresetsTest {
     @Test fun choosingRulesNeverChangesOtherSettingsOrExistingGames() {
         val original = AppSettings()
         val oldRules = original.rulesFor(GameType.MENFI)
-        val success = original.menfi.success.toMutableList().apply { this[11] = 33 }
+        val success = original.menfi.success.toMutableList().apply { this[11 - 3] = 33 }
         val changed = RulePresetPolicy.apply(original, "menfi", RulePresetPolicy.capture(original.copy(menfi = original.menfi.copy(success = success)), "menfi"))
         assertEquals(original.shalam, changed.shalam)
         assertEquals(original.general, changed.general)
         assertEquals(original.league, changed.league)
-        assertEquals(original.menfi.success[11], oldRules.menfi.success[11])
-        assertEquals(33, changed.rulesFor(GameType.MENFI).menfi.success[11])
+        assertEquals(original.menfi.success[11 - 3], oldRules.menfi.success[11 - 3])
+        assertEquals(33, changed.rulesFor(GameType.MENFI).menfi.success[11 - 3])
+        assertEquals(33, MenfiEngine.successScore(11, changed.rulesFor(GameType.MENFI).menfi))
         val standard = RulePresetPolicy.apply(changed, "menfi", RulePresetPolicy.capture(AppSettings(), "menfi"))
         assertEquals(original.menfi, standard.menfi)
     }

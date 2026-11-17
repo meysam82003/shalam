@@ -227,7 +227,7 @@ object AdEngine {
     // ---------------------------------------------------------------- inline slots
     /** A ready ad for [key], or null (Pro, ads off, nothing to show). Never blocks. */
     fun slot(screen: Screen, key: String): View? {
-        val c = cfg() ?: return null
+        val c = cfg() ?: return AdsManager.banner(screen, key)
         val priority = c.optString("priority", "direct_first")
         val direct = if (priority != "network_only") slotFormats(c, key, false)?.let { pick(c, key, it) } else null
         if (direct != null && priority != "network_first") return render(screen, key, direct)
@@ -392,6 +392,7 @@ object AdEngine {
     // ---------------------------------------------------------------- fixed top / bottom bar
     private val dismissed = HashSet<String>()
     private val stickyShown = HashMap<String, String>()
+    fun invalidateNetworkSticky() { stickyShown.entries.removeAll { it.value.startsWith("iran:") } }
 
     /**
      * Fixed bar for [key] (sticky_top / sticky_bottom) on pages whose zone the panel allows. The bar is laid out

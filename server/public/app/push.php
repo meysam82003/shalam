@@ -33,7 +33,7 @@ final class PushDelivery
         $h=Crypto::hash($token);$kind=$admin!==null?'admin':'player';
         $row=['kind'=>$kind,'client'=>$client,'token_enc'=>Crypto::encrypt($token),'device'=>$device,'user_id'=>$user['id']??null,'admin_id'=>$admin['id']??null,'session_hash'=>$admin!==null?Crypto::hash(substr(Http::header('Authorization'),7)):null,'offers'=>!empty($in[$admin!==null?'enabled':'offers'])?1:0,'pro_optin'=>!empty($in['pro_optin'])?1:0,'seen_at'=>Clock::now()];
         Db::tx(function()use($h,$row){$old=Db::one('SELECT * FROM {push_devices} WHERE token_hash=? FOR UPDATE',[$h]);if($old===null)Db::insert('push_devices',['token_hash'=>$h]+$row);else Db::update('push_devices',$row,'token_hash=?',[$h]);});
-        return ['registered'=>true,'delivery'=>'fcm_http_v1','publisher_ready'=>self::publicConfig($client)['enabled']];
+        return ['baseline'=>$admin!==null?(int)(Db::value('SELECT MAX(id) FROM {admin_inbox}')??0):0,'registered'=>true,'delivery'=>'fcm_http_v1','publisher_ready'=>self::publicConfig($client)['enabled']];
     }
     private static function adminValid(array $d):bool {
         $s=Db::one('SELECT s.*,a.password_hash,a.active,a.role FROM {admin_mobile_sessions} s JOIN {admins} a ON a.id=s.admin_id WHERE s.token_hash=? AND s.admin_id=?',[$d['session_hash'],$d['admin_id']]);

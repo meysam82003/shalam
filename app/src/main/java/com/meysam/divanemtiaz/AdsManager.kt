@@ -90,7 +90,7 @@ object AdsManager {
         if (watch != null) e.put("watch_id", watch)
         Api.call("POST", "ads/events", JSONObject().put("events", JSONArray().put(e)), ProState.token) { data, _ -> done?.invoke(data != null) }
     }
-    fun releaseBanners() { banners.forEach { runCatching { it.first.destroyBanner(it.second) } }; banners.clear() }
+    fun releaseBanners() { AdEngine.invalidateNetworkSticky(); banners.forEach { runCatching { it.first.destroyBanner(it.second) } }; banners.clear() }
     fun release() { releaseBanners(); adapters.values.forEach { runCatching { it.release() } }; adapters.clear(); initialized.clear(); fullScreen=false; rewardBusy=false }
     fun banner(screen: Screen, placement: String, fallback: (() -> View?)? = null): View? {
         init(screen.host)

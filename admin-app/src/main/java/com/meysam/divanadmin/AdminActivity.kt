@@ -41,7 +41,7 @@ class AdminActivity:Activity(){
     private fun text(value:String,size:Float=15f,color:Int=ink)=TextView(this).apply{text=value;textSize=size;setTextColor(color);typeface=font;setPadding(dp(3),dp(5),dp(3),dp(5))}
     private fun button(label:String,action:()->Unit)=TextView(this).apply{text=label;textSize=15f;typeface=font;setTextColor(gold);gravity=Gravity.CENTER;minimumHeight=dp(50);background=shape();setPadding(dp(12),dp(10),dp(12),dp(10));isClickable=true;setOnClickListener{action()};layoutParams=LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(10)}}
     private fun edit(value:String="",secret:Boolean=false)=EditText(this).apply{setText(value);setTextColor(ink);setHintTextColor(muted);textSize=15f;typeface=font;setSingleLine(true);background=shape();setPadding(dp(12),dp(10),dp(12),dp(10));inputType=if(secret)InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD else InputType.TYPE_CLASS_TEXT}
-    private fun page(title:String){generation++;val root=column().apply{setBackgroundColor(bg)};val bar=LinearLayout(this).apply{gravity=Gravity.CENTER_VERTICAL;setPadding(dp(14),dp(8),dp(14),dp(8));layoutDirection=View.LAYOUT_DIRECTION_RTL};bar.addView(text(title,22f,gold),LinearLayout.LayoutParams(0,-2,1f));if(token!=null)bar.addView(button("خانه"){home()},LinearLayout.LayoutParams(dp(68),dp(48)));root.addView(bar);body=column().apply{setPadding(dp(18),dp(12),dp(18),dp(28))};root.addView(ScrollView(this).apply{isFillViewport=true;addView(body)},LinearLayout.LayoutParams(-1,0,1f));setContentView(root)}
+    private fun page(title:String){generation++;val root=column().apply{setBackgroundColor(bg);fitsSystemWindows=true};val bar=LinearLayout(this).apply{gravity=Gravity.CENTER_VERTICAL;setPadding(dp(14),dp(8),dp(14),dp(8));layoutDirection=View.LAYOUT_DIRECTION_RTL};bar.addView(text(title,22f,gold),LinearLayout.LayoutParams(0,-2,1f));if(token!=null)bar.addView(button("خانه"){home()},LinearLayout.LayoutParams(dp(68),dp(48)));root.addView(bar);body=column().apply{setPadding(dp(18),dp(12),dp(18),dp(28))};root.addView(ScrollView(this).apply{isFillViewport=true;addView(body)},LinearLayout.LayoutParams(-1,0,1f));setContentView(root)}
     private fun message(s:String){if(!isFinishing)AlertDialog.Builder(this).setMessage(s).setPositiveButton("باشه",null).show()}
     private fun base():String{val v=store.getString("url","https://divan-emtiaz.ir/divan/api/index.php")!!;val u=URL(v);require(u.protocol=="https"&&u.userInfo==null&&u.query==null&&u.ref==null){"نشانی باید HTTPS و بدون پارامتر باشد."};return v}
     private fun api(method:String,route:String,data:JSONObject?=null,files:List<Triple<String,android.net.Uri,String>> = emptyList(),done:(JSONObject)->Unit){
@@ -94,10 +94,39 @@ class AdminActivity:Activity(){
         }
     }
     private fun link(href:String){
-        val u=android.net.Uri.parse(href)
         if(href.startsWith("#"))return
-        if(u.scheme==null && (u.path.isNullOrBlank()||u.path?.endsWith("index.php")==true)){nativePage(u.encodedQuery?:"p=dashboard");return}
-        if(u.scheme=="https")startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,u))
+        val raw=android.net.Uri.parse(href)
+        if(raw.scheme==null && (raw.path.isNullOrBlank()||raw.path?.endsWith("index.php")==true)){nativePage(raw.encodedQuery?:"p=dashboard");return}
+        val resolved=runCatching { URL(URL(base()),"../admin/"+href).takeIf{raw.scheme==null}?:URL(href) }.getOrNull()?:return
+        if(resolved.protocol!="https"||resolved.userInfo!=null)return
+        val own=URL(base())
+        if(resolved.host==own.host&&resolved.path.endsWith("/admin/index.php")){nativePage(resolved.query?:"p=dashboard");return}
+        runCatching{startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,android.net.Uri.parse(resolved.toString())))}
+    }
+    private fun image(src:String){
+        val view=ImageView(this).apply{adjustViewBounds=true;contentDescription="پیش‌نمایش رسانه"}
+        body.addView(view,LinearLayout.LayoutParams(-1,dp(210)))
+        val epoch=generation
+        io.execute {
+            val bitmap=runCatching {
+                val bytes=if(src.startsWith("data:image/")&&src.contains("base64,")){
+                    require(src.length<2_000_000);Base64.decode(src.substringAfter("base64,"),Base64.DEFAULT)
+                }else{
+                    val own=URL(base());val u=URL(URL(own,"../admin/"),src)
+                    require(u.protocol=="https"&&u.host==own.host&&u.userInfo==null)
+                    val conn=u.openConnection() as HttpURLConnection;conn.instanceFollowRedirects=false;conn.connectTimeout=8000;conn.readTimeout=10000
+                    try {require(conn.responseCode==200);conn.inputStream.use { input ->
+                        val out=java.io.ByteArrayOutputStream();val buffer=ByteArray(8192);var total=0
+                        while(true){val n=input.read(buffer);if(n<0)break;total+=n;require(total<=3_000_000);out.write(buffer,0,n)};out.toByteArray()
+                    }}finally{conn.disconnect()}
+                }
+                val bounds=android.graphics.BitmapFactory.Options().apply{inJustDecodeBounds=true}
+                android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.size,bounds)
+                var sample=1;while(bounds.outWidth/sample>1080||bounds.outHeight/sample>1080)sample*=2
+                android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.size,android.graphics.BitmapFactory.Options().apply{inSampleSize=sample})
+            }.getOrNull()
+            runOnUiThread {if(!isFinishing&&!isDestroyed&&epoch==generation){if(bitmap!=null)view.setImageBitmap(bitmap)else view.visibility=View.GONE}}
+        }
     }
     private fun node(n:JSONObject){when(n.optString("kind")){
         "heading"->body.addView(text(n.optString("text"),20f,gold))
@@ -105,7 +134,7 @@ class AdminActivity:Activity(){
         "divider"->body.addView(View(this).apply{setBackgroundColor(Color.rgb(51,67,85))},LinearLayout.LayoutParams(-1,dp(1)).apply{topMargin=dp(8);bottomMargin=dp(8)})
         "link"->body.addView(button(n.optString("text")){link(n.optString("href"))})
         "form"->nativeForm(n)
-        "image"->{val src=n.optString("src");if(src.startsWith("data:image/")&&src.contains("base64,")){runCatching{val bytes=Base64.decode(src.substringAfter("base64,"),Base64.DEFAULT);val bitmap=android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.size);body.addView(ImageView(this).apply{setImageBitmap(bitmap);adjustViewBounds=true},LinearLayout.LayoutParams(dp(180),dp(180)))}}}
+        "image"->image(n.optString("src"))
     }}
     private fun nativeForm(form:JSONObject){
         val box=column().apply{background=shape();setPadding(dp(12),dp(12),dp(12),dp(14));layoutParams=LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(14)}}
@@ -141,7 +170,7 @@ class AdminActivity:Activity(){
         if(requestCode==71){var name="upload";contentResolver.query(uri,arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),null,null,null)?.use{if(it.moveToFirst())name=it.getString(0)};chooseFile?.invoke(uri,name);chooseFile=null}
         if(requestCode==72){val file=saveFile?:return;saveFile=null;io.execute{try{contentResolver.openOutputStream(uri)!!.use{out->if(file.has("data"))out.write(Base64.decode(file.getString("data"),Base64.DEFAULT))else{val url=URL(file.getString("url"));require(url.protocol=="https"&&url.host==URL(base()).host);val c=url.openConnection()as HttpURLConnection;c.instanceFollowRedirects=false;c.setRequestProperty("Authorization","Bearer $token");c.connectTimeout=12000;c.readTimeout=60000;try{require(c.responseCode==200);c.inputStream.use{it.copyTo(out,65536)}}finally{c.disconnect()}}};runOnUiThread{message("فایل ذخیره شد.")}}catch(e:Exception){runOnUiThread{message("دریافت فایل انجام نشد؛ دوباره تلاش کنید.")}}}}
     }
-    private fun inbox(){current="inbox";page("رویدادهای مدیریت");api("GET","admin/mobile/inbox"){d->val entries=d.optJSONArray("items")?:JSONArray();if(entries.length()==0)body.addView(text("رویدادی ثبت نشده است.",15f,muted));for(i in 0 until entries.length()){val v=entries.getJSONObject(i);body.addView(text(v.optString("title"),18f,gold));body.addView(text(v.optString("body"),14f,muted))}}}
+    private fun inbox(){current="inbox";page("رویدادهای مدیریت");api("GET","admin/mobile/inbox"){d->val entries=d.optJSONArray("items")?:JSONArray();if(entries.length()==0)body.addView(text("رویدادی ثبت نشده است.",15f,muted));for(i in 0 until entries.length()){val v=entries.getJSONObject(i);body.addView(text(v.optString("title"),18f,gold));body.addView(text(v.optString("body"),14f,muted))};api("POST","admin/mobile/inbox",JSONObject().put("read_through",d.optLong("latest_id"))){} }}
     private fun put(root:JSONObject,path:String,value:Any){val parts=path.split('.');var cursor=root;for(k in parts.dropLast(1)){var child=cursor.optJSONObject(k);if(child==null){child=JSONObject();cursor.put(k,child)};cursor=child};cursor.put(parts.last(),value)}
     private fun form(fields:JSONArray,route:String,method:String){val getters=ArrayList<Pair<String,()->Any>>();body.addView(text(if(current=="ads"||current=="contacts")"تنظیمات" else "ثبت مورد جدید",19f,gold))
         for(i in 0 until fields.length()){val f=fields.getJSONObject(i);val key=f.getString("key");val type=f.optString("type");val label=f.getString("label")
