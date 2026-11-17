@@ -76,7 +76,4 @@ class AboutScreen(host: MainActivity) : Screen(host) {
         kit.toast("راه ارتباطی کپی شد")
     }
 
-    companion object {
-        const val EMAIL = "meysamsalamatnasab@gmail.com"
-    }
 }

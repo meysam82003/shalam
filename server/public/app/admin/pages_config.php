@@ -555,7 +555,7 @@ final class ConfigPages
                 <div class="phone light"><div class="screen"><div class="blk">تاریخچه</div><div class="blk">امروز — ۳ بازی</div><?= $slot('history_inline', 'میان فهرست') ?><div class="blk">دیروز</div><div class="blk">رنک‌بندی</div><?= $slot('ranking_inline', 'پایین رنک‌بندی') ?><div class="nav"></div></div></div>
                 <div class="phone"><div class="screen"><div class="blk">نتیجهٔ بازی (پایان‌یافته)</div><div class="blk">برنده: تیم الف</div><?= $slot('result_bottom', 'پایین نتیجه') ?><div class="blk">مافیا / پانتومیم / جاسوس</div><?= $slot('hub_inline', 'صفحهٔ بازی‌ها') ?><?= $slot('settings_bottom', 'پایین تنظیمات') ?><div class="nav"></div></div></div>
                 <div class="phone"><div class="screen"><?= $slot('sticky_top', 'نوار ثابت بالا') ?><div class="blk">هر صفحهٔ مجاز</div><div class="blk">محتوای صفحه بالا و پایین می‌رود؛ نوار ثابت می‌ماند و چیزی را نمی‌پوشاند</div><div class="blk">…</div><div style="margin-top:auto"></div><?= $slot('sticky_bottom', 'نوار ثابت پایین') ?><div class="nav" style="margin-top:6px"></div></div></div>
-                <div class="phone light"><div class="screen" style="justify-content:center"><?= $slot('between_games', 'تمام‌صفحه بین دو فعالیت — حداکثر هر ۱۰ دقیقه، قابل بستن') ?><?= $slot('rewarded_offer', 'ویدئوی جایزه‌ای — فقط با انتخاب کاربر، یک ساعت بدون تبلیغ') ?></div></div>
+                <div class="phone light"><div class="screen" style="justify-content:center"><?= $slot('between_games', 'تمام‌صفحه بین دو فعالیت — حداکثر هر ۱۰ دقیقه، قابل بستن') ?><?= $slot('rewarded_offer', 'ویدئوی جایزه‌ای — فقط با انتخاب کاربر، یک ساعت Pro، هر ۲۴ ساعت یک بار') ?></div></div>
               </div>
             </div>
             <form method="post"><?= Admin::csrfField() ?>
@@ -648,10 +648,11 @@ final class ConfigPages
               <p class="hint">کاربران Pro هرگز تبلیغ نمی‌بینند و کتابخانهٔ تبلیغاتی برایشان اصلاً راه‌اندازی نمی‌شود.</p>
               <label>ترتیب منبع تبلیغ</label>
               <select name="ads_priority"><?php foreach (['direct_first' => 'اول تبلیغ مستقیم، اگر نبود شبکه', 'network_first' => 'اول شبکه، اگر پر نشد مستقیم', 'direct_only' => 'فقط تبلیغ مستقیم', 'network_only' => 'فقط شبکه'] as $k => $l) echo '<option value="' . $k . '"' . (Settings::get('ads_priority', 'direct_first') === $k ? ' selected' : '') . '>' . $l . '</option>'; ?></select>
+              <p class="hint">نسخهٔ ۵.۶ برای تماشای کامل، دقیقاً یک ساعت Pro می‌دهد؛ هر حساب و گوشی فقط یک بار در ۲۴ ساعت.</p>
               <div class="row">
                 <div><label>فاصلهٔ کمینهٔ تمام‌صفحه (دقیقه)</label><input type="number" name="ads_interstitial_min_minutes" value="<?= (int)Settings::get('ads_interstitial_min_minutes', 10) ?>" min="3"></div>
                 <div><label>سقف تمام‌صفحه در روز</label><input type="number" name="ads_daily_interstitial_cap" value="<?= (int)Settings::get('ads_daily_interstitial_cap', 3) ?>" min="0" max="20"></div>
-                <div><label>دقیقهٔ بدون تبلیغ پس از ویدئوی جایزه‌ای</label><input type="number" name="rewarded_ad_free_minutes" value="<?= (int)Settings::get('rewarded_ad_free_minutes', 60) ?>" min="0"></div>
+                <div><label>سازگاری نسخه‌های قدیمی: دقیقهٔ بدون تبلیغ پس از ویدئو</label><input type="number" name="rewarded_ad_free_minutes" value="<?= (int)Settings::get('rewarded_ad_free_minutes', 60) ?>" min="0"></div>
               </div>
             </div>
             <div class="card"><h3>تپسل (Tapsell Mediation)</h3>

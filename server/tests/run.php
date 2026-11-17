@@ -117,6 +117,11 @@ function apiPost(string $route, array $body): array { Api::reset(); Http::$testB
 function apiGet(string $route, array $query = []): array { Api::reset(); $_GET = $query; return Api::handle($route, 'GET'); }
 
 // ================================================================ scenarios
+scenario('new installation keeps the complete Mafia module Pro-only', function () {
+    $f = Features::forUser(null, false);
+    check($f['mafia']['mode'] === 'pro' && !$f['mafia']['allowed'], 'Mafia starts as Pro even before any panel setting');
+});
+
 scenario('accounts: register, login, lockout', function () {
     freshIp();
     [$u, $key] = Users::register('Sara_1', 'secret123');

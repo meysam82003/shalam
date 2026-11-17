@@ -54,6 +54,11 @@ class RewardScreen(host: MainActivity) : Screen(host) {
         }
         addView(watch)
     }
-    override fun onShow() { active = true; handler.removeCallbacks(tick); handler.post(tick) }
+    override fun onShow() {
+        active = true; handler.removeCallbacks(tick); handler.post(tick)
+        ProSync.refreshAccount {
+            ProSync.refreshConfig(force = true) { if (host.current === this) host.refresh() }
+        }
+    }
     override fun onHide() { active = false; handler.removeCallbacks(tick) }
 }
