@@ -562,6 +562,7 @@ class MainActivity : Activity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if(requestCode==7001){Notices.updatePushConsent(this);Notices.check(this)}
         if (requestCode != REQUEST_MIC) return
         val callback = pendingPermission ?: return
         pendingPermission = null

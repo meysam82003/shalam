@@ -51,4 +51,12 @@ class RulePresetsTest {
         restored.importBackup(backup, false)
         assertEquals("محلی", RulePresetBook(other).entries("league").single().name)
     }
+    @Test fun mafiaPresetChangesRulesAndPreservesPersonalMedia() {
+        val own=MafiaSettings(selfKill=false,nightMusic=SoundChoice(path="own_music.mp3"),rolePictures=mapOf("mafia" to "own_picture.png"))
+        val rules=RulePresetPolicy.captureMafia(MafiaSettings(selfKill=true,speakTime=90))
+        val chosen=RulePresetPolicy.applyMafia(own,rules)
+        assertTrue(chosen.selfKill);assertEquals(90,chosen.speakTime)
+        assertEquals(own.nightMusic,chosen.nightMusic);assertEquals(own.rolePictures,chosen.rolePictures)
+        assertFalse(rules.has("pictures"));assertFalse(rules.has("music"))
+    }
 }

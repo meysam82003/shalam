@@ -61,6 +61,16 @@ class RulePresetBook(private val store: KeyValueStore) {
 }
 
 object RulePresetPolicy {
+    private val mafiaKeys=listOf("speak","challenge","defence","query","edgeUp","capo","selfKill","screen","vibrate")
+    fun captureMafia(settings:MafiaSettings):JSONObject {
+        val all=MafiaCodec.encodeSettings(settings)
+        return JSONObject().apply{mafiaKeys.forEach{put(it,all.get(it))}}
+    }
+    fun applyMafia(settings:MafiaSettings,rules:JSONObject):MafiaSettings {
+        val all=MafiaCodec.encodeSettings(settings)
+        mafiaKeys.forEach{if(rules.has(it))all.put(it,rules.get(it))}
+        return MafiaCodec.decodeSettings(all)
+    }
     private fun keys(scope: String): List<String> = when (scope) {
         "shalam" -> listOf("shalam")
         "menfi" -> listOf("menfi")
@@ -81,20 +91,20 @@ object RulePresetPolicy {
 }
 
 fun Screen.captureRulePreset(scope: String): JSONObject = when (scope) {
-    "mafia" -> MafiaCodec.encodeSettings(host.mafia.settings())
+    "mafia" -> RulePresetPolicy.captureMafia(host.mafia.settings())
     "panto" -> host.panto.defaults().let { JSONObject().put("rounds", it.rounds).put("manual", it.manualTime).put("seconds", it.seconds) }
     "spy" -> host.spy.settings().let { JSONObject().put("players", it.players).put("spies", it.spies).put("minutes", it.minutes).put("hint", it.spyHint) }
     else -> RulePresetPolicy.capture(settings, scope)
 }
 fun Screen.defaultRulePreset(scope: String): JSONObject = when (scope) {
-    "mafia" -> MafiaCodec.encodeSettings(MafiaSettings())
+    "mafia" -> RulePresetPolicy.captureMafia(MafiaSettings())
     "panto" -> PantoDefaults().let { JSONObject().put("rounds", it.rounds).put("manual", it.manualTime).put("seconds", it.seconds) }
     "spy" -> SpySettings().let { JSONObject().put("players", it.players).put("spies", it.spies).put("minutes", it.minutes).put("hint", it.spyHint) }
     else -> RulePresetPolicy.capture(AppSettings(), scope).apply { if (scope == "league") put("_factory", true) }
 }
 fun Screen.applyRulePreset(scope: String, rules: JSONObject) {
     when (scope) {
-        "mafia" -> host.mafia.saveSettings(MafiaCodec.decodeSettings(rules))
+        "mafia" -> host.mafia.saveSettings(RulePresetPolicy.applyMafia(host.mafia.settings(),rules))
         "panto" -> host.panto.saveDefaults(PantoDefaults(rules.optInt("rounds", 3), rules.optBoolean("manual"), rules.optInt("seconds", 45)).sane())
         "spy" -> host.spy.saveSettings(SpySettings(rules.optInt("players", 6).coerceIn(SpyEngine.MIN_PLAYERS, SpyEngine.MAX_PLAYERS), rules.optInt("spies", 1).coerceAtLeast(1).coerceAtMost(rules.optInt("players", 6).coerceAtLeast(2) - 1), rules.optInt("minutes", 5).coerceIn(SpyEngine.MIN_MINUTES, SpyEngine.MAX_MINUTES), rules.optBoolean("hint")))
         else -> host.updateSettings { RulePresetPolicy.apply(it, scope, rules) }
@@ -132,7 +142,7 @@ private fun Screen.rulePresetDialog(scope: String, capture: () -> JSONObject, ap
                         addView(kit.weight(kit.button("انتخاب", ButtonKind.SUCCESS, RoyalIcon.CHECK, 40) { dialog.dismiss(); apply(JSONObject(saved.rules.toString())) }))
                         addView(kit.hgap(6))
                     }
-                    addView(kit.weight(kit.button(if (saved == null) "ذخیرهٔ فعلی" else "جایگزینی / نام", ButtonKind.SECONDARY, RoyalIcon.EDIT, 40) { save(slot, saved) }))
+                    addView(kit.weight(kit.button(if (saved == null) "ذخیرهٔ فعلی" else "جایگزینی", ButtonKind.SECONDARY, RoyalIcon.EDIT, 40) { save(slot, saved) }))
                     if (saved != null) {
                         addView(kit.hgap(6))
                         addView(kit.iconButton(RoyalIcon.TRASH, "حذف ترکیب", ButtonKind.SECONDARY, 40) { kit.confirm("حذف تنظیمات ذخیره‌شده", "فقط همین ترکیب حذف شود؟", "حذف", true) { book.delete(scope, slot); dialog.dismiss(); rulePresetDialog(scope, capture, apply) } })

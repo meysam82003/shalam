@@ -63,6 +63,7 @@ object AdsManager {
     }
     private fun chain(format: String): List<Pair<String, JSONObject>> {
         val c = config() ?: return emptyList()
+        if(format!="rewarded" && ProState.now()<ProState.adFreeUntil)return emptyList()
         if (!c.optJSONObject(format).let { it != null && it.optBoolean("enabled") }) return emptyList()
         if (ProState.isPro && !c.optBoolean("vip_ads")) return emptyList()
         return listOf(c.optString("primary"), c.optString("fallback")).distinct().mapNotNull { n ->

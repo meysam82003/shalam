@@ -50,6 +50,10 @@ object PushRuntime {
             }
         }
     }
+    fun updateRegistration(c:Context){
+        val ctx=c.applicationContext
+        if(restore(ctx))FirebaseMessaging.getInstance().token.addOnSuccessListener{token->io.execute{runCatching{hooks(ctx)?.register(ctx,token)}}}
+    }
     fun token(c:Context,token:String){io.execute{runCatching{hooks(c)?.register(c,token)}}}
     fun receive(c:Context){if(prefs(c).getString("config",null)?.let{runCatching{JSONObject(it).optBoolean("enabled")}.getOrDefault(false)}==true)hooks(c)?.receive(c)}
     fun request(base:String,method:String,route:String,body:JSONObject?,bearer:String?):JSONObject? {

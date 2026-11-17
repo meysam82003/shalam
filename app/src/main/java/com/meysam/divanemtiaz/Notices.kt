@@ -46,7 +46,13 @@ object Notices {
     fun offers(c: Context) = prefs(c).getBoolean("offers", false)
     fun offersPro(c: Context) = prefs(c).getBoolean("offers_pro", false)
     fun reminders(c: Context) = prefs(c).getBoolean("reminders", true)
-    fun setOffers(c: Context, on: Boolean) = prefs(c).edit().putBoolean(if (ProState.isPro) "offers_pro" else "offers", on).putBoolean("asked", true).apply()
+    fun setOffers(c: Context, on: Boolean) {
+        prefs(c).edit().putBoolean(if (ProState.isPro) "offers_pro" else "offers", on).putBoolean("asked", true).apply()
+        updatePushConsent(c)
+    }
+    fun updatePushConsent(c:Context) {
+        runCatching {Class.forName("com.meysam.divanpush.PushRuntime").getField("INSTANCE").get(null).let{runtime->runtime.javaClass.getMethod("updateRegistration",Context::class.java).invoke(runtime,c)}}
+    }
     fun setReminders(c: Context, on: Boolean) = prefs(c).edit().putBoolean("reminders", on).apply()
     fun markAsked(c: Context) = prefs(c).edit().putBoolean("asked", true).apply()
 
