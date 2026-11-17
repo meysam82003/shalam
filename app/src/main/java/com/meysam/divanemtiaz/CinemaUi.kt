@@ -238,11 +238,23 @@ class CinemaArtView(context: Context, private val scene: CinemaScene, private va
         if (scene == CinemaScene.MAFIA || scene == CinemaScene.THEATRE) {
             val bitmap = CinemaAssets.get(context, if (scene == CinemaScene.MAFIA) "mafia" else "panto")
             if (bitmap != null) {
-                val src = Rect(0, 0, bitmap.width, (bitmap.height * .77f).toInt())
-                val dst = RectF(0f, 0f, w, h)
+                val sourceW = min(bitmap.width, (bitmap.height * w / h).toInt()).coerceAtLeast(1)
+                val sourceH = min(bitmap.height, (bitmap.width * h / w).toInt()).coerceAtLeast(1)
+                val left = (bitmap.width - sourceW) / 2
+                val top = ((bitmap.height - sourceH) * .32f).toInt()
+                val src = Rect(left, top, left + sourceW, top + sourceH)
+                val inset = resources.displayMetrics.density
+                val dst = RectF(inset, inset, w - inset, h - inset * 2f)
+                val radius = 16f * resources.displayMetrics.density
+                canvas.save()
+                canvas.clipPath(Path().apply { addRoundRect(dst, radius, radius, Path.Direction.CW) })
                 p.isFilterBitmap = true; canvas.drawBitmap(bitmap, src, dst, p)
-                p.shader = LinearGradient(0f, h * .5f, 0f, h, 0, ThemeEngine.spec.bg[0], Shader.TileMode.CLAMP)
-                canvas.drawRect(dst, p); p.shader = null
+                p.shader = LinearGradient(0f, h * .55f, 0f, h, 0, ThemeEngine.spec.bg[0], Shader.TileMode.CLAMP)
+                canvas.drawRect(dst, p); canvas.restore()
+                p.style = Paint.Style.STROKE; p.strokeWidth = inset
+                p.shader = LinearGradient(0f,0f,w,h,ThemeEngine.spec.metalLight,CinemaLook.tint(),Shader.TileMode.CLAMP)
+                canvas.drawRoundRect(dst,radius,radius,p)
+                p.style = Paint.Style.FILL; p.shader = null
                 return
             }
         }
