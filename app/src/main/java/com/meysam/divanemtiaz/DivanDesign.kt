@@ -120,7 +120,7 @@ object DivanDesign {
         canvas.translate(17f, 16f); canvas.scale(.66f, .66f)
         val path = MafiaArt.glyph(if (hidden) MafiaGlyph.QUESTION else glyph)
         p.shader = null; p.color = 0x99000000.toInt(); canvas.save(); canvas.translate(0f, 5f); canvas.drawPath(path, p); canvas.restore()
-        p.style = Paint.Style.STROKE; p.strokeWidth = 3.3f
+        p.style = Paint.Style.STROKE; p.strokeWidth = 3.3f; p.alpha = 255
         p.shader = android.graphics.LinearGradient(0f, 0f, 90f, 100f, intArrayOf(0xFFFFFFFF.toInt(), color, Royal.mix(color, 0xFF000000.toInt(), .65f)), null, android.graphics.Shader.TileMode.CLAMP)
         canvas.drawPath(path, p)
         p.style = Paint.Style.FILL

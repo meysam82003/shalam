@@ -1,27 +1,29 @@
-# Divan 5.7 visual redesign
+# Divan 5.7: cinematic native interface
 
-The native Android app keeps its package IDs, signing certificate, game engines, repositories, saved-game format and offline behavior. The shared TeaVM build uses the same screen code. No host deployment or release publication is part of this change.
+The supplied references guide visual presentation only. App labels, game rules, plan prices and access decisions continue to come from the existing code and panel.
 
-| Saved theme id | New identity | Layout |
-| --- | --- | --- |
-| cobalt | اطلس / Atlas | Dark cyan dashboard, compact two-column games, grid background |
-| iranic | کاغذ / Paper | Warm paper, editorial headline, single-column game list, angular controls |
-| neon | اوربیت / Orbit | Violet glass, centered hero, asymmetric game grid, compact navigation |
-| emerald | نخل / Palm | Light sage, organic rounded cards, centered opening and roomy game tiles |
-| copper | ولتا / Volta | Charcoal and acid yellow, squared controls, bold borders and full-width navigation |
-| ivory | موج / Wave | Ice blue, horizontal game rows, pill controls and floating navigation |
+The home presents four card-game tiles, three party-game tiles, the Pro entry and the previous tool shortcuts in a dedicated tools hub. Existing resume selection, privacy of hidden scores, ad slots and gift access remain in place.
 
-All six identities are selectable in the appearance page. Existing saved IDs select their corresponding redesigned identity. The first-launch chooser previews each style before saving; later selections save immediately. Settings has a compact link to the full appearance gallery.
+`CinemaUi.kt` implements native material drawing, dimensional symbols, scene backgrounds and artwork views. All text, fields, buttons, lists and game controls remain native views. The ornamental backdrop is a bundled, existing project asset; no picture of a complete interface is used as a screen. The Mafia and pantomime header illustrations are bundled locally. Cached artwork keys incorporate asynchronous bitmap readiness in the shared browser runtime.
 
-Shared components cover screen headers, game hubs, score cards and hand rows, fields, dialogs, controls, navigation, empty states, timers, game/role emblems and avatar frames. The existing player symbol IDs and photo files remain unchanged. Role cards preserve selected portraits, hidden/revealed state, role details and eliminated status. Paper and Volta use a typographic countdown; the other styles use their own circular countdown treatment. Timer bookkeeping and game/audio lifecycle are unchanged.
+| Stored id | Material |
+| --- | --- |
+| cobalt | زمرد سلطنتی — emerald velvet and gold |
+| iranic | مروارید — ivory and champagne |
+| neon | تئاتر نئون — violet glass and stage light |
+| emerald | نیمه‌شب — navy and polished steel |
+| copper | مخمل سرخ — burgundy and warm metal |
+| ivory | کریستال — pale glass and silver blue |
 
-The launcher, loading surface and web icons use the new Divan mark. `tools/render_app_icons.py` regenerates the PNG icon assets with Pillow; it is not a dependency of the Android build.
+Stored theme IDs are unchanged. Four dark and two light materials apply to the app's shared controls. Game presentation scopes add Mafia crimson, theatre violet and spy blue without changing stored settings. Original avatar IDs, personal photos, role portraits and hidden/revealed states are preserved. Pantomime's revealed word uses an ornamental paper card while its previous-word display and privacy controls retain their behavior.
 
-Validation:
-- `gradle --no-daemon testReleaseUnitTest assembleRelease` tests/builds all three Android flavors and verifies the official signing certificate in CI.
-- Theme tests cover all six saved IDs, shape/layout distinctions, persistence and foreground contrast.
-- Server regression and payment compatibility suites remain enabled.
-- `python3 webapp/build-play.py` builds the shared screen implementation.
-- `webapp/tests/visual-smoke.cjs` runs the production shared build in Chrome at 390 × 844, captures home/setup/board/score entry/settings in all six styles, exercises new-game navigation and reload, blocks external requests and checks for browser exceptions. Images and the report are CI artifacts. This browser review does not substitute for testing Android on a physical device.
+Game engines, saved-game formats, repositories, billing, subscription/device-trial enforcement, reward limits, audio lifecycle and direct Iranian hosting are unchanged by this visual layer. Package IDs and the official signing identity are retained.
 
-Preserved features include selected-player filtering, Mafia subscription/trial rules, narration ducking and user audio, saved previous pantomime word, league editing, rewarded Pro/cooldown, notices, sponsorship contacts and direct Iranian hosting at divan-emtiaz.ir.
+Validation in GitHub Actions:
+- JVM game/theme regressions across all three Android release flavors.
+- Release APK assembly and verification of the original signing certificate.
+- Server and payment compatibility regressions.
+- Compilation of the same screen sources to the shared browser runtime.
+- Real-screen browser smoke captures at 390 × 844 in all six materials: home, setup, score board, score entry and settings, plus pantomime/spy hubs and the enforced Mafia access gate in the main dark materials. Browser errors are checked and external requests are blocked.
+
+Physical Android device testing, merging, release publication and live-host deployment are not performed automatically.

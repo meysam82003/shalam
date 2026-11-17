@@ -90,7 +90,7 @@ abstract class Screen(val host: MainActivity) {
         val large = false
         val design = ThemeEngine.spec.layout
         val smallTitle = kit.vertical().apply {
-            addView(kit.text(title, if (large) TextStyle.HEADING else TextStyle.TITLE, Royal.title, Gravity.CENTER, maxLines = 1))
+            addView(kit.text(title, if (large) TextStyle.HEADING else TextStyle.TITLE, Royal.title, Gravity.CENTER, maxLines = 2))
             subtitleView = null
             if (!large && !subtitle.isNullOrBlank()) addView(kit.text(subtitle, TextStyle.CAPTION, Royal.muted, Gravity.CENTER, maxLines = 1).also { subtitleView = it })
             if (large) alpha = 0f
@@ -359,7 +359,7 @@ class MainActivity : Activity() {
         if (next === ThemeEngine.spec) return
         ThemeEngine.apply(next)
         LaunchLook.remember(this, next)
-        rootView.background = CinemaBackdrop(resources.displayMetrics.density, current?.visualScene ?: CinemaScene.HOME)
+        rootView.background = CinemaBackdrop(this, resources.displayMetrics.density, current?.visualScene ?: CinemaScene.HOME)
         paintSystemBars()
         refresh()
     }
@@ -672,7 +672,7 @@ class MainActivity : Activity() {
         pageFade?.cancel()
         pageFade = null
         CinemaLook.scene = screen.visualScene
-        rootView.background = CinemaBackdrop(resources.displayMetrics.density, screen.visualScene)
+        rootView.background = CinemaBackdrop(this, resources.displayMetrics.density, screen.visualScene)
         val view = screen.build()
         restoreScroll(view, screen.savedScroll)
         if (!animate || !settings.general.animations) {

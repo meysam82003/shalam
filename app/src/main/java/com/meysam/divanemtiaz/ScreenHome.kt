@@ -14,7 +14,7 @@ class SplashScreen(host: MainActivity) : Screen(host) {
     private var done = false
     override fun build(): View = FrameLayout(host).apply {
         addView(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
-            addView(HeroCrestView(host), LinearLayout.LayoutParams(kit.dp(132), kit.dp(132)))
+            addView(RegalCrownView(host), LinearLayout.LayoutParams(kit.dp(132), kit.dp(132)))
             addView(kit.gap(24))
             addView(kit.text("دیوان", TextStyle.DISPLAY, Royal.title, Gravity.CENTER).apply { textSize = kit.textSize(42f) })
             addView(kit.text("هر دورهمی، یک بازی تازه", TextStyle.BODY, Royal.muted, Gravity.CENTER))
@@ -109,7 +109,7 @@ class HomeScreen(host: MainActivity) : Screen(host) {
     private fun tile(seal: View, title: String, caption: String?, tint: Int, pro: Boolean, compact: Boolean = false, onClick: () -> Unit): View = kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
         background = CinemaTileDrawable(kit.density, tint)
         setPadding(kit.dp(7), kit.dp(8), kit.dp(7), kit.dp(12))
-        val size = if (compact) 54 else 67
+        val size = if (compact) 62 else 86
         addView(seal, LinearLayout.LayoutParams(kit.dp(size), kit.dp(size)))
         addView(kit.text(title, if (compact) TextStyle.BODY_BOLD else TextStyle.HEADING, Royal.ivory, Gravity.CENTER, 1))
         if (caption != null) addView(kit.text(caption, TextStyle.CAPTION, Royal.muted, Gravity.CENTER, 1))

@@ -64,6 +64,14 @@ const profiles=['cobalt','iranic','neon','emerald','copper','ivory'];
       await page.waitForTimeout(1000);
       await shot('home');
       assert((await labels()).includes('دیوان امتیاز'),theme+' home missing');
+      if (theme === 'cobalt' || theme === 'neon') {
+        await click('پانتومیم'); await shot('panto-hub');
+        await page.keyboard.press('Escape'); await page.waitForTimeout(400);
+        await click('جاسوس'); await shot('spy-hub');
+        await page.keyboard.press('Escape'); await page.waitForTimeout(400);
+        await click('راوی مافیا'); await shot('mafia-access');
+        await page.keyboard.press('Escape'); await page.waitForTimeout(400);
+      }
       await click('شلم');await shot('setup');
       await click('شروع داوری شلم');await shot('board');
       await click('ثبت دست جدید');await shot('score-entry');

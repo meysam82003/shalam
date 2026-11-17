@@ -38,14 +38,15 @@ object CinemaLook {
 }
 
 /** Native scene painting: velvet folds, stage light, felt, city silhouette and metallic inlays. */
-class CinemaBackdrop(private val density: Float, private val scene: CinemaScene) : SimpleDrawable() {
+class CinemaBackdrop(private val context: Context, private val density: Float, private val scene: CinemaScene) : SimpleDrawable() {
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
     private var cached: Bitmap? = null
     private var stamp = ""
     override fun draw(canvas: Canvas) {
         val w = bounds.width(); val h = bounds.height()
         if (w <= 0 || h <= 0) return
-        val key = "$w.$h.${ThemeEngine.version}.$scene"
+        val palace = if (ThemeEngine.spec.light) null else CinemaAssets.get(context, "palace")
+        val key = "$w.$h.${ThemeEngine.version}.$scene.${palace?.generationId ?: 0}"
         if (stamp != key || cached == null) {
             cached?.recycle()
             cached = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also { paintScene(Canvas(it), w.toFloat(), h.toFloat()) }
@@ -66,6 +67,12 @@ class CinemaBackdrop(private val density: Float, private val scene: CinemaScene)
         p.style = Paint.Style.FILL
         p.shader = LinearGradient(0f, 0f, w, h, intArrayOf(Royal.mix(t.bg[0], tint, if (t.light) .05f else .32f), t.bg[0], t.bg[0]), null, Shader.TileMode.CLAMP)
         c.drawRect(0f, 0f, w, h, p)
+        if (!t.light) CinemaAssets.get(context, "palace")?.let { image ->
+            p.shader = null; p.alpha = if (scene == CinemaScene.MAFIA || scene == CinemaScene.THEATRE) 90 else 175
+            p.isFilterBitmap = true
+            c.drawBitmap(image, null, RectF(0f, 0f, w, h), p)
+            p.alpha = 255
+        }
         fun glow(x: Float, y: Float, r: Float, color: Int, strength: Float) {
             p.shader = RadialGradient(x, y, r.coerceAtLeast(1f), intArrayOf(Royal.alpha(color, strength), 0), null, Shader.TileMode.CLAMP)
             c.drawRect(0f, 0f, w, h, p)
@@ -77,6 +84,7 @@ class CinemaBackdrop(private val density: Float, private val scene: CinemaScene)
         var y = 0f
         while (y < h) { c.drawLine(0f, y, w, y + w * .18f, p); y += density * 7f }
         if (scene == CinemaScene.THEATRE || scene == CinemaScene.MAFIA) {
+            p.alpha = 255
             // Curtains are drawn at the sides; content remains on a quiet central stage.
             for (side in 0..1) {
                 c.save(); if (side == 1) { c.translate(w, 0f); c.scale(-1f, 1f) }
@@ -127,6 +135,7 @@ object CinemaSurface {
         p.color = Royal.alpha(Color.BLACK, if (t.light) .09f else .45f)
         c.drawRoundRect(RectF(rect.left, rect.top + d * 3f, rect.right, rect.bottom + d * 3f), r, r, p)
         val surface = CinemaLook.surface(t)
+        p.alpha = if (t.light) 255 else 242
         val top = Royal.mix(surface, tint, if (selected) .12f else if (style == PanelStyle.RAISED) .07f else .025f)
         val bottom = Royal.mix(surface, t.bg[0], .4f)
         if (style != PanelStyle.GHOST) {
@@ -150,7 +159,7 @@ object CinemaAssets {
     private val cache = HashMap<String, Bitmap>()
     fun get(context: Context, name: String): Bitmap? {
         cache[name]?.takeIf { !it.isRecycled }?.let { return it }
-        val bitmap = runCatching { context.assets.open("cinema/$name.jpg").use { BitmapFactory.decodeStream(it) } }.getOrNull()
+        val bitmap = runCatching { context.assets.open("cinema/" + name + if (name == "palace") ".webp" else ".jpg").use { BitmapFactory.decodeStream(it) } }.getOrNull()
         if (bitmap != null) cache[name] = bitmap
         return bitmap
     }
@@ -166,16 +175,28 @@ object CinemaSymbols {
     }
     fun game(c: Canvas, w: Int, h: Int, game: GameType?, p: Paint) {
         val k = min(w, h) / 100f; if (k <= 0) return
+        p.alpha = 255
         c.save(); c.translate((w - 100 * k) / 2f, (h - 100 * k) / 2f); c.scale(k, k)
         val tint = color(game)
         p.style = Paint.Style.FILL; p.shader = RadialGradient(50f, 50f, 49f, intArrayOf(Royal.alpha(tint, .28f), 0), null, Shader.TileMode.CLAMP)
         c.drawCircle(50f, 50f, 49f, p)
-        if (game == GameType.SHALAM || game == GameType.HEZARTAII || game == null) {
+        if (game == GameType.HEZARTAII) {
+            p.shader = null; p.alpha = 255; p.style = Paint.Style.STROKE; p.strokeWidth = 6f
+            p.shader = LinearGradient(18f,15f,80f,76f,intArrayOf(0xFFFFEEAC.toInt(),0xFFC58A22.toInt(),0xFF7C4A10.toInt()),null,Shader.TileMode.CLAMP)
+            c.drawOval(RectF(13f,22f,40f,54f),p);c.drawOval(RectF(60f,22f,87f,54f),p)
+            val cup=Path().apply {moveTo(27f,16f);lineTo(73f,16f);lineTo(69f,43f);quadTo(65f,59f,54f,62f);lineTo(54f,76f);lineTo(68f,82f);lineTo(68f,89f);lineTo(32f,89f);lineTo(32f,82f);lineTo(46f,76f);lineTo(46f,62f);quadTo(34f,58f,31f,43f);close()}
+            p.style=Paint.Style.FILL
+            p.shader=LinearGradient(27f,0f,74f,0f,intArrayOf(0xFF956219.toInt(),0xFFFFE9A8.toInt(),0xFFF0C05F.toInt(),0xFF9E6B20.toInt(),0xFFFFD580.toInt()),null,Shader.TileMode.CLAMP)
+            c.drawPath(cup,p)
+            p.shader=null;p.style=Paint.Style.STROKE;p.strokeWidth=1.1f;p.color=0xFFFFE8A4.toInt();c.drawPath(cup,p)
+            p.style=Paint.Style.FILL;p.color=0x88FFFFFF.toInt();c.drawRoundRect(RectF(35f,22f,39f,43f),2f,2f,p)
+        } else if (game == GameType.SHALAM || game == null) {
             for (i in 0..3) {
                 c.save(); c.rotate(-27f + i * 18f, 50f, 84f)
                 val rect = RectF(29f, 13f, 72f, 79f)
                 p.shader = null; p.color = 0x66000000; c.drawRoundRect(RectF(30f, 17f, 74f, 83f), 5f, 5f, p)
                 p.shader = LinearGradient(29f, 13f, 72f, 79f, intArrayOf(0xFFFFFFFF.toInt(), 0xFFFFF4D9.toInt(), 0xFFBFAE87.toInt()), null, Shader.TileMode.CLAMP)
+                p.alpha = 255
                 c.drawRoundRect(rect, 5f, 5f, p)
                 p.shader = null; p.style = Paint.Style.STROKE; p.strokeWidth = .7f; p.color = 0xFFBD9A53.toInt(); c.drawRoundRect(RectF(32f, 16f, 69f, 76f), 3f, 3f, p)
                 p.style = Paint.Style.FILL
@@ -188,7 +209,7 @@ object CinemaSymbols {
             val path = if (game == GameType.MENFI) SuitShapes.spade(64f) else SuitShapes.club(64f)
             c.save(); c.translate(18f, 18f)
             p.shader = null; p.color = 0x99000000.toInt(); c.save(); c.translate(0f, 5f); c.drawPath(path, p); c.restore()
-            p.style = Paint.Style.STROKE; p.strokeWidth = 4f; p.shader = LinearGradient(0f, 0f, 64f, 64f, Color.WHITE, Royal.mix(tint, Color.BLACK, .6f), Shader.TileMode.CLAMP); c.drawPath(path, p)
+            p.style = Paint.Style.STROKE; p.strokeWidth = 4f; p.alpha = 255; p.shader = LinearGradient(0f, 0f, 64f, 64f, Color.WHITE, Royal.mix(tint, Color.BLACK, .6f), Shader.TileMode.CLAMP); c.drawPath(path, p)
             p.style = Paint.Style.FILL; p.shader = LinearGradient(0f, 0f, 50f, 65f, intArrayOf(Royal.mix(tint, Color.WHITE, .5f), tint, Royal.mix(tint, Color.BLACK, .6f)), null, Shader.TileMode.CLAMP); c.drawPath(path, p)
             c.restore()
         }
@@ -199,9 +220,18 @@ object CinemaSymbols {
 /** Header cover holds artwork only; every title, score and control is a real native View. */
 class CinemaArtView(context: Context, private val scene: CinemaScene, private val game: GameType? = null) : CachedArtView(context) {
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
-    override fun artKey(): Any = listOf(scene, game)
+    override fun artKey(): Any {
+        // The browser decodes a bundled image asynchronously; a ready bitmap must replace the initial vector fallback.
+        val image = when (scene) {
+            CinemaScene.MAFIA -> CinemaAssets.get(context, "mafia")
+            CinemaScene.THEATRE -> CinemaAssets.get(context, "panto")
+            else -> null
+        }
+        return listOf(scene, game, image?.generationId ?: 0)
+    }
     override fun drawArt(canvas: Canvas) {
         val w = width.toFloat(); val h = height.toFloat(); if (w <= 0 || h <= 0) return
+        p.alpha = 255
         val tint = when (scene) { CinemaScene.MAFIA -> 0xFF7E0C2A.toInt(); CinemaScene.THEATRE -> 0xFF3C207C.toInt(); CinemaScene.SPY -> 0xFF154B7B.toInt(); else -> CinemaSymbols.color(game) }
         p.shader = RadialGradient(w * .5f, h * .42f, max(w, h) * .65f, intArrayOf(Royal.alpha(tint, .4f), 0), null, Shader.TileMode.CLAMP)
         canvas.drawRect(0f, 0f, w, h, p); p.shader = null
@@ -265,15 +295,17 @@ class CinemaTileDrawable(private val density: Float, private val tint: Int) : Si
         val r = 15f * density; val rect = RectF(b.left + density, b.top + density, b.right - density, b.bottom - density * 3)
         p.style = Paint.Style.FILL; p.shader = null; p.color = Royal.alpha(Color.BLACK, if (t.light) .1f else .6f)
         canvas.drawRoundRect(RectF(rect.left, rect.top + 2 * density, rect.right, rect.bottom + 2 * density), r, r, p)
-        val base = Royal.mix(t.surface, tint, if (t.light) .07f else .18f)
+        val base = Royal.mix(t.surface, tint, if (t.light) .07f else .22f)
+        p.alpha = 255
         p.shader = LinearGradient(rect.left, rect.top, rect.right, rect.bottom, intArrayOf(base, t.surface, Royal.mix(t.bg[0], tint, if (t.light) .025f else .09f)), null, Shader.TileMode.CLAMP)
         canvas.drawRoundRect(rect, r, r, p)
         p.shader = RadialGradient(rect.centerX(), rect.top, rect.width(), intArrayOf(Royal.alpha(tint, if (t.light) .1f else .18f), 0), null, Shader.TileMode.CLAMP)
         canvas.drawRoundRect(rect, r, r, p)
-        p.style = Paint.Style.STROKE; p.strokeWidth = 1.1f * density
+        p.style = Paint.Style.STROKE; p.strokeWidth = 1.3f * density
+        p.alpha = 255
         p.shader = LinearGradient(rect.left, rect.top, rect.right, rect.bottom, intArrayOf(Royal.alpha(t.metalLight, .8f), Royal.alpha(tint, .6f), Royal.alpha(tint, .3f), Royal.alpha(t.metal, .6f)), null, Shader.TileMode.CLAMP)
         canvas.drawRoundRect(rect, r, r, p)
-        p.shader = null; p.color = Royal.alpha(Color.WHITE, .055f); p.strokeWidth = density * .6f
+        p.shader = null; p.color = Royal.alpha(Color.WHITE, .13f); p.strokeWidth = density * .6f
         canvas.drawRoundRect(RectF(rect.left + 3*density,rect.top + 3*density,rect.right - 3*density,rect.bottom - 3*density),r-2*density,r-2*density,p)
         p.style = Paint.Style.FILL; p.shader = null
     }
@@ -283,6 +315,7 @@ class CinemaPaperDrawable(private val density: Float, private val golden: Boolea
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
     override fun draw(canvas: Canvas) {
         val b = bounds; val r = 22f * density
+        p.alpha = 255
         val rect = RectF(b.left + 2*density,b.top + density,b.right - 2*density,b.bottom - 4*density)
         p.style = Paint.Style.FILL; p.shader = LinearGradient(rect.left,rect.top,rect.right,rect.bottom,
             if (golden) intArrayOf(0xFFFFE6A1.toInt(),0xFFF0CA7D.toInt(),0xFFD9A749.toInt()) else intArrayOf(0xFFFFFAED.toInt(),0xFFF4E9CC.toInt(),0xFFE4D1A6.toInt()),null,Shader.TileMode.CLAMP)

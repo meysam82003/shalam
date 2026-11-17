@@ -61,3 +61,6 @@ textarea.field { white-space: pre-wrap; overflow-y: auto; }
 #loading{background:linear-gradient(180deg,var(--lb1),var(--lb2),var(--lb3))}
 .toast{background:var(--lb1);color:var(--ltitle);box-shadow:0 0 0 1px var(--lgold),0 12px 30px #0003}
 #loading .divan-mark{aspect-ratio:1 / 1}
+
+/* Cinematic native entrance palette. */
+:root{--lb1:#020F10;--lb2:#020F10;--lb3:#020F10;--ltitle:#FFF5DD;--lgold:#F2CA79;--lmuted:#B2C8BF;--ldim:#B2C8BF}
