@@ -92,12 +92,16 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
     ): TextView = TextView(context).apply {
         text = value
         setTextColor(color)
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, textSize(style.sp))
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, textSize(style.sp * when {
+            style == TextStyle.DISPLAY && ThemeEngine.spec.layout == ThemeLayout.PAPER -> 1.18f
+            style == TextStyle.HEADING && ThemeEngine.spec.layout == ThemeLayout.VOLT -> 1.08f
+            else -> 1f
+        }))
         typeface = RoyalFonts.get(context, style.bold)
         this.gravity = gravity
         textDirection = View.TEXT_DIRECTION_RTL
         includeFontPadding = true
-        setLineSpacing(0f, 1.12f)
+        setLineSpacing(0f, if (ThemeEngine.spec.layout == ThemeLayout.PAPER) 1.25f else 1.1f)
         if (maxLines > 0) {
             this.maxLines = maxLines
             ellipsize = TextUtils.TruncateAt.END
@@ -228,7 +232,7 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
         text(label, TextStyle.CAPTION, if (filled) Royal.night else color, Gravity.CENTER, 1).apply {
             typeface = RoyalFonts.get(context, true)
             background = android.graphics.drawable.GradientDrawable().apply {
-                cornerRadius = dpf(10f)
+                cornerRadius = dpf(DivanDesign.radius(ThemeEngine.spec, 10f))
                 if (filled) setColor(color) else {
                     setColor(Royal.alpha(color, 0.12f))
                     setStroke(dp(1), Royal.alpha(color, 0.7f))
@@ -249,9 +253,9 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
         setHintTextColor(Royal.dim)
         setTextSize(TypedValue.COMPLEX_UNIT_SP, textSize(15f))
         typeface = RoyalFonts.get(context, true)
-        background = PanelDrawable(density, PanelStyle.FLAT, 14f)
+        background = PanelDrawable(density, PanelStyle.NORMAL, 16f)
         setPadding(dp(12), dp(8), dp(12), dp(11))
-        minHeight = dp(46)
+        minHeight = dp(50)
         setSingleLine(true)
         imeOptions = EditorInfo.IME_ACTION_DONE
         if (numeric) {
@@ -380,10 +384,10 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
         openDialogs += dialog
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
         val content = panel(PanelStyle.RAISED, 16).apply { layoutDirection = View.LAYOUT_DIRECTION_RTL }
-        content.addView(text(title, TextStyle.HEADING, Royal.goldLight, Gravity.CENTER))
+        content.addView(text(title, TextStyle.TITLE, Royal.title, Gravity.START))
         content.addView(divider())
         if (message != null) {
-            content.addView(text(message, TextStyle.BODY, Royal.ivory, Gravity.CENTER))
+            content.addView(text(message, TextStyle.BODY, Royal.ivory, Gravity.START))
             content.addView(gap(10))
         }
         if (body != null) {
@@ -395,7 +399,7 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
         }
         if (actions.size > 2) {
             actions.forEachIndexed { i, action ->
-                content.addView(button(action.label, action.kind, height = 44) {
+                content.addView(button(action.label, action.kind, height = 48) {
                     if (action.dismiss) dialog.dismiss()
                     action.onClick()
                 }, if (i < actions.lastIndex) spaced(6) else fill())
@@ -404,7 +408,7 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
             val row = horizontal()
             actions.forEachIndexed { i, action ->
                 if (i > 0) row.addView(hgap(8))
-                row.addView(weight(button(action.label, action.kind, height = 44) {
+                row.addView(weight(button(action.label, action.kind, height = 48) {
                     if (action.dismiss) dialog.dismiss()
                     action.onClick()
                 }))

@@ -83,195 +83,70 @@ class ThemeSpec(
     val ring: IntArray,
     val ringTrack: Int,
     /** Colours of the theme's swatch in the theme picker. */
-    val swatch: IntArray
+    val swatch: IntArray,
+    val layout: ThemeLayout
 )
+
+/** Persistent ids stay stable across upgrades; the layout is a separate visual identity. */
+enum class ThemeLayout { ATLAS, PAPER, ORBIT, PALM, VOLT, WAVE }
 
 private fun c(v: Long): Int = v.toInt()
 
-/** The six selectable styles; the user picks one on the first launch and can change it in the settings. */
 object Themes {
-    val COBALT = ThemeSpec(
-        id = "cobalt", title = "وایت کبالت", latin = "White Cobalt", summary = "روشن، تمیز و دقیق؛ سفید با آبی کبالت",
-        light = true,
-        bg = intArrayOf(c(0xFFF6F8FC), c(0xFFEFF3FA), c(0xFFE8EEF8)),
-        glows = listOf(ThemeGlow(0.92f, -0.04f, 0.8f, c(0x262D63E6)), ThemeGlow(0.05f, 0.75f, 0.7f, c(0x147FA6FF))),
-        vignette = 0, pattern = ThemePattern.LATTICE, patternColor = c(0xFF2D63E6),
-        surface = c(0xFFFFFFFF), surfaceLow = c(0xFFFBFCFF),
-        raised = c(0xFFFFFFFF), raisedLow = c(0xFFF1F5FE),
-        flat = c(0xFFF8FAFE), flatLow = c(0xFFF3F6FC),
-        border = c(0xFFDDE5F3), borderLow = c(0xFFD2DCEE), inner = 0, jewels = false,
-        frame = ThemeFrame.SOFT, frameWidth = 1f, shadow = c(0x2E2D4A9A), shadowDepth = 3.2f, gloss = 0f, radius = 1.1f,
-        accent = c(0xFF2D63E6), accentText = c(0xFF1E4FC8), accentDeep = c(0xFF1A3FA0), accentShadow = c(0xFF153384),
-        metalLight = c(0xFFEFF3FC), metal = c(0xFFB9C8E8), metalDeep = c(0xFF7189C2), metalShadow = c(0xFF41558C),
-        success = c(0xFF12A891), successText = c(0xFF0B7F70), successDeep = c(0xFF07695D),
-        danger = c(0xFFE0475A), dangerText = c(0xFFC7303F), dangerDeep = c(0xFF9E1F2E),
-        text = c(0xFF141B2D), muted = c(0xFF5A6478), dim = c(0xFF8D96A8), titleColor = c(0xFF101828),
-        onAccent = c(0xFFFFFFFF), scrim = c(0xFFF4F7FC), lapis = c(0xFFDCE6FB), lapisLight = c(0xFFC8D7F7),
-        button = ThemeButton.FLAT,
-        primary = intArrayOf(c(0xFF2D63E6), c(0xFF4F80FA), c(0xFF6B95FF)), primaryHorizontal = true, primaryText = c(0xFFFFFFFF), primaryEdge = c(0x552D63E6),
-        secondary = intArrayOf(c(0xFFFFFFFF), c(0xFFFFFFFF), c(0xFFF6F8FD)), secondaryText = c(0xFF1E4FC8), secondaryBorder = c(0xFFD3DDEE),
-        chip = intArrayOf(c(0xFFF3F6FB), c(0xFFF1F4FA), c(0xFFEEF2F9)), chipText = c(0xFF2B3550), chipBorder = c(0xFFDCE3EF),
-        successFill = intArrayOf(c(0xFF2D63E6), c(0xFF3C6FEF), c(0xFF4F80FA)), successOn = c(0xFFFFFFFF),
-        dangerFill = intArrayOf(c(0xFFEF5466), c(0xFFE24A5C), c(0xFFD63B4E)), dangerOn = c(0xFFFFFFFF),
-        buttonRadius = 0.95f, glow = false,
-        ring = intArrayOf(c(0xFF2D63E6), c(0xFF4F80FA), c(0xFF8DB2FF)), ringTrack = c(0x1F2D63E6),
-        swatch = intArrayOf(c(0xFFF4F7FC), c(0xFF2D63E6), c(0xFFDDE5F3))
-    )
+    private fun style(id: String, title: String, latin: String, summary: String, layout: ThemeLayout,
+        light: Boolean, page: Long, card: Long, ink: Long, muted: Long, accent: Long, on: Long,
+        edge: Long, radius: Float, frame: ThemeFrame, button: ThemeButton, pattern: ThemePattern): ThemeSpec {
+        val bg = c(page); val surface = c(card); val text = c(ink); val a = c(accent); val onA = c(on)
+        val line = c(edge)
+        val success = c(if (light) 0xFF14634E else 0xFF80E3BA)
+        val danger = c(if (light) 0xFFB42337 else 0xFFFFA0AC)
+        val depth = if (layout == ThemeLayout.VOLT) 4f else if (layout == ThemeLayout.PAPER) 0f else 2f
+        return ThemeSpec(id, title, latin, summary, light,
+            intArrayOf(bg, bg, bg),
+            if (layout == ThemeLayout.ORBIT) listOf(ThemeGlow(.1f, .1f, 1f, c(0x304F36B8)), ThemeGlow(.95f, .6f, .8f, c(0x202FE4CF))) else emptyList(),
+            0, pattern, a,
+            surface, surface, surface, surface, bg, bg, line, line, 0, false,
+            frame, if (layout == ThemeLayout.VOLT) 2f else .8f,
+            c(if (light) 0x18223140 else 0x40000000), depth, if (layout == ThemeLayout.ORBIT) .035f else 0f, radius,
+            a, a, a, a, line, line, line, line,
+            success, success, success, danger, danger, danger,
+            text, c(muted), c(muted), text, onA, bg, surface, surface,
+            button, intArrayOf(a, a, a), false, onA, line,
+            intArrayOf(surface, surface, surface), text, line,
+            intArrayOf(bg, bg, bg), text, line,
+            intArrayOf(success, success, success), if (light) c(0xFFFFFFFF) else c(0xFF08261C),
+            intArrayOf(danger, danger, danger), if (light) c(0xFFFFFFFF) else c(0xFF410914),
+            if (layout == ThemeLayout.WAVE) 3f else radius, layout == ThemeLayout.ORBIT,
+            intArrayOf(a, a, a), Royal.alpha(a, .14f), intArrayOf(bg, a, surface), layout)
+    }
 
-    val COPPER = ThemeSpec(
-        id = "copper", title = "گرافیت کوپر", latin = "Graphite Copper", summary = "تیرهٔ گرافیتی و مسی؛ رسمی، مات و سنگین",
-        light = false,
-        bg = intArrayOf(c(0xFF1D2023), c(0xFF17191C), c(0xFF111315)),
-        glows = listOf(ThemeGlow(0.85f, -0.05f, 0.85f, c(0x26D9A27C)), ThemeGlow(0.1f, 1.0f, 0.8f, c(0x1A8FB3AA))),
-        vignette = c(0x66000000), pattern = ThemePattern.DIAMOND, patternColor = c(0xFFD9A27C),
-        surface = c(0xFF2B3034), surfaceLow = c(0xFF24282C),
-        raised = c(0xFF32373C), raisedLow = c(0xFF262A2E),
-        flat = c(0xFF262A2E), flatLow = c(0xFF202326),
-        border = c(0x80E6B48E), borderLow = c(0x40A8785A), inner = 0, jewels = false,
-        frame = ThemeFrame.HAIRLINE, frameWidth = 1f, shadow = c(0x8C000000), shadowDepth = 4.5f, gloss = 0.035f, radius = 1f,
-        accent = c(0xFFD9A27C), accentText = c(0xFFF0C4A2), accentDeep = c(0xFFA8714E), accentShadow = c(0xFF6B4530),
-        metalLight = c(0xFFF6D8C0), metal = c(0xFFD49B74), metalDeep = c(0xFF9C6646), metalShadow = c(0xFF5A3826),
-        success = c(0xFF8FC1B5), successText = c(0xFFB9DED5), successDeep = c(0xFF4F7D72),
-        danger = c(0xFFE07A6E), dangerText = c(0xFFF2A79D), dangerDeep = c(0xFF8A3A32),
-        text = c(0xFFF1ECE6), muted = c(0xFFB2ABA3), dim = c(0xFF7F7972), titleColor = c(0xFFF6EFE8),
-        onAccent = c(0xFF1A1C1E), scrim = c(0xFF111315), lapis = c(0xFF2F3438), lapisLight = c(0xFF3A4045),
-        button = ThemeButton.MATTE,
-        primary = intArrayOf(c(0xFFE6B48E), c(0xFFC9B19C), c(0xFFA9C1B8)), primaryHorizontal = true, primaryText = c(0xFF1A1C1E), primaryEdge = c(0xFF4A3426),
-        secondary = intArrayOf(c(0xFF30353A), c(0xFF2A2E32), c(0xFF25292D)), secondaryText = c(0xFFF0C4A2), secondaryBorder = c(0x73D9A27C),
-        chip = intArrayOf(c(0xFF2C3135), c(0xFF282C30), c(0xFF24282B)), chipText = c(0xFFE9E3DC), chipBorder = c(0x40D9A27C),
-        successFill = intArrayOf(c(0xFFE6B48E), c(0xFFD9A27C), c(0xFFC48C66)), successOn = c(0xFF1A1C1E),
-        dangerFill = intArrayOf(c(0xFFE58B7F), c(0xFFD06A5E), c(0xFFB0544A)), dangerOn = c(0xFF1A1C1E),
-        buttonRadius = 0.9f, glow = false,
-        ring = intArrayOf(c(0xFFE6B48E), c(0xFFD9A27C), c(0xFFA9C1B8)), ringTrack = c(0x1FFFFFFF),
-        swatch = intArrayOf(c(0xFF1D2023), c(0xFFD9A27C), c(0xFFA9C1B8))
-    )
+    val COBALT = style("cobalt", "اطلس", "ATLAS", "اتاق فرمان؛ شبکه‌ای، دقیق و آبیِ شب", ThemeLayout.ATLAS,
+        false, 0xFF091827, 0xFF12283B, 0xFFF2F7FC, 0xFFA4BACB, 0xFF72DDF1, 0xFF08212D, 0xFF294256,
+        .65f, ThemeFrame.HAIRLINE, ThemeButton.FLAT, ThemePattern.LATTICE)
+    val IRANIC = style("iranic", "کاغذ", "PAPER", "دفتر بازی؛ کاغذ گرم، جوهر و خطوط صریح", ThemeLayout.PAPER,
+        true, 0xFFF3EEE5, 0xFFFFFCF5, 0xFF24241F, 0xFF666359, 0xFF8F372B, 0xFFFFFCF5, 0xFFB7B0A2,
+        .16f, ThemeFrame.HAIRLINE, ThemeButton.MATTE, ThemePattern.GIRIH)
+    val NEON = style("neon", "اوربیت", "ORBIT", "مدار شب؛ شیشه‌ای، شناور و بنفش", ThemeLayout.ORBIT,
+        false, 0xFF141126, 0xFF27213F, 0xFFF7F2FF, 0xFFC0B4D6, 0xFFD1B5FF, 0xFF281445, 0xFF594577,
+        1.55f, ThemeFrame.GLOW, ThemeButton.GLASS, ThemePattern.NEON)
+    val EMERALD = style("emerald", "نخل", "PALM", "دورهمی آرام؛ سبز پسته‌ای و فرم‌های نرم", ThemeLayout.PALM,
+        true, 0xFFEAF0E5, 0xFFF9FCF4, 0xFF20342A, 0xFF53665A, 0xFF315C43, 0xFFFFFFFF, 0xFFCAD7C4,
+        1.8f, ThemeFrame.SOFT, ThemeButton.GRADIENT, ThemePattern.ARABESQUE)
+    val COPPER = style("copper", "ولتا", "VOLTA", "پرانرژی؛ زرد برقی، قاب محکم و زاویه‌های تیز", ThemeLayout.VOLT,
+        false, 0xFF181A19, 0xFF272A27, 0xFFF7F8EF, 0xFFB6BBAF, 0xFFD5F45B, 0xFF20250D, 0xFF858E73,
+        .12f, ThemeFrame.HAIRLINE, ThemeButton.MATTE, ThemePattern.DIAMOND)
+    val IVORY = style("ivory", "موج", "WAVE", "روشن و خلوت؛ آبی اقیانوس و کنترل‌های کپسولی", ThemeLayout.WAVE,
+        true, 0xFFF0F6FB, 0xFFFFFFFF, 0xFF15304A, 0xFF526C83, 0xFF175FC1, 0xFFFFFFFF, 0xFFD8E6F1,
+        1.25f, ThemeFrame.SOFT, ThemeButton.FLAT, ThemePattern.DOTS)
 
-    val IRANIC = ThemeSpec(
-        id = "iranic", title = "ایرانیک مینیمال", latin = "Iranic Minimal", summary = "کرم و استخوانی با سرمه‌ای و طلایی ملایم؛ اصیل و آرام",
-        light = true,
-        bg = intArrayOf(c(0xFFF7F0E3), c(0xFFF3EBDC), c(0xFFEDE3D1)),
-        glows = listOf(ThemeGlow(0.5f, -0.08f, 0.9f, c(0x33E8C98A)), ThemeGlow(0.5f, 1.08f, 0.8f, c(0x141F2F4D))),
-        vignette = 0, pattern = ThemePattern.GIRIH, patternColor = c(0xFF1F2F4D),
-        surface = c(0xFFFDF9F2), surfaceLow = c(0xFFF8F1E4),
-        raised = c(0xFFFEFAF3), raisedLow = c(0xFFF3E9D7),
-        flat = c(0xFFFAF4E9), flatLow = c(0xFFF5EDDF),
-        border = c(0xFFE3D4B9), borderLow = c(0xFFD5C2A1), inner = c(0x40C79A55), jewels = false,
-        frame = ThemeFrame.HAIRLINE, frameWidth = 1.1f, shadow = c(0x24553C14), shadowDepth = 3f, gloss = 0f, radius = 0.95f,
-        accent = c(0xFFB98A45), accentText = c(0xFF1F2F4D), accentDeep = c(0xFF8C6428), accentShadow = c(0xFF5E4219),
-        metalLight = c(0xFFF6E3BA), metal = c(0xFFCBA466), metalDeep = c(0xFF96703A), metalShadow = c(0xFF5E4219),
-        success = c(0xFF1E9C94), successText = c(0xFF15766F), successDeep = c(0xFF0F5C56),
-        danger = c(0xFFB8443F), dangerText = c(0xFF9E2F2B), dangerDeep = c(0xFF7A1F1C),
-        text = c(0xFF1C2433), muted = c(0xFF6A6457), dim = c(0xFF9A917F), titleColor = c(0xFF1A2540),
-        onAccent = c(0xFFFFFFFF), scrim = c(0xFFF6EFE2), lapis = c(0xFFEFE4CF), lapisLight = c(0xFFE6D6B8),
-        button = ThemeButton.GRADIENT,
-        primary = intArrayOf(c(0xFF1F2F4D), c(0xFF6E6551), c(0xFFC79A55)), primaryHorizontal = true, primaryText = c(0xFFFFFFFF), primaryEdge = c(0x401F2F4D),
-        secondary = intArrayOf(c(0xFFFDF9F2), c(0xFFFAF4E8), c(0xFFF6EEDF)), secondaryText = c(0xFF1F2F4D), secondaryBorder = c(0xFFD9C8A8),
-        chip = intArrayOf(c(0xFFFAF4E8), c(0xFFF7F0E2), c(0xFFF3EADA)), chipText = c(0xFF2A3247), chipBorder = c(0xFFE0D2B8),
-        successFill = intArrayOf(c(0xFF2B3F63), c(0xFF243655), c(0xFF1F2F4D)), successOn = c(0xFFFFFFFF),
-        dangerFill = intArrayOf(c(0xFFC9524C), c(0xFFB8443F), c(0xFFA03733)), dangerOn = c(0xFFFFFFFF),
-        buttonRadius = 0.9f, glow = false,
-        ring = intArrayOf(c(0xFF1F2F4D), c(0xFF6E6551), c(0xFFC79A55)), ringTrack = c(0x1A1F2F4D),
-        swatch = intArrayOf(c(0xFFF3EBDC), c(0xFF1F2F4D), c(0xFFC79A55))
-    )
-
-    val EMERALD = ThemeSpec(
-        id = "emerald", title = "امرالد پریمیوم", latin = "Emerald Premium", summary = "سبز زمردی با طلایی و فیروزه‌ای؛ اشرافی و بازی‌محور",
-        light = false,
-        bg = intArrayOf(c(0xFF0A2019), c(0xFF0B241D), c(0xFF061511)),
-        glows = listOf(ThemeGlow(0.5f, -0.06f, 0.9f, c(0x4026A07A)), ThemeGlow(0.5f, 1.05f, 0.85f, c(0x1FE3C27A))),
-        vignette = c(0x80000000), pattern = ThemePattern.ARABESQUE, patternColor = c(0xFFE3C27A),
-        surface = c(0xF5143A31), surfaceLow = c(0xF50F2C25),
-        raised = c(0xFF184438), raisedLow = c(0xFF0E2A23),
-        flat = c(0xEB12332B), flatLow = c(0xEB0E2822),
-        border = c(0xFFF0D497), borderLow = c(0xFF8E6E2F), inner = c(0x40E3C27A), jewels = false,
-        frame = ThemeFrame.HAIRLINE, frameWidth = 1.2f, shadow = c(0x7A000000), shadowDepth = 3.5f, gloss = 0.05f, radius = 1.05f,
-        accent = c(0xFFE3C27A), accentText = c(0xFFF4DFA8), accentDeep = c(0xFFB08A3E), accentShadow = c(0xFF5E4519),
-        metalLight = c(0xFFFBE3A6), metal = c(0xFFE6BE6A), metalDeep = c(0xFFB1832F), metalShadow = c(0xFF6E4A1A),
-        success = c(0xFF5BC3A0), successText = c(0xFF9BE3C9), successDeep = c(0xFF1F7A5E),
-        danger = c(0xFFE06A6A), dangerText = c(0xFFF5A3A3), dangerDeep = c(0xFF7A1F24),
-        text = c(0xFFF2F0E6), muted = c(0xFFA9C2B8), dim = c(0xFF6F8E83), titleColor = c(0xFFF4DFA8),
-        onAccent = c(0xFF0A1F1A), scrim = c(0xFF061511), lapis = c(0xFF164036), lapisLight = c(0xFF1E5546),
-        button = ThemeButton.GRADIENT,
-        primary = intArrayOf(c(0xFFEBCC8A), c(0xFFA9C690), c(0xFF5BC3A0)), primaryHorizontal = true, primaryText = c(0xFF0A1F1A), primaryEdge = c(0xFF3A3010),
-        secondary = intArrayOf(c(0xFF1A473D), c(0xFF153B33), c(0xFF10302A)), secondaryText = c(0xFFF4DFA8), secondaryBorder = c(0x99E3C27A),
-        chip = intArrayOf(c(0xFF163E35), c(0xFF13362E), c(0xFF10302A)), chipText = c(0xFFEDEBDF), chipBorder = c(0x59E3C27A),
-        successFill = intArrayOf(c(0xFFF0D497), c(0xFFE3C27A), c(0xFFC9A55A)), successOn = c(0xFF0A1F1A),
-        dangerFill = intArrayOf(c(0xFFE57B7B), c(0xFFD15C5E), c(0xFFB0444A)), dangerOn = c(0xFFFFFFFF),
-        buttonRadius = 1f, glow = false,
-        ring = intArrayOf(c(0xFFF0D497), c(0xFFE3C27A), c(0xFF5BC3A0)), ringTrack = c(0x1FFFFFFF),
-        swatch = intArrayOf(c(0xFF0B241D), c(0xFFE3C27A), c(0xFF5BC3A0))
-    )
-
-    val IVORY = ThemeSpec(
-        id = "ivory", title = "آیوری گلد", latin = "Ivory Gold Luxury", summary = "عاجی و سفید گرم با طلایی؛ مجلل، نرم و شفاف",
-        light = true,
-        bg = intArrayOf(c(0xFFFCF9F2), c(0xFFF8F1E4), c(0xFFF1E7D4)),
-        glows = listOf(ThemeGlow(0.15f, -0.05f, 0.9f, c(0x99FFFFFF)), ThemeGlow(0.9f, 0.25f, 0.8f, c(0x26D9AE5C)), ThemeGlow(0.5f, 1.1f, 0.9f, c(0x1FB8892F))),
-        vignette = 0, pattern = ThemePattern.DOTS, patternColor = c(0xFFB8892F),
-        surface = c(0xFFFFFDF8), surfaceLow = c(0xFFFBF5E9),
-        raised = c(0xFFFFFEFB), raisedLow = c(0xFFF8EFDD),
-        flat = c(0xFFFDF9F1), flatLow = c(0xFFF9F2E5),
-        border = c(0xFFEAD6AA), borderLow = c(0xFFD2B273), inner = c(0x30CFAE6B), jewels = false,
-        frame = ThemeFrame.SOFT, frameWidth = 1.1f, shadow = c(0x338A6420), shadowDepth = 4f, gloss = 0.5f, radius = 1.15f,
-        accent = c(0xFFC49A4A), accentText = c(0xFF8C6421), accentDeep = c(0xFF9A7230), accentShadow = c(0xFF6B4D1C),
-        metalLight = c(0xFFFFF2CF), metal = c(0xFFDDB66A), metalDeep = c(0xFFAD8236), metalShadow = c(0xFF6E4A1A),
-        success = c(0xFF2F9E8F), successText = c(0xFF1F7A6E), successDeep = c(0xFF16665B),
-        danger = c(0xFFC8474F), dangerText = c(0xFFA8323A), dangerDeep = c(0xFF7E1F26),
-        text = c(0xFF2A2218), muted = c(0xFF76695A), dim = c(0xFFA89A86), titleColor = c(0xFF2A2218),
-        onAccent = c(0xFFFFFFFF), scrim = c(0xFFFBF7EE), lapis = c(0xFFF6ECD8), lapisLight = c(0xFFEEDDBA),
-        button = ThemeButton.GRADIENT,
-        primary = intArrayOf(c(0xFFC9A05A), c(0xFFAD812F), c(0xFF8F6A1E)), primaryHorizontal = false, primaryText = c(0xFFFFFFFF), primaryEdge = c(0x668A6420),
-        secondary = intArrayOf(c(0xFFFFFEFA), c(0xFFFCF6EA), c(0xFFF8F0E0)), secondaryText = c(0xFF8C6421), secondaryBorder = c(0xFFDCC08A),
-        chip = intArrayOf(c(0xFFFCF7ED), c(0xFFF8F1E3), c(0xFFF5ECDA)), chipText = c(0xFF3A3024), chipBorder = c(0xFFE6D3AE),
-        successFill = intArrayOf(c(0xFFC9A05A), c(0xFFAD812F), c(0xFF8F6A1E)), successOn = c(0xFFFFFFFF),
-        dangerFill = intArrayOf(c(0xFFDD5D64), c(0xFFCB4B53), c(0xFFB83C45)), dangerOn = c(0xFFFFFFFF),
-        buttonRadius = 1f, glow = false,
-        ring = intArrayOf(c(0xFF8C6421), c(0xFFB8892F), c(0xFFD9B05F)), ringTrack = c(0x29B8892F),
-        swatch = intArrayOf(c(0xFFF8F1E4), c(0xFFC49A4A), c(0xFFFFFFFF))
-    )
-
-    val NEON = ThemeSpec(
-        id = "neon", title = "نئون گلس", latin = "Neon Glass", summary = "بنفش، آبی و صورتی نئونی روی شیشه؛ پویا و جوان",
-        light = false,
-        bg = intArrayOf(c(0xFF140B2E), c(0xFF0F0A26), c(0xFF0A0819)),
-        glows = listOf(ThemeGlow(0.12f, 0.08f, 0.75f, c(0x66A34DFF)), ThemeGlow(0.95f, 0.38f, 0.7f, c(0x4D3D7BFF)), ThemeGlow(0.45f, 1.02f, 0.8f, c(0x4DFF4FD8))),
-        vignette = c(0x66000000), pattern = ThemePattern.NEON, patternColor = c(0xFFFFFFFF),
-        surface = c(0x24FFFFFF), surfaceLow = c(0x14FFFFFF),
-        raised = c(0x2EFFFFFF), raisedLow = c(0x17FFFFFF),
-        flat = c(0x1AFFFFFF), flatLow = c(0x10FFFFFF),
-        border = c(0xD9C08CFF), borderLow = c(0x995B8CFF), inner = c(0x1FFFFFFF), jewels = false,
-        frame = ThemeFrame.GLOW, frameWidth = 1.2f, shadow = c(0x66000000), shadowDepth = 3f, gloss = 0.10f, radius = 1.2f,
-        accent = c(0xFFB57CFF), accentText = c(0xFFDCC0FF), accentDeep = c(0xFF7B4FD6), accentShadow = c(0xFF3B2280),
-        metalLight = c(0xFFEEE2FF), metal = c(0xFFB57CFF), metalDeep = c(0xFF6E52E0), metalShadow = c(0xFF2C1E6B),
-        success = c(0xFF3EE6C8), successText = c(0xFF9BF5E6), successDeep = c(0xFF138C7B),
-        danger = c(0xFFFF4F8B), dangerText = c(0xFFFF9EC0), dangerDeep = c(0xFF8A1C48),
-        text = c(0xFFF4EFFF), muted = c(0xFFB8AED8), dim = c(0xFF8178A6), titleColor = c(0xFFFFFFFF),
-        onAccent = c(0xFFFFFFFF), scrim = c(0xFF0A0819), lapis = c(0x552A1A66), lapisLight = c(0x773D2A99),
-        button = ThemeButton.GLASS,
-        primary = intArrayOf(c(0xFFC07CFF), c(0xFF9A7CFF), c(0xFF6E86FF)), primaryHorizontal = true, primaryText = c(0xFFFFFFFF), primaryEdge = c(0xFF8B5CFF),
-        secondary = intArrayOf(c(0x2EFFFFFF), c(0x21FFFFFF), c(0x17FFFFFF)), secondaryText = c(0xFFE5D6FF), secondaryBorder = c(0x80B57CFF),
-        chip = intArrayOf(c(0x21FFFFFF), c(0x17FFFFFF), c(0x12FFFFFF)), chipText = c(0xFFEDE7FF), chipBorder = c(0x4DB57CFF),
-        successFill = intArrayOf(c(0xFFFF6FD8), c(0xFFC77CFF), c(0xFF8E7CFF)), successOn = c(0xFFFFFFFF),
-        dangerFill = intArrayOf(c(0xFFFF6CA5), c(0xFFF24C8A), c(0xFFE0306E)), dangerOn = c(0xFFFFFFFF),
-        buttonRadius = 1.2f, glow = true,
-        ring = intArrayOf(c(0xFFFF5CD6), c(0xFFB57CFF), c(0xFF5B8CFF)), ringTrack = c(0x1FFFFFFF),
-        swatch = intArrayOf(c(0xFF140B2E), c(0xFFB57CFF), c(0xFFFF5CD6))
-    )
-
-    val all: List<ThemeSpec> = listOf(COBALT, COPPER, IRANIC, EMERALD, IVORY, NEON)
-
-    /** Shown until a style is chosen (the first launch) or when a stored style no longer exists. */
-    val FALLBACK: ThemeSpec get() = EMERALD
-
-    fun byId(id: String?): ThemeSpec = all.firstOrNull { it.id == id } ?: FALLBACK
-
-    /** True once the user has picked one of the current styles. */
-    fun isChosen(id: String?): Boolean = all.any { it.id == id }
+    val all = listOf(COBALT, IRANIC, NEON, EMERALD, COPPER, IVORY)
+    val FALLBACK = COBALT
+    fun byId(id: String): ThemeSpec = all.firstOrNull { it.id == id } ?: FALLBACK
+    fun isChosen(id: String): Boolean = all.any { it.id == id }
 }
 
-/** The active style; [apply] copies its tokens into [Royal] so every existing widget follows it. */
 object ThemeEngine {
-    @Volatile var spec: ThemeSpec = Themes.EMERALD
+    @Volatile var spec: ThemeSpec = Themes.FALLBACK
         private set
 
     /** Changes with every switch, so cached artwork of the previous style is never reused. */
@@ -357,20 +232,21 @@ object NavBar {
         val host = screen.host
         val t = ThemeEngine.spec
         return android.widget.FrameLayout(host).apply {
-            setPadding(kit.dp(12), kit.dp(4), kit.dp(12), kit.dp(8))
+            setPadding(kit.dp(if (t.layout == ThemeLayout.PAPER || t.layout == ThemeLayout.VOLT) 0 else 16), kit.dp(6), kit.dp(if (t.layout == ThemeLayout.PAPER || t.layout == ThemeLayout.VOLT) 0 else 16), kit.dp(10))
             addView(kit.horizontal(android.view.Gravity.CENTER).apply {
-                background = PanelDrawable(kit.density, PanelStyle.RAISED, 22f)
+                background = PanelDrawable(kit.density, PanelStyle.NORMAL, if (t.layout == ThemeLayout.WAVE) 40f else 20f)
                 setPadding(kit.dp(6), kit.dp(5), kit.dp(6), kit.dp(9))
                 items.forEach { (id, icon, label) ->
                     val on = id == selected
                     addView(kit.vertical(android.view.Gravity.CENTER_HORIZONTAL).apply {
                         setPadding(0, kit.dp(5), 0, kit.dp(5))
                         if (on) background = android.graphics.drawable.GradientDrawable().apply {
-                            cornerRadius = kit.dpf(16f * t.radius)
-                            setColor(Royal.alpha(Royal.gold, if (t.light) 0.12f else 0.16f))
+                            cornerRadius = kit.dpf(DivanDesign.radius(t, if (t.layout == ThemeLayout.WAVE) 30f else 12f))
+                            setColor(if (t.layout == ThemeLayout.VOLT) t.accent else Royal.alpha(Royal.gold, if (t.light) 0.10f else 0.14f))
                         }
-                        addView(kit.icon(icon, if (on) Royal.goldLight else Royal.muted, 22))
-                        addView(kit.text(label, TextStyle.CAPTION, if (on) Royal.goldLight else Royal.muted, android.view.Gravity.CENTER, 1).apply {
+                        minimumHeight = kit.dp(46)
+                        addView(kit.icon(icon, if (on && t.layout == ThemeLayout.VOLT) t.onAccent else if (on) Royal.goldLight else Royal.muted, 22))
+                        if (t.layout != ThemeLayout.ORBIT || on) addView(kit.text(label, TextStyle.CAPTION, if (on && t.layout == ThemeLayout.VOLT) t.onAccent else if (on) Royal.goldLight else Royal.muted, android.view.Gravity.CENTER, 1).apply {
                             if (on) typeface = RoyalFonts.get(context, true)
                         })
                         isClickable = true

@@ -96,7 +96,7 @@ jobs:
         run: python3 build-play.py
       - uses: actions/upload-artifact@v4
         with:
-          name: Divan-5.6-review-builds
+          name: Divan-5.7-review-builds
           path: |
             app/build/outputs/apk/*/release/*.apk
             webapp/build/play/

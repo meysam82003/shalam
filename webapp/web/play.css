@@ -52,3 +52,7 @@ textarea.field { white-space: pre-wrap; overflow-y: auto; }
 #crash b { display: block; color: #F5868C; font-size: 18px; margin-bottom: 6px; }
 #crash .msg { color: #7487AE; font-size: 12px; direction: ltr; word-break: break-word; }
 #crash button { margin-top: 14px; padding: 12px 28px; border: 0; border-radius: 999px; font: 700 15px Vazir, Tahoma, sans-serif; color: #1A1206; background: linear-gradient(100deg, #FBE3A6, #E6BE6A 45%, #B1832F); cursor: pointer; }
+
+/* Divan 5.7 entrance: compact mark, matching the native app. */
+:root{--lb1:#091827;--lb2:#091827;--lb3:#091827;--ltitle:#F2F7FC;--lgold:#72DDF1;--lmuted:#A4BACB;--ldim:#A4BACB}
+.splash .divan-mark{width:132px;height:132px;margin-bottom:24px;color:var(--lgold);animation:none}

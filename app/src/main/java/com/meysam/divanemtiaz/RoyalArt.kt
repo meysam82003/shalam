@@ -676,61 +676,7 @@ class GameSealView(context: Context, private val game: GameType?) : CachedArtVie
     override fun artKey(): Any = game?.key ?: "app"
 
     override fun drawArt(canvas: Canvas) {
-        val r = min(width, height) / 2f * 0.94f
-        if (r <= 0f) return
-        val cx = width / 2f
-        val cy = height / 2f - r * 0.03f
-        Emblems.drawMedallion(canvas, cx, cy, r, base(game), paint)
-        // Web seals draw their symbols on the medallion's full 100-unit box (ring radius = 48 units).
-        val unit = r / 48f
-        val ox = cx - 50f * unit
-        val oy = cy - 50f * unit
-        when (game) {
-            GameType.HEZARTAII -> drawCardFan(canvas, ox, oy, unit)
-            GameType.DOLO -> {
-                Emblems.drawRelief(canvas, SuitShapes.club(48f).apply { offset(23f, 22f) }, cx, cy, r, paint, 2f * 50f / 48f)
-                paint.style = Paint.Style.FILL
-                paint.shader = null
-                paint.color = RoyalClassic.night
-                canvas.drawCircle(ox + 72f * unit, oy + 70f * unit, 11f * unit, paint)
-                paint.style = Paint.Style.STROKE
-                paint.strokeWidth = 2f * unit
-                paint.color = Color.BLACK
-                paint.shader = Emblems.goldFill(oy + 59f * unit, oy + 81f * unit)
-                canvas.drawCircle(ox + 72f * unit, oy + 70f * unit, 11f * unit, paint)
-                paint.shader = null
-                paint.style = Paint.Style.FILL
-                paint.textAlign = Paint.Align.CENTER
-                paint.typeface = RoyalFonts.get(context, true)
-                paint.textSize = 15f * unit
-                paint.color = Royal.metalLight
-                canvas.drawText("۲", ox + 72f * unit, oy + 76f * unit, paint)
-            }
-            GameType.MENFI -> {
-                val eye = Path().apply {
-                    moveTo(22f, 50f); cubicTo(22f, 50f, 33f, 33f, 50f, 33f); cubicTo(67f, 33f, 78f, 50f, 78f, 50f)
-                    cubicTo(78f, 50f, 67f, 67f, 50f, 67f); cubicTo(33f, 67f, 22f, 50f, 22f, 50f); close()
-                }
-                Emblems.drawRelief(canvas, eye, cx, cy, r, paint, 2f * 50f / 48f)
-                paint.style = Paint.Style.FILL
-                paint.shader = null
-                paint.color = Royal.alpha(RoyalClassic.night, 0.55f)
-                canvas.drawCircle(ox + 50f * unit, oy + 50f * unit, 8f * unit, paint)
-                paint.style = Paint.Style.STROKE
-                paint.strokeCap = Paint.Cap.ROUND
-                paint.strokeWidth = 5f * unit
-                paint.color = 0x66000000
-                canvas.drawLine(ox + 27f * unit, oy + 73.5f * unit, ox + 73f * unit, oy + 29.5f * unit, paint)
-                paint.color = Color.BLACK
-                paint.shader = Emblems.goldFill(oy + 28f * unit, oy + 72f * unit)
-                canvas.drawLine(ox + 27f * unit, oy + 72f * unit, ox + 73f * unit, oy + 28f * unit, paint)
-                paint.shader = null
-                paint.style = Paint.Style.FILL
-            }
-            GameType.SHALAM -> Emblems.drawRelief(canvas, SuitShapes.spade(48f).apply { offset(26f, 24f) }, cx, cy, r, paint, 2f * 50f / 48f)
-            null -> Emblems.drawRelief(canvas, CROWN, cx, cy, r, paint, 2f * 50f / 48f)
-        }
-        Emblems.drawGloss(canvas, cx, cy, r * 0.83f, paint)
+        DivanDesign.game(canvas, width, height, game, paint)
     }
 
     /** Pasur identity of «هزارتایی»: three playing cards fanned out, the front one with a club, and «۱۰۰۰» beneath. */
@@ -795,7 +741,7 @@ class HeroCrestView(context: Context) : CachedArtView(context) {
 
     override fun artKey(): Any = "cards-crest"
 
-    override fun drawArt(canvas: Canvas) = HeroCrestArt.draw(canvas, width, height, paint)
+    override fun drawArt(canvas: Canvas) = DivanDesign.brand(canvas, width, height, paint)
 }
 
 /** The fan of four cards under a crown (logo screen and about page), drawn still or at any moment of its entrance. */
@@ -1060,27 +1006,11 @@ class TrophyView(context: Context) : CachedArtView(context) {
 /** Gold hairline divider with a khatam star in the middle. */
 class RoyalDivider(context: Context) : View(context) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-
     override fun onDraw(canvas: Canvas) {
-        val d = resources.displayMetrics.density
-        val cy = height / 2f
-        val cx = width / 2f
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = d
-        paint.color = Color.BLACK
-        paint.shader = LinearGradient(0f, 0f, cx, 0f, 0, Royal.metal, Shader.TileMode.CLAMP)
-        canvas.drawLine(0f, cy, cx - 12 * d, cy, paint)
-        paint.color = Color.BLACK
-        paint.shader = LinearGradient(cx, 0f, width.toFloat(), 0f, Royal.metal, 0, Shader.TileMode.CLAMP)
-        canvas.drawLine(cx + 12 * d, cy, width.toFloat(), cy, paint)
-        paint.shader = null
-        paint.style = Paint.Style.FILL
-        paint.color = Royal.metal
-        canvas.drawPath(RoyalShapes.star8Path(cx, cy, 6 * d), paint)
-        paint.color = Royal.turquoise
-        canvas.drawCircle(cx, cy, 2 * d, paint)
+        paint.color = ThemeEngine.spec.border
+        canvas.drawRect(0f, height / 2f, width.toFloat(), height / 2f + resources.displayMetrics.density, paint)
     }
-}
+    }
 
 /** Custom-drawn toggle so settings do not fall back to the stock Material switch. */
 class RoyalSwitch(context: Context, checked: Boolean) : View(context) {
@@ -1104,36 +1034,17 @@ class RoyalSwitch(context: Context, checked: Boolean) : View(context) {
     }
 
     override fun onDraw(canvas: Canvas) {
-        val d = resources.displayMetrics.density
-        val h = min(height.toFloat(), 30 * d)
-        val w = min(width.toFloat(), 54 * d)
-        val left = (width - w) / 2f
-        val top = (height - h) / 2f
-        val track = RectF(left, top, left + w, top + h)
-        paint.style = Paint.Style.FILL
-        paint.color = Color.BLACK
-        paint.shader = if (checked) {
-            LinearGradient(0f, track.top, 0f, track.bottom, Royal.turquoise, Royal.turquoiseDeep, Shader.TileMode.CLAMP)
-        } else {
-            val t = ThemeEngine.spec
-            LinearGradient(0f, track.top, 0f, track.bottom, Royal.mix(t.flatLow or 0xFF000000.toInt(), Royal.ivory, if (t.light) 0.16f else 0.06f),
-                Royal.mix(t.flat or 0xFF000000.toInt(), Royal.ivory, if (t.light) 0.10f else 0.10f), Shader.TileMode.CLAMP)
-        }
-        canvas.drawRoundRect(track, h / 2f, h / 2f, paint)
-        paint.shader = null
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = d
-        paint.color = if (checked) Royal.turquoiseLight else Royal.alpha(Royal.metal, 0.7f)
-        canvas.drawRoundRect(track, h / 2f, h / 2f, paint)
-        paint.style = Paint.Style.FILL
-        val r = h / 2f - 3 * d
-        val cx = if (checked) track.left + r + 3 * d else track.right - r - 3 * d
-        val cy = track.centerY()
-        paint.color = 0x66000000
-        canvas.drawCircle(cx, cy + d, r, paint)
-        paint.color = Color.BLACK
-        paint.shader = RadialGradient(cx - r * 0.3f, cy - r * 0.4f, r * 1.4f, intArrayOf(Royal.metalLight, Royal.metal, Royal.metalDeep), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
-        canvas.drawCircle(cx, cy, r, paint)
-        paint.shader = null
+        val t = ThemeEngine.spec; val d = resources.displayMetrics.density
+        val h = min(height.toFloat(), 28f * d); val w = min(width.toFloat(), 50f * d)
+        val x = (width - w) / 2f; val y = (height - h) / 2f
+        val r = if (t.layout == ThemeLayout.PAPER || t.layout == ThemeLayout.VOLT) 3f * d else h / 2f
+        paint.shader = null; paint.style = Paint.Style.FILL
+        paint.color = if (checked) t.accent else Royal.mix(t.surface, t.muted, .25f)
+        canvas.drawRoundRect(RectF(x, y, x + w, y + h), r, r, paint)
+        val size = h - 8f * d
+        val left = if (checked) x + 4f * d else x + w - size - 4f * d
+        paint.color = if (checked) t.onAccent else t.surface
+        canvas.drawRoundRect(RectF(left, y + 4f * d, left + size, y + h - 4f * d), r * .8f, r * .8f, paint)
+
     }
 }

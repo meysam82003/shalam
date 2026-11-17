@@ -142,8 +142,8 @@ class BackdropDrawable(private val density: Float) : SimpleDrawable() {
         paint.shader = LinearGradient(0f, 0f, 0f, h, t.bg, floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
         canvas.drawRect(rect, paint)
         paint.color = Color.BLACK
-        paint.shader = BitmapShader(patternTile(t), Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
-        canvas.drawRect(rect, paint)
+        paint.shader = null
+        DivanDesign.background(canvas, w, h, density, t, paint)
         t.glows.forEach { g ->
             paint.color = Color.BLACK
             paint.shader = RadialGradient(w * g.x, h * g.y, (w * g.radius).coerceAtLeast(1f), intArrayOf(g.color, Royal.alpha(g.color, 0.4f), 0), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
@@ -345,19 +345,19 @@ class PanelDrawable(
     /** Hairline, soft and glass cards of the modern styles. */
     private fun modern(canvas: Canvas, t: ThemeSpec) {
         val b = bounds
-        val r = radiusDp * density * t.radius
+        val r = DivanDesign.radius(t, radiusDp) * density
         val depth = t.shadowDepth * density
         rect.set(b.left + density, b.top.toFloat() + density * 0.5f, b.right - density, b.bottom - depth)
         val a = alphaFraction
-        if (style != PanelStyle.GHOST) {
+        if (style != PanelStyle.GHOST && t.shadowDepth > 0f) {
             val strength = if (style == PanelStyle.FLAT) 0.45f else 1f
             paint.style = Paint.Style.FILL
             paint.shader = null
             val base = Color.alpha(t.shadow) / 255f
             floatArrayOf(0.42f, 0.24f, 0.13f, 0.06f).forEachIndexed { i, k ->
                 paint.color = Royal.alpha(t.shadow or 0xFF000000.toInt(), base * k * strength * a)
-                val grow = i * 1.3f * density
-                val dy = depth * (0.45f + i * 0.22f)
+                val grow = if (t.layout == ThemeLayout.VOLT) 0f else i * 1.3f * density
+                val dy = if (t.layout == ThemeLayout.VOLT) depth else depth * (0.45f + i * 0.22f)
                 canvas.drawRoundRect(RectF(rect.left - grow, rect.top + dy, rect.right + grow, rect.bottom + dy + grow * 0.5f), r + grow, r + grow, paint)
             }
         }
@@ -516,7 +516,7 @@ class ButtonDrawable(
         val a = alphaFraction * if (enabled) 1f else 0.42f
         val lift = 2.6f * density
         val face = RectF(b.left + density, b.top + (if (pressed) 1.2f * density else 0f), b.right - density, b.bottom - lift)
-        val r = (radiusDp * density * t.buttonRadius).coerceAtMost(face.height() / 2f)
+        val r = (if (t.layout == ThemeLayout.WAVE || t.layout == ThemeLayout.PALM) face.height() / 2f else DivanDesign.radius(t, radiusDp) * density).coerceAtMost(face.height() / 2f)
         var colors = colors(t)
         if (pressed) colors = colors.map { Royal.mix(it, if (t.light && !filled) 0xFF5A6478.toInt() else 0xFF000000.toInt(), 0.10f) }.toIntArray()
         paint.style = Paint.Style.FILL

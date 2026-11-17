@@ -80,6 +80,7 @@ abstract class Screen(val host: MainActivity) {
         }
         // Game pages keep a compact title; other pages show a large title that slides into the bar on scroll.
         val large = !compactHeader
+        val design = ThemeEngine.spec.layout
         val smallTitle = kit.vertical().apply {
             addView(kit.text(title, if (large) TextStyle.HEADING else TextStyle.TITLE, Royal.title, maxLines = 1))
             subtitleView = null
@@ -101,16 +102,17 @@ abstract class Screen(val host: MainActivity) {
         }
         root.addView(hairline, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(1)))
         val header = if (large) kit.vertical().apply {
-            setPadding(kit.dp(4), kit.dp(2), kit.dp(4), kit.dp(14))
-            addView(kit.text(title, TextStyle.DISPLAY, Royal.title, maxLines = 2).apply { setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, kit.textSize(26f)) })
+            setPadding(kit.dp(2), kit.dp(10), kit.dp(2), kit.dp(20))
+            addView(kit.text(title, TextStyle.DISPLAY, Royal.title, maxLines = 2).apply { setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, kit.textSize(if (design == ThemeLayout.PAPER) 34f else if (design == ThemeLayout.VOLT) 30f else 28f)) })
             if (!subtitle.isNullOrBlank()) addView(kit.text(subtitle, TextStyle.LABEL, Royal.muted, maxLines = 2).also { subtitleView = it })
             addView(View(host).apply {
                 background = android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.RIGHT_LEFT,
                     ThemeEngine.spec.primary).apply { cornerRadius = kit.dpf(2f) }
-            }, LinearLayout.LayoutParams(kit.dp(34), kit.dp(3)).apply { topMargin = kit.dp(8) })
+            }, LinearLayout.LayoutParams(if (design == ThemeLayout.PAPER || design == ThemeLayout.VOLT) ViewGroup.LayoutParams.MATCH_PARENT else kit.dp(if (design == ThemeLayout.ATLAS) 48 else 24), kit.dp(if (design == ThemeLayout.VOLT) 4 else 2)).apply { topMargin = kit.dp(8) })
         } else null
         val column = kit.vertical().apply {
-            setPadding(kit.dp(16), kit.dp(if (large) 2 else 10), kit.dp(16), kit.dp(22))
+            val gutter = if (design == ThemeLayout.ORBIT || design == ThemeLayout.PALM) 20 else 16
+            setPadding(kit.dp(gutter), kit.dp(if (large) 2 else 12), kit.dp(gutter), kit.dp(24))
             layoutDirection = View.LAYOUT_DIRECTION_RTL
             if (header != null) addView(header, kit.fill())
             content()
