@@ -531,7 +531,7 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
             addView(kit.text("اجراکننده: ${m.teams[t.team].performer}", TextStyle.HEADING, Royal.turquoiseLight, Gravity.CENTER))
             addView(kit.text("فقط اجراکننده صفحه را ببیند و «نمایش کلمه» را بزند.", TextStyle.LABEL, Royal.muted, Gravity.CENTER))
         } else {
-            if (golden) addView(kit.text("موضوع طلایی", TextStyle.LABEL_BOLD, Royal.goldLight, Gravity.CENTER))
+            if (golden) addView(kit.text("موضوع طلایی", TextStyle.LABEL_BOLD, 0xFF725019.toInt(), Gravity.CENTER))
             val word = t.word?.shown ?: "—"
             addView(kit.text(word, TextStyle.DISPLAY, 0xFF302217.toInt(), Gravity.CENTER).apply {
                 setTextSize(TypedValue.COMPLEX_UNIT_PX, kit.dpf(if (word.length > 28) 26f else if (word.length > 14) 32f else 40f))
@@ -542,7 +542,7 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
                     addView(kit.text(previous.shown, TextStyle.BODY_BOLD, Royal.goldLight, Gravity.CENTER))
                 }, kit.spaced(8))
             }
-            t.word?.takeIf { it.cat in PantoCategories.names }?.let { addView(kit.text(PantoCategories.name(it.cat), TextStyle.CAPTION, Royal.muted, Gravity.CENTER)) }
+            t.word?.takeIf { it.cat in PantoCategories.names }?.let { addView(kit.text(PantoCategories.name(it.cat), TextStyle.CAPTION, 0xFF66543A.toInt(), Gravity.CENTER)) }
         }
     }
 

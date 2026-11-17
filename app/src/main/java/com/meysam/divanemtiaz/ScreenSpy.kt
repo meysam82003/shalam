@@ -153,8 +153,8 @@ class SpyRevealScreen(host: MainActivity, private val gameId: Long) : Screen(hos
             addView(RoleSealView(host, SpyLook.glyph, 0xFFA62B35.toInt()), LinearLayout.LayoutParams(kit.dp(120), kit.dp(120)))
             addView(kit.gap(12))
             addView(kit.text("نقش شما: جاسوس", TextStyle.DISPLAY, 0xFFFFD0D4.toInt(), Gravity.CENTER).apply { setTextSize(TypedValue.COMPLEX_UNIT_PX, kit.dpf(36f)) })
-            if (g.spyHint) addView(kit.text("دستهٔ کلمه: ${g.category.title}", TextStyle.HEADING, Royal.goldLight, Gravity.CENTER))
-            addView(kit.text("کلمه را نمی‌دانید؛ از سؤال‌ها حدسش بزنید و لو نروید.", TextStyle.LABEL, Royal.ivory, Gravity.CENTER))
+            if (g.spyHint) addView(kit.text("دستهٔ کلمه: ${g.category.title}", TextStyle.HEADING, 0xFFFFDF98.toInt(), Gravity.CENTER))
+            addView(kit.text("کلمه را نمی‌دانید؛ از سؤال‌ها حدسش بزنید و لو نروید.", TextStyle.LABEL, 0xFFFFE3E8.toInt(), Gravity.CENTER))
         } else {
             background = PanelDrawable(kit.density, PanelStyle.SELECTED, 26f)
             addView(kit.text("کلمهٔ مخفی", TextStyle.HEADING, Royal.turquoiseLight, Gravity.CENTER))

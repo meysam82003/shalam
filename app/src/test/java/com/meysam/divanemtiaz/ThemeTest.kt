@@ -73,10 +73,10 @@ class ThemeTest {
         Themes.all.forEach { t ->
             val card = over(t.surface, t.bg[1])
             assertTrue("${t.id} text", contrast(t.text, card) >= 7.0)
-            assertTrue("${t.id} muted", contrast(t.muted, card) >= 3.6)
+            assertTrue("${t.id} muted", contrast(t.muted, card) >= 4.5)
             assertTrue("${t.id} heading", contrast(t.accentText, card) >= 4.5)
             assertTrue("${t.id} title", contrast(t.titleColor, over(0, t.bg[0]) or (0xFF shl 24)) >= 7.0)
-            assertTrue("${t.id} primary button", contrast(t.primaryText, t.primary[1]) >= 2.4)
+            t.primary.forEach { stop -> assertTrue("${t.id} primary button", contrast(t.primaryText, stop) >= 4.5) }
         }
     }
 
