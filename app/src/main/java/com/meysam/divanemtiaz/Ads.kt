@@ -615,7 +615,7 @@ object AdEngine {
             }
         }
         markShown(ad.id); event("impression", key, ad.id)
-        root.fitsSystemWindows = true
+        root.setFitsSystemWindows(true)
         d.show()
         d.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         main.post(update)
