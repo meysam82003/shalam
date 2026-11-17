@@ -14,6 +14,10 @@ Db::use($pdo, 'dvt_');
 Clock::$fixed = (int)$argv[4];
 Http::$allowLocalHttpForTests = true;
 $_SERVER['REMOTE_ADDR'] = '10.9.9.' . getmypid() % 250;
+if (($argv[5] ?? '') === 'coins') {
+    $data=json_decode(file_get_contents($argv[2]),true);$u=Users::byId((int)$argv[3]);
+    echo json_encode(Monetization::claim($u,$data['session'],['watch_id'=>$data['watch_id']]));exit;
+}
 if (($argv[5] ?? '') === 'settle') {
     $o = PayOrders::settle(PayOrders::byCode($argv[2]));
     echo json_encode(['ok' => true, 'status' => $o['status'], 'purchase' => (int)$o['purchase_id']]);

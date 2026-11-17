@@ -236,7 +236,7 @@ class CoinScreen(host:MainActivity):Screen(host){
         addView(balance,kit.spaced(14));addView(status,kit.spaced(10))
         fun load(){Api.call("GET","coins/wallet",null,ProState.token){d,e->balance.text=if(d!=null)"${kit.n(d.optLong("balance"))} سکه • ${kit.n(d.optInt("rewarded_today"))} از ${kit.n(d.optInt("daily_cap"))} پاداش امروز" else e?.message?:"دریافت موجودی ممکن نشد"}}
         if(!ProState.loggedIn)addView(kit.button("ورود به حساب",ButtonKind.PRIMARY,RoyalIcon.USER){host.push(AccountScreen(host))})
-        else {load();var busy=false;addView(kit.button("تماشای تبلیغ و دریافت سکه",ButtonKind.PRIMARY,RoyalIcon.PLAY){if(!busy){busy=true;AdsManager.reward(this@CoinScreen,{status.text=it}){busy=false;load()}}})}
+        else {load();var busy=false;addView(kit.button("تماشای تبلیغ و دریافت سکه",ButtonKind.PRIMARY,RoyalIcon.PLAY){if(!busy){busy=true;AdsManager.reward(this@CoinScreen, {status.text=it}, {busy=false;load()})}})}
         AdsManager.banner(this@CoinScreen,"shop_bottom")?.let{addView(it,kit.spaced(10))}
     }
 }

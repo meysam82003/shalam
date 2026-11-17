@@ -19,6 +19,10 @@ scenario('Iran ads: wallet idempotency, SDK completion, quotas and server-owned 
     Clock::$fixed+=11;
     check(Monetization::events($u,$session,['events'=>[$event]])['accepted']===1,'completion persisted');
     check(Monetization::events($u,$session,['events'=>[$event]])['accepted']===0,'duplicate event is not counted');
+    global $root;$fixture=$root.'/coin-claim.json';file_put_contents($fixture,json_encode(['session'=>$session,'watch_id'=>$w['watch_id']]));$procs=[];
+    for($i=0;$i<4;$i++){$pipes=[];$pr=proc_open([PHP_BINARY,__DIR__.'/race_child.php',$root,$fixture,(string)$u['id'],(string)Clock::now(),'coins'],[1=>['pipe','w'],2=>['pipe','w']],$pipes);$procs[]=[$pr,$pipes];}
+    $outs=[];foreach($procs as [$pr,$pipes]){$outs[]=json_decode(stream_get_contents($pipes[1]),true);fclose($pipes[1]);fclose($pipes[2]);proc_close($pr);}
+    check(count(array_filter($outs,fn($v)=>is_array($v)&&($v['wallet']['balance']??0)===100))===4,'four concurrent claims resolve to one credited balance');
     $paid=Monetization::claim($u,$session,['watch_id'=>$w['watch_id'],'amount'=>999999]);
     check($paid['wallet']['balance']===100,'only configured reward credited');
     check(Monetization::claim($u,$session,['watch_id'=>$w['watch_id']])['duplicate']===true&&Monetization::wallet((int)$u['id'])['balance']===100,'retry after lost response cannot pay twice');
