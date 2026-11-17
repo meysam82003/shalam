@@ -94,6 +94,17 @@ jobs:
           JAVA_HOME: ${{ env.JAVA_HOME_21_X64 }}
         working-directory: webapp
         run: python3 build-play.py
+      - name: Review real screens in all six styles
+        env:
+          NODE_PATH: ${{ runner.temp }}/divan-browser/node_modules
+        run: |
+          npm install --prefix "$RUNNER_TEMP/divan-browser" --no-package-lock playwright@1.51.1
+          node webapp/tests/visual-smoke.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Divan-5.7-UI-review
+          path: webapp/build/ui-review/
       - uses: actions/upload-artifact@v4
         with:
           name: Divan-5.7-review-builds

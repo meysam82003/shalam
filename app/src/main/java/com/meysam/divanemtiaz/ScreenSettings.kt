@@ -148,7 +148,11 @@ class SettingsScreen(host: MainActivity, private var tab: Int = TAB_GENERAL) : S
             if (v) { Notices.requestPermission(host); Notices.schedule(host) }
         })
         parent.addView(kit.section("ظاهر برنامه", RoyalIcon.STAR))
-        parent.addView(themeGrid(this), kit.spaced(8))
+        parent.addView(kit.listGroup(listOf(kit.listRow(
+            ThemePreviewView(host, ThemeEngine.spec).apply { layoutParams = LinearLayout.LayoutParams(kit.dp(62), kit.dp(82)) },
+            "سبک «${ThemeEngine.spec.title}»", "شش ظاهر متفاوت؛ انتخاب و پیش‌نمایش",
+            onClick = { host.push(ThemeScreen(host)) }
+        ))), kit.spaced(8))
         parent.addView(kit.section("تجربهٔ برنامه", RoyalIcon.SETTINGS))
         parent.addView(kit.switchRow("بازخورد لمسی", "لرزش کوتاه هنگام لمس دکمه‌ها", g.haptic) { v -> host.updateSettings { it.copy(general = it.general.copy(haptic = v)) } })
         parent.addView(kit.switchRow("انیمیشن‌های روان", "جابه‌جایی نرم صفحه‌ها، پنجره‌ها و دکمه‌ها", g.animations) { v -> host.updateSettings { it.copy(general = it.general.copy(animations = v)) } })
