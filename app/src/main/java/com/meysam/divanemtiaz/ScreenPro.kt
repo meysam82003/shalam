@@ -87,6 +87,11 @@ class ProScreen(host: MainActivity, private val reason: String? = null, private 
             addView(kit.text(reason, TextStyle.BODY, Royal.ivory))
         }, kit.spaced(12))
 
+        if (!ProState.loggedIn && reason?.contains("مافیا") == true) addView(kit.button("ثبت‌نام و تست ۱۰ دقیقه‌ای مافیا", ButtonKind.PRIMARY, RoyalIcon.TIMER, 50) {
+            host.push(AccountScreen(host) {
+                if (ProState.mafiaAllowed) host.replace(MafiaHomeScreen(host)) else host.pop()
+            })
+        }, kit.spaced(10))
         val lic = ProState.license
         val now = ProState.now()
         if (ProState.isPro) {

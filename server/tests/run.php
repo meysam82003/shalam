@@ -783,10 +783,10 @@ scenario('promotional notifications: consent, Pro, once per phone, daily cap', f
     throws(fn() => Notices::event($a, $dev, 'hack'), 'bad_event', 'unknown event refused');
     $w = $mk(['target' => 'https://example.org/offer', 'stores' => 'bazaar,myket,direct']);
     $dev3 = str_repeat('ef', 32);
-    check(in_array($w, array_column(Notices::due($dev3, 'myket', false, false), 'id'), true), 'opted-in store versions may receive HTTPS campaigns');
-    Db::update('notices', ['active' => 0], 'id = ?', [$a]);
+    Db::run('UPDATE {notices} SET active = 0 WHERE id IN (?, ?)', [$a, $b]);
+    check(Notices::due($dev3, 'myket', false, false)[0]['id'] === $w, 'opted-in store versions may receive HTTPS campaigns');
     check(Notices::due($dev3, 'direct', false, false)[0]['id'] === $w, 'web link only in the site version');
-    Db::update('notices', ['active' => 1], 'id = ?', [$a]);
+    Db::run('UPDATE {notices} SET active = 1 WHERE id IN (?, ?)', [$a, $b]);
     Db::update('notices', ['active' => 0], 'id = ?', [$w]);
     $r = apiGet('v1/notices', ['device' => $dev2, 'store' => 'myket']);
     check(count($r['notices']) === 1 && $r['notices'][0]['id'] === $a, 'API returns the due campaign');

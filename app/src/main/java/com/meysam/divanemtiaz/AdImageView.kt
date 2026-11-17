@@ -11,12 +11,22 @@ import java.io.File
 /** Native GIF animation and static image rendering, including Android 5–8. */
 @Suppress("DEPRECATION")
 class AdImageView(context: Context, file: File) : View(context) {
-    private val movie = runCatching { file.inputStream().use { Movie.decodeStream(it) } }.getOrNull()
-    private val bitmap = if (movie == null) BitmapFactory.decodeFile(file.path) else null
+    private val source = file
+    private var movie: Movie? = null
+    private var bitmap: android.graphics.Bitmap? = null
+    private fun decode() {
+        if (movie == null && bitmap == null) {
+            movie = runCatching { source.inputStream().use { Movie.decodeStream(it) } }.getOrNull()
+            if (movie == null) bitmap = BitmapFactory.decodeFile(source.path)
+        }
+    }
     private val started = SystemClock.uptimeMillis()
     init { setLayerType(View.LAYER_TYPE_SOFTWARE, null) }
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
+        decode()
+        val movie = movie
+        if (movie == null && bitmap == null) { postInvalidateDelayed(80); return }
         val w = movie?.width() ?: bitmap?.width ?: return
         val h = movie?.height() ?: bitmap?.height ?: return
         if (w <= 0 || h <= 0) return

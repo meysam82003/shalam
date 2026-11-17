@@ -1,8 +1,6 @@
 name: Validate game, subscription and advertising changes
 on:
   pull_request:
-  push:
-    branches: [codex/game-access-audio-ads]
 permissions:
   contents: read
 jobs:
