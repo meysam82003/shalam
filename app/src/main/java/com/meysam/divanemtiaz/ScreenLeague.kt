@@ -56,28 +56,29 @@ class LeagueListScreen(host: MainActivity) : Screen(host) {
 
 fun formatTitle(format: Int): String = if (format == LeagueFormat.ROUND_ROBIN) "دوره‌ای (جدول)" else "حذفی دو برده"
 
-class LeagueSetupScreen(host: MainActivity) : Screen(host) {
+class LeagueSetupScreen(host: MainActivity, private val editing: Long? = null) : Screen(host) {
+    private val existing = editing?.let { host.repo.league(it) }
     override val featureKey: String get() = "leagues"
-    override val featureUsed: Int get() = host.repo.leagues().size
-    private var game = GameType.MENFI
-    private var name = "لیگ ${PersianText.digits(host.repo.leagueIndex().size + 1, host.settings.general.persianDigits)}"
-    private val teams = MutableList(4) { Side("تیم ${PersianText.digits(it + 1, host.settings.general.persianDigits)}", (it * 3) % Emblems.COUNT) }
-    private var format = settings.league.format
-    private var winsNeeded = settings.league.winsNeeded
-    private var doubleRoundRobin = settings.league.doubleRoundRobin
-    private var finalAfterTable = settings.league.finalAfterTable
-    private var joker = settings.shalam.defaultJoker
-    private var endPoint = settings.shalam.mode(joker).defaultEndPoint
-    private var menfiHands = settings.menfi.hands
-    private var menfiHidden = settings.menfi.hidden
+    override val featureUsed: Int get() = if (existing == null) host.repo.leagues().size else -1
+    private var game = existing?.game ?: GameType.MENFI
+    private var name = existing?.name ?: "لیگ ${PersianText.digits(host.repo.leagueIndex().size + 1, host.settings.general.persianDigits)}"
+    private val teams = existing?.teams?.toMutableList() ?: MutableList(4) { Side("تیم ${PersianText.digits(it + 1, host.settings.general.persianDigits)}", (it * 3) % Emblems.COUNT) }
+    private var format = existing?.format ?: settings.league.format
+    private var winsNeeded = existing?.config?.winsNeeded ?: settings.league.winsNeeded
+    private var doubleRoundRobin = existing?.config?.doubleRoundRobin ?: settings.league.doubleRoundRobin
+    private var finalAfterTable = existing?.config?.finalAfterTable ?: settings.league.finalAfterTable
+    private var joker = existing?.rules?.shalam?.joker ?: settings.shalam.defaultJoker
+    private var endPoint = existing?.rules?.shalam?.endPoint ?: settings.shalam.mode(joker).defaultEndPoint
+    private var menfiHands = existing?.rules?.menfi?.hands ?: settings.menfi.hands
+    private var menfiHidden = existing?.rules?.menfi?.hidden ?: settings.menfi.hidden
 
     override fun build(): View = scaffold(
-        title = "لیگ تازه",
+        title = if (existing == null) "لیگ تازه" else "ویرایش و افزودن تیم",
         subtitle = "تیم‌ها، قالب مسابقه و قوانین",
-        bottom = kit.button("قرعه‌کشی نهایی و شروع لیگ", ButtonKind.PRIMARY, RoyalIcon.PLAY) { start() }
+        bottom = kit.button(if (existing == null) "قرعه‌کشی نهایی و شروع لیگ" else "ذخیرهٔ تغییرات لیگ", ButtonKind.PRIMARY, RoyalIcon.PLAY) { start() }
     ) {
         addView(kit.field("نام لیگ", name).apply { addTextChangedListener(watcher { name = it }) }, kit.spaced(8))
-        addView(kit.grid(2, listOf(GameType.MENFI, GameType.SHALAM).map { g ->
+        if (existing == null) addView(kit.grid(2, listOf(GameType.MENFI, GameType.SHALAM).map { g ->
             kit.chip(g.title, game == g, ButtonKind.CHIP_GOLD) { game = g; host.refresh() }
         }, 6), kit.spaced(6))
         addView(kit.choiceRow("قالب مسابقه", null, listOf(
@@ -89,6 +90,7 @@ class LeagueSetupScreen(host: MainActivity) : Screen(host) {
             addView(kit.switchRow("رفت و برگشت", "هر دو تیم دو بار با هم بازی می‌کنند", doubleRoundRobin) { doubleRoundRobin = it })
             addView(kit.switchRow("فینال بین دو تیم اول جدول", "اگر خاموش باشد صدر جدول قهرمان است (در تساوی کامل فینال برگزار می‌شود)", finalAfterTable) { finalAfterTable = it })
         }
+        if (existing != null) addView(kit.text("قوانین تازه برای بازی‌های بعدی است؛ نتایج قبلی تغییر نمی‌کنند.", TextStyle.CAPTION, Royal.muted), kit.spaced(6))
         if (game == GameType.SHALAM) {
             addView(kit.choiceRow("جوکر", null, listOf(0 to "بدون جوکر", 1 to "با جوکر"), if (joker) 1 else 0) {
                 joker = it == 1
@@ -101,7 +103,7 @@ class LeagueSetupScreen(host: MainActivity) : Screen(host) {
             addView(kit.switchRow("پنهان‌بودن جمع امتیاز", null, menfiHidden) { menfiHidden = it })
         }
         addView(kit.section("تیم‌ها (${kit.n(teams.size)})", RoyalIcon.PLAYERS, kit.button("قرعه‌کشی", ButtonKind.SECONDARY, RoyalIcon.SWAP, 34) {
-            teams.shuffle()
+            if (existing == null) teams.shuffle() else kit.toast("ترتیب تیم‌های قبلی برای حفظ سوابق ثابت است")
             host.refresh()
         }))
         addView(kit.text("ترتیب فهرست، ترتیب رویارویی‌هاست: ۱ با ۲، ۳ با ۴ و …؛ با «قرعه‌کشی» تصادفی چیده می‌شود.", TextStyle.CAPTION, Royal.muted), kit.spaced(6))
@@ -112,7 +114,7 @@ class LeagueSetupScreen(host: MainActivity) : Screen(host) {
                 host.refresh()
             },
             kit.button("از فهرست تیم‌ها", ButtonKind.GHOST, RoyalIcon.USER, 40) {
-                rosterPicker(true) { entry ->
+                rosterPicker(true, unavailable = teams.flatMap { it.members + it.name }.toSet()) { entry ->
                     teams += Side(entry.name, entry.avatar, entry.members)
                     host.refresh()
                 }
@@ -143,6 +145,7 @@ class LeagueSetupScreen(host: MainActivity) : Screen(host) {
         addView(kit.hgap(6))
         addView(kit.weight(kit.vertical().apply {
             addView(kit.field("نام تیم", teams[i].name).apply {
+                isEnabled = existing == null || i >= existing.teams.size
                 addTextChangedListener(watcher { text -> if (i < teams.size) teams[i] = teams[i].copy(name = text) })
             }, kit.fill())
             addView(kit.text(if (teams[i].members.isEmpty()) "بدون عضو — لمس برای انتخاب افراد" else "اعضا: " + teams[i].members.joinToString(" و "), TextStyle.CAPTION,
@@ -150,7 +153,7 @@ class LeagueSetupScreen(host: MainActivity) : Screen(host) {
                 setPadding(kit.dp(4), kit.dp(2), kit.dp(4), kit.dp(2))
                 isClickable = true
                 setOnClickListener {
-                    memberPicker(teams[i].members) { members ->
+                    memberPicker(teams[i].members, unavailable = teams.filterIndexed { index, _ -> index != i }.flatMap { it.members }.toSet()) { members ->
                         val old = teams[i]
                         val auto = old.name.startsWith("تیم ") || old.name.isBlank() || old.name == old.members.joinToString(" و ")
                         teams[i] = old.copy(members = members, name = if (auto && members.isNotEmpty()) members.joinToString(" و ") else old.name)
@@ -159,7 +162,7 @@ class LeagueSetupScreen(host: MainActivity) : Screen(host) {
                 }
             })
         }))
-        if (teams.size > 2) {
+        if (teams.size > (existing?.teams?.size ?: 2) && i >= (existing?.teams?.size ?: 0)) {
             addView(kit.hgap(6))
             addView(kit.iconButton(RoyalIcon.TRASH, "حذف تیم", ButtonKind.CHIP, 38) {
                 teams.removeAt(i)
@@ -178,9 +181,28 @@ class LeagueSetupScreen(host: MainActivity) : Screen(host) {
             kit.toast("نام تیم‌ها نباید تکراری باشد")
             return
         }
-        val base = settings.rulesFor(game, joker, endPoint)
-        val rules = if (game == GameType.MENFI) base.copy(menfi = base.menfi.copy(hands = menfiHands, hidden = menfiHidden)) else base
-        val config = settings.league.copy(format = format, winsNeeded = winsNeeded, doubleRoundRobin = doubleRoundRobin, finalAfterTable = finalAfterTable)
+        val base = existing?.rules ?: settings.rulesFor(game, joker, endPoint)
+        val rules = when (game) {
+            GameType.MENFI -> base.copy(menfi = base.menfi.copy(hands = menfiHands, hidden = menfiHidden))
+            GameType.SHALAM -> base.copy(shalam = base.shalam.copy(joker = joker, endPoint = endPoint,
+                mode = if (existing != null && existing.rules.shalam.joker != joker) settings.shalam.mode(joker) else base.shalam.mode))
+            else -> base
+        }
+        val config = (existing?.config ?: settings.league).copy(format = format, winsNeeded = winsNeeded, doubleRoundRobin = doubleRoundRobin, finalAfterTable = finalAfterTable)
+        if (existing != null) {
+            val scheduleChanged = clean != existing.teams || config != existing.config
+            val apply = {
+                existing.name = name.trim().ifBlank { "لیگ" }
+                existing.rules = rules
+                if (scheduleChanged) LeagueEngine.reconfigure(existing, clean, config)
+                host.repo.saveLeague(existing)
+                SessionOps.rosterAdd(host, clean, true)
+                host.replace(LeagueScreen(host, existing.id))
+            }
+            if (scheduleChanged && existing.matches.any { it.games.isNotEmpty() }) kit.confirm("تغییر برنامهٔ لیگ", "بازی‌های ثبت‌شده حفظ می‌شوند. نتایج سازگارِ جدول دوره‌ای منتقل می‌شوند؛ سایر بازی‌ها در سوابق لیگ می‌مانند و قرعهٔ تازه ساخته می‌شود.", "ذخیره") { apply() }
+            else apply()
+            return
+        }
         val id = System.currentTimeMillis()
         val league = League(id, name.trim().ifBlank { "لیگ" }, game, clean, rules, format, config)
         LeagueEngine.start(league, clean.indices.toList())
@@ -364,6 +386,18 @@ class LeagueScreen(host: MainActivity, private val leagueId: Long) : Screen(host
     private fun menu(league: League) {
         lateinit var dialog: android.app.Dialog
         val list = kit.vertical().apply {
+            addView(kit.button("افزودن تیم و تغییر قالب لیگ", ButtonKind.SECONDARY, height = 44) {
+                dialog.dismiss(); host.push(LeagueSetupScreen(host, league.id))
+            }, kit.spaced(8))
+            if (league.pastGames.isNotEmpty()) addView(kit.button("بازی‌های پیش از تغییر قالب", ButtonKind.SECONDARY, height = 44) {
+                dialog.dismiss()
+                val rows = kit.vertical().apply {
+                    league.pastGames.mapNotNull { host.repo.session(it) }.forEach { s ->
+                        addView(kit.button(s.sides.joinToString(" — ") { it.name }, ButtonKind.GHOST, height = 44) { host.openSession(s) }, kit.spaced(6))
+                    }
+                }
+                kit.dialog("سوابق حفظ‌شدهٔ لیگ", null, rows, listOf(DialogAction("بستن"))).show()
+            }, kit.spaced(8))
             addView(kit.button("تغییر نام لیگ", ButtonKind.SECONDARY, height = 44) {
                 dialog.dismiss()
                 kit.textPrompt("نام لیگ", league.name) { v ->

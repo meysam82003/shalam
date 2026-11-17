@@ -44,10 +44,34 @@ final class App
         return self::$config[$key] ?? $default;
     }
 
+    public static function deployment(): array
+    {
+        static $defaults = null;
+        if ($defaults === null) $defaults = require __DIR__ . '/deployment.php';
+        return (array)self::cfg('deployment', []) + $defaults;
+    }
+
+    /** The entire service is on the Iranian host; saved legacy bridge routes cannot override this. */
+    public static function directPayments(): bool { return (bool)(self::deployment()['direct_payments'] ?? false); }
+
+    /** Repoint only exact former site hosts, preserving paths, queries and fragments. */
+    public static function deploymentUrl(string $url): string
+    {
+        $profile = self::deployment();
+        foreach ($profile['legacy_hosts'] ?? [] as $host) {
+            $pattern = '~^https?://' . preg_quote((string)$host, '~') . '(?::443)?(?=/|[?#]|$)~i';
+            if (preg_match($pattern, $url)) return preg_replace($pattern, rtrim((string)$profile['public_origin'], '/'), $url, 1);
+        }
+        return $url;
+    }
+
     public static function baseUrl(): string
     {
-        $u = (string)self::cfg('base_url', '');
-        if ($u !== '') return rtrim($u, '/');
+        try { $managed = (string)Settings::get('service_base', ''); } catch (Throwable $e) { $managed = ''; }
+        $u = $managed !== '' ? $managed : (string)self::cfg('base_url', '');
+        if ($u !== '') return self::deploymentUrl(rtrim($u, '/'));
+        $default = (string)(self::deployment()['service_base'] ?? '');
+        if ($default !== '') return rtrim($default, '/');
         $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
         $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
         $dir = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/')), '/');

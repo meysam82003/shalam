@@ -16,7 +16,7 @@ import android.widget.LinearLayout
 fun RoyalKit.iconChip(icon: RoyalIcon, size: Int = 36, tint: Int = Royal.gold): View = FrameLayout(context).apply {
     val t = ThemeEngine.spec
     background = GradientDrawable().apply {
-        cornerRadius = dpf(size * 0.32f * t.radius)
+        cornerRadius = dpf(DivanDesign.radius(t, size * 0.30f))
         setColor(Royal.alpha(tint, if (t.light) 0.11f else 0.15f))
         setStroke(dp(1), Royal.alpha(tint, if (t.light) 0.20f else 0.26f))
     }
@@ -42,8 +42,8 @@ fun RoyalKit.listRow(
     titleColor: Int = Royal.ivory,
     onClick: (() -> Unit)? = null
 ): View = horizontal().apply {
-    setPadding(dp(10), dp(9), dp(10), dp(10))
-    minimumHeight = dp(58)
+    setPadding(dp(14), dp(12), dp(14), dp(12))
+    minimumHeight = dp(68)
     if (leading != null) {
         addView(leading)
         addView(hgap(12))
@@ -111,7 +111,7 @@ fun RoyalKit.chipRail(chips: List<View>, selected: Int = -1, gap: Int = 6): View
 /** Small value-over-label figure (dashboard counters). */
 fun RoyalKit.stat(value: String, label: String): View = vertical(Gravity.CENTER_HORIZONTAL).apply {
     background = GradientDrawable().apply {
-        cornerRadius = dpf(14f * ThemeEngine.spec.radius)
+        cornerRadius = dpf(DivanDesign.radius(ThemeEngine.spec, 14f))
         setColor(Royal.alpha(Royal.ivory, if (ThemeEngine.spec.light) 0.045f else 0.06f))
         setStroke(dp(1), Royal.alpha(Royal.gold, 0.18f))
     }
@@ -121,42 +121,52 @@ fun RoyalKit.stat(value: String, label: String): View = vertical(Gravity.CENTER_
 }
 
 /** Dashboard tile of a game: seal, name and one line about it. */
-fun RoyalKit.gameTile(seal: View, title: String, caption: String, badge: String? = null, pro: Boolean = false, onClick: () -> Unit): View = vertical().apply {
-    background = PanelDrawable(density, PanelStyle.RAISED, 22f)
-    setPadding(dp(12), dp(12), dp(12), dp(15))
-    addView(horizontal().apply {
-        addView(seal, LinearLayout.LayoutParams(dp(56), dp(56)))
-        addView(View(context), LinearLayout.LayoutParams(0, 1, 1f))
-        addView(FrameLayout(context).apply {
-            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Royal.alpha(Royal.gold, if (ThemeEngine.spec.light) 0.10f else 0.14f)) }
-            addView(IconView(context, RoyalIcon.NEXT, Royal.goldLight), FrameLayout.LayoutParams(dp(14), dp(14), Gravity.CENTER))
-        }, LinearLayout.LayoutParams(dp(28), dp(28)).apply { gravity = Gravity.TOP })
-    })
-    addView(gap(8))
-    addView(text(title, TextStyle.HEADING, Royal.title, maxLines = 1))
-    addView(text(caption, TextStyle.CAPTION, Royal.muted, maxLines = 2))
-    if (badge != null || pro) {
-        addView(gap(6))
-        addView(horizontal().apply {
-            if (pro) addView(badge("Pro", Royal.gold, true))
-            if (pro && badge != null) addView(View(context), LinearLayout.LayoutParams(dp(6), 1))
-            if (badge != null) addView(badge(badge, Royal.turquoise, true))
-        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+fun RoyalKit.gameTile(seal: View, title: String, caption: String, badge: String? = null, pro: Boolean = false, onClick: () -> Unit): View {
+    val t = ThemeEngine.spec
+    val editorial = t.layout == ThemeLayout.PAPER || t.layout == ThemeLayout.WAVE
+    val compact = t.layout == ThemeLayout.ATLAS || t.layout == ThemeLayout.VOLT
+    return vertical().apply {
+        background = PanelDrawable(density, PanelStyle.NORMAL, 20f)
+        setPadding(dp(16), dp(16), dp(16), dp(18))
+        val details = vertical().apply {
+            addView(text(title, if (editorial) TextStyle.TITLE else TextStyle.HEADING, Royal.title, maxLines = 1))
+            addView(text(caption, TextStyle.CAPTION, Royal.muted, maxLines = 2))
+        }
+        if (editorial) {
+            addView(horizontal().apply {
+                addView(seal, LinearLayout.LayoutParams(dp(54), dp(54)))
+                addView(hgap(14)); addView(weight(details))
+                addView(icon(RoyalIcon.NEXT, Royal.goldLight, 20))
+            })
+        } else {
+            addView(horizontal().apply {
+                addView(seal, LinearLayout.LayoutParams(dp(if (compact) 44 else 64), dp(if (compact) 44 else 64)))
+                addView(View(context), LinearLayout.LayoutParams(0, 1, 1f))
+                addView(icon(RoyalIcon.NEXT, Royal.goldLight, 20))
+            })
+            addView(gap(if (compact) 14 else 22)); addView(details)
+        }
+        if (badge != null || pro) {
+            addView(gap(10))
+            addView(horizontal().apply {
+                if (pro) addView(badge("Pro", Royal.gold, true))
+                if (pro && badge != null) addView(hgap(6))
+                if (badge != null) addView(badge(badge, Royal.turquoise, true))
+            })
+        }
+        isClickable = true; contentDescription = "شروع $title"
+        setOnClickListener { tap(it); onClick() }
     }
-    isClickable = true
-    contentDescription = "شروع $title"
-    setOnClickListener { tap(it); onClick() }
 }
 
 /** Shortcut of the dashboard: a tinted icon and a short name, no card. */
-fun RoyalKit.toolTile(icon: RoyalIcon, label: String, onClick: () -> Unit): View = vertical(Gravity.CENTER_HORIZONTAL).apply {
-    setPadding(0, dp(6), 0, dp(6))
-    background = pressable(16f)
-    addView(iconChip(icon, 46))
-    addView(gap(5))
-    addView(text(label, TextStyle.CAPTION, Royal.ivory, Gravity.CENTER, 2).apply { typeface = RoyalFonts.get(context, true) })
-    isClickable = true
-    contentDescription = label
+fun RoyalKit.toolTile(icon: RoyalIcon, label: String, onClick: () -> Unit): View = horizontal().apply {
+    setPadding(dp(10), dp(10), dp(10), dp(10))
+    minimumHeight = dp(60)
+    background = pressable(DivanDesign.radius(ThemeEngine.spec, 16f))
+    addView(iconChip(icon, 34)); addView(hgap(8))
+    addView(weight(text(label, TextStyle.LABEL_BOLD, Royal.ivory, maxLines = 2)))
+    isClickable = true; contentDescription = label
     setOnClickListener { tap(it); onClick() }
 }
 
@@ -201,25 +211,28 @@ fun Screen.podium(items: List<PodiumItem>): View {
 }
 
 /** Headline banner of a game hub: a large seal on a glow, the name and a line about it, and an optional call to action. */
-fun Screen.hubBanner(seal: View, title: String, caption: String, action: View? = null): View = kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
-    background = PanelDrawable(kit.density, PanelStyle.RAISED, 26f)
-    setPadding(kit.dp(16), kit.dp(18), kit.dp(16), kit.dp(18))
-    layoutParams = kit.spaced(12)
-    addView(FrameLayout(host).apply {
-        background = GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            gradientType = GradientDrawable.RADIAL_GRADIENT
-            gradientRadius = kit.dpf(62f)
-            colors = intArrayOf(Royal.alpha(Royal.gold, if (ThemeEngine.spec.light) 0.22f else 0.30f), 0)
-        }
-        addView(seal, FrameLayout.LayoutParams(kit.dp(92), kit.dp(92), Gravity.CENTER))
-    }, LinearLayout.LayoutParams(kit.dp(130), kit.dp(120)))
-    addView(kit.text(title, TextStyle.DISPLAY, Royal.title, Gravity.CENTER))
-    addView(kit.text(caption, TextStyle.LABEL, Royal.muted, Gravity.CENTER))
-    if (action != null) {
+fun Screen.hubBanner(seal: View, title: String, caption: String, action: View? = null): View = kit.vertical().apply {
+    val t = ThemeEngine.spec
+    background = PanelDrawable(kit.density, PanelStyle.RAISED, 24f)
+    setPadding(kit.dp(20), kit.dp(22), kit.dp(20), kit.dp(22))
+    layoutParams = kit.spaced(16)
+    if (t.layout == ThemeLayout.ORBIT || t.layout == ThemeLayout.PALM) {
+        gravity = Gravity.CENTER_HORIZONTAL
+        addView(seal, LinearLayout.LayoutParams(kit.dp(92), kit.dp(92)))
         addView(kit.gap(14))
-        addView(action, kit.fill())
+        addView(kit.text(title, TextStyle.DISPLAY, Royal.title, Gravity.CENTER))
+        addView(kit.text(caption, TextStyle.LABEL, Royal.muted, Gravity.CENTER))
+    } else {
+        addView(kit.horizontal().apply {
+            addView(kit.weight(kit.vertical().apply {
+                addView(kit.text(title, TextStyle.DISPLAY, Royal.title))
+                addView(kit.text(caption, TextStyle.LABEL, Royal.muted))
+            }))
+            addView(kit.hgap(12))
+            addView(seal, LinearLayout.LayoutParams(kit.dp(76), kit.dp(76)))
+        })
     }
+    if (action != null) { addView(kit.gap(18)); addView(action, kit.fill()) }
 }
 
 /** Compact card to go back to a game in progress: seal, what it is, and a round play button. */

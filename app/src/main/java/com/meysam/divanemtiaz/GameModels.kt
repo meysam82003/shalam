@@ -424,14 +424,16 @@ class League(
     val game: GameType,
     teams: List<Side>,
     var rules: GameRules,
-    val format: Int,
-    val config: LeagueSettings,
+    var format: Int,
+    var config: LeagueSettings,
     matches: List<LeagueMatch> = emptyList(),
     var updatedAt: Long = id,
     var finished: Boolean = false,
     /** Emblem or gallery picture of the league; -1 shows the game's seal. */
-    var avatar: Int = -1
+    var avatar: Int = -1,
+    pastGames: List<Long> = emptyList()
 ) {
+    val pastGames: MutableList<Long> = pastGames.toMutableList()
     val teams: MutableList<Side> = teams.toMutableList()
     val matches: MutableList<LeagueMatch> = matches.toMutableList()
 }

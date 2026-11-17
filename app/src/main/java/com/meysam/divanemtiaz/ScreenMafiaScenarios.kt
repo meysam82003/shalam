@@ -113,6 +113,7 @@ fun Screen.startScenario(s: MafiaScenario) {
 
 /** «انتخاب سناریو»: built-in scenarios (families together), the narrator's own ones and «سناریوی آزاد». */
 class MafiaScenarioListScreen(host: MainActivity, private val browse: Boolean = false) : Screen(host) {
+    override val mafiaArea: Boolean get() = true
     private var query = ""
 
     /** A scenario is found by its name, summary or the names of its roles. */
@@ -173,6 +174,7 @@ class MafiaScenarioListScreen(host: MainActivity, private val browse: Boolean = 
 // ------------------------------------------------------------------ scenario detail
 
 class MafiaScenarioScreen(host: MainActivity, private val id: String) : Screen(host) {
+    override val mafiaArea: Boolean get() = true
     override fun build(): View {
         val saved = host.mafia.scenarios()
         val s = MafiaScenarios.find(id, saved) ?: return scaffold("سناریو پیدا نشد") {}
@@ -257,6 +259,7 @@ class MafiaScenarioScreen(host: MainActivity, private val id: String) : Screen(h
 
 /** Edits a built-in scenario (saved as the narrator's version) or creates / edits his own scenario. */
 class MafiaScenarioEditScreen(host: MainActivity, id: String?) : Screen(host) {
+    override val mafiaArea: Boolean get() = true
     override val featureKey: String get() = "mafia_custom"
     private val isNew = id == null
     private var s: MafiaScenario = id?.let { host.mafia.scenario(it) }
@@ -387,6 +390,7 @@ class MafiaScenarioEditScreen(host: MainActivity, id: String?) : Screen(host) {
 
 /** «افزودن نقش» / «ویرایش قوانین نقش»: every rule of a role, for existing roles and the narrator's own roles. */
 class MafiaRoleEditScreen(host: MainActivity, role: MafiaRole?) : Screen(host) {
+    override val mafiaArea: Boolean get() = true
     override val featureKey: String get() = "mafia_custom"
     private val slot: MafiaRole? = role ?: MafiaRoleRegistry.nextFreeSlot()
     private val isNew = role == null

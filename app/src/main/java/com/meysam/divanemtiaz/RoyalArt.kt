@@ -639,33 +639,27 @@ class EmblemAvatarView(context: Context, avatar: Int = 0) : CachedArtView(contex
     override fun artKey(): Any = avatar * 2 + if (selectedRing) 1 else 0
 
     override fun drawArt(canvas: Canvas) {
-        val r = min(width, height) / 2f * 0.92f
+        val r = min(width, height) / 2f * .92f
         if (r <= 0f) return
-        val cx = width / 2f
-        val cy = height / 2f - r * 0.03f
+        val t = ThemeEngine.spec; val cx = width / 2f; val cy = height / 2f
+        paint.shader = null; paint.style = Paint.Style.FILL
+        paint.color = Royal.mix(t.surface, Emblems.hue(avatar), if (t.light) .13f else .25f)
+        val corner = DivanDesign.radius(t, 20f) * r / 24f
+        canvas.drawRoundRect(RectF(cx - r, cy - r, cx + r, cy + r), corner, corner, paint)
         val photo = PhotoStore.bitmap(avatar)
         if (photo != null) {
-            // A gallery picture inside the metal ring of the medallion.
-            Emblems.drawMedallion(canvas, cx, cy, r, Emblems.hue(avatar), paint, selectedRing)
-            PhotoStore.drawCircle(canvas, photo, cx, cy, r * 0.84f, paint)
-            paint.style = Paint.Style.STROKE
-            paint.strokeWidth = r * 0.03f
-            paint.color = Royal.alpha(Royal.metalLight, 0.6f)
-            canvas.drawCircle(cx, cy, r * 0.84f, paint)
-            paint.style = Paint.Style.FILL
-            if (selectedRing) {
-                paint.style = Paint.Style.STROKE
-                paint.strokeWidth = r * 0.08f
-                paint.color = Royal.turquoise
-                canvas.drawCircle(cx, cy, r * 0.97f, paint)
-                paint.style = Paint.Style.FILL
-            }
-            Emblems.drawGloss(canvas, cx, cy, r * 0.83f, paint)
-            return
+            PhotoStore.drawCircle(canvas, photo, cx, cy, r * .88f, paint)
+        } else {
+            canvas.save(); canvas.translate(cx - r * .7f, cy - r * .7f); canvas.scale(r * 1.4f / 100f, r * 1.4f / 100f)
+            paint.shader = null; paint.style = Paint.Style.FILL; paint.color = t.accent
+            canvas.drawPath(Emblems.motif(avatar), paint)
+            canvas.restore()
         }
-        Emblems.drawMedallion(canvas, cx, cy, r, Emblems.hue(avatar), paint, selectedRing)
-        Emblems.drawRelief(canvas, Emblems.motif(avatar), cx, cy, r, paint)
-        Emblems.drawGloss(canvas, cx, cy, r * 0.83f, paint)
+        if (selectedRing) {
+            paint.shader = null; paint.style = Paint.Style.STROKE; paint.strokeWidth = r * .07f; paint.color = t.success
+            canvas.drawRoundRect(RectF(cx - r, cy - r, cx + r, cy + r), corner, corner, paint)
+            paint.style = Paint.Style.FILL
+        }
     }
 }
 
@@ -676,61 +670,7 @@ class GameSealView(context: Context, private val game: GameType?) : CachedArtVie
     override fun artKey(): Any = game?.key ?: "app"
 
     override fun drawArt(canvas: Canvas) {
-        val r = min(width, height) / 2f * 0.94f
-        if (r <= 0f) return
-        val cx = width / 2f
-        val cy = height / 2f - r * 0.03f
-        Emblems.drawMedallion(canvas, cx, cy, r, base(game), paint)
-        // Web seals draw their symbols on the medallion's full 100-unit box (ring radius = 48 units).
-        val unit = r / 48f
-        val ox = cx - 50f * unit
-        val oy = cy - 50f * unit
-        when (game) {
-            GameType.HEZARTAII -> drawCardFan(canvas, ox, oy, unit)
-            GameType.DOLO -> {
-                Emblems.drawRelief(canvas, SuitShapes.club(48f).apply { offset(23f, 22f) }, cx, cy, r, paint, 2f * 50f / 48f)
-                paint.style = Paint.Style.FILL
-                paint.shader = null
-                paint.color = RoyalClassic.night
-                canvas.drawCircle(ox + 72f * unit, oy + 70f * unit, 11f * unit, paint)
-                paint.style = Paint.Style.STROKE
-                paint.strokeWidth = 2f * unit
-                paint.color = Color.BLACK
-                paint.shader = Emblems.goldFill(oy + 59f * unit, oy + 81f * unit)
-                canvas.drawCircle(ox + 72f * unit, oy + 70f * unit, 11f * unit, paint)
-                paint.shader = null
-                paint.style = Paint.Style.FILL
-                paint.textAlign = Paint.Align.CENTER
-                paint.typeface = RoyalFonts.get(context, true)
-                paint.textSize = 15f * unit
-                paint.color = Royal.metalLight
-                canvas.drawText("۲", ox + 72f * unit, oy + 76f * unit, paint)
-            }
-            GameType.MENFI -> {
-                val eye = Path().apply {
-                    moveTo(22f, 50f); cubicTo(22f, 50f, 33f, 33f, 50f, 33f); cubicTo(67f, 33f, 78f, 50f, 78f, 50f)
-                    cubicTo(78f, 50f, 67f, 67f, 50f, 67f); cubicTo(33f, 67f, 22f, 50f, 22f, 50f); close()
-                }
-                Emblems.drawRelief(canvas, eye, cx, cy, r, paint, 2f * 50f / 48f)
-                paint.style = Paint.Style.FILL
-                paint.shader = null
-                paint.color = Royal.alpha(RoyalClassic.night, 0.55f)
-                canvas.drawCircle(ox + 50f * unit, oy + 50f * unit, 8f * unit, paint)
-                paint.style = Paint.Style.STROKE
-                paint.strokeCap = Paint.Cap.ROUND
-                paint.strokeWidth = 5f * unit
-                paint.color = 0x66000000
-                canvas.drawLine(ox + 27f * unit, oy + 73.5f * unit, ox + 73f * unit, oy + 29.5f * unit, paint)
-                paint.color = Color.BLACK
-                paint.shader = Emblems.goldFill(oy + 28f * unit, oy + 72f * unit)
-                canvas.drawLine(ox + 27f * unit, oy + 72f * unit, ox + 73f * unit, oy + 28f * unit, paint)
-                paint.shader = null
-                paint.style = Paint.Style.FILL
-            }
-            GameType.SHALAM -> Emblems.drawRelief(canvas, SuitShapes.spade(48f).apply { offset(26f, 24f) }, cx, cy, r, paint, 2f * 50f / 48f)
-            null -> Emblems.drawRelief(canvas, CROWN, cx, cy, r, paint, 2f * 50f / 48f)
-        }
-        Emblems.drawGloss(canvas, cx, cy, r * 0.83f, paint)
+        DivanDesign.game(canvas, width, height, game, paint)
     }
 
     /** Pasur identity of «هزارتایی»: three playing cards fanned out, the front one with a club, and «۱۰۰۰» beneath. */
@@ -795,7 +735,7 @@ class HeroCrestView(context: Context) : CachedArtView(context) {
 
     override fun artKey(): Any = "cards-crest"
 
-    override fun drawArt(canvas: Canvas) = HeroCrestArt.draw(canvas, width, height, paint)
+    override fun drawArt(canvas: Canvas) = DivanDesign.brand(canvas, width, height, paint)
 }
 
 /** The fan of four cards under a crown (logo screen and about page), drawn still or at any moment of its entrance. */
@@ -1018,69 +958,21 @@ class TrophyView(context: Context) : CachedArtView(context) {
     override fun artKey(): Any = "trophy"
 
     override fun drawArt(canvas: Canvas) {
-        val s = min(width, height).toFloat()
-        if (s <= 0f) return
-        val left = (width - s) / 2f
-        val top = (height - s) / 2f
-        val m = Matrix().apply { setRectToRect(RectF(0f, 0f, 100f, 100f), RectF(left, top, left + s, top + s), Matrix.ScaleToFit.CENTER) }
-        paint.style = Paint.Style.FILL
-        paint.color = Color.BLACK
-        paint.shader = RadialGradient(width / 2f, height / 2f, s * 0.55f, intArrayOf(Royal.alpha(Royal.metal, 0.35f), 0), null, Shader.TileMode.CLAMP)
-        canvas.drawCircle(width / 2f, height / 2f, s * 0.55f, paint)
-        val cup = Path().apply {
-            moveTo(28f, 16f); lineTo(72f, 16f); lineTo(72f, 34f); cubicTo(72f, 50f, 62f, 60f, 50f, 60f); cubicTo(38f, 60f, 28f, 50f, 28f, 34f); close()
-            addRect(45f, 60f, 55f, 72f, Path.Direction.CW)
-            addRect(36f, 72f, 64f, 78f, Path.Direction.CW)
-            addRect(30f, 78f, 70f, 86f, Path.Direction.CW)
-        }
-        val handles = Path().apply {
-            moveTo(28f, 22f); cubicTo(12f, 22f, 12f, 44f, 31f, 44f); lineTo(32f, 39f); cubicTo(20f, 39f, 19f, 27f, 28f, 27f); close()
-            moveTo(72f, 22f); cubicTo(88f, 22f, 88f, 44f, 69f, 44f); lineTo(68f, 39f); cubicTo(80f, 39f, 81f, 27f, 72f, 27f); close()
-        }
-        val all = Path().apply { addPath(cup); addPath(handles) }
-        all.transform(m)
-        paint.shader = null
-        paint.color = 0x77000000
-        canvas.drawPath(Path(all).apply { offset(0f, s * 0.02f) }, paint)
-        paint.color = Color.BLACK
-        paint.shader = LinearGradient(left, 0f, left + s, 0f, intArrayOf(Royal.metalDeep, Royal.metalLight, Royal.metal, Royal.metalDeep), floatArrayOf(0f, 0.35f, 0.6f, 1f), Shader.TileMode.CLAMP)
-        canvas.drawPath(all, paint)
-        paint.shader = null
-        val star = RoyalShapes.star8Path(50f, 34f, 10f).apply { transform(m) }
-        paint.color = Royal.turquoise
-        canvas.drawPath(star, paint)
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = s * 0.008f
-        paint.color = Royal.metalShadow
-        canvas.drawPath(all, paint)
-        paint.style = Paint.Style.FILL
+        val size = min(width, height).toFloat()
+        paint.shader = null; paint.style = Paint.Style.FILL; paint.color = Royal.alpha(Royal.gold, .10f)
+        canvas.drawCircle(width / 2f, height / 2f, size * .46f, paint)
+        RoyalIcons.draw(canvas, RoyalIcon.TROPHY, RectF(width / 2f - size * .29f, height / 2f - size * .29f, width / 2f + size * .29f, height / 2f + size * .29f), Royal.gold, paint, size * .035f)
     }
 }
 
 /** Gold hairline divider with a khatam star in the middle. */
 class RoyalDivider(context: Context) : View(context) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-
     override fun onDraw(canvas: Canvas) {
-        val d = resources.displayMetrics.density
-        val cy = height / 2f
-        val cx = width / 2f
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = d
-        paint.color = Color.BLACK
-        paint.shader = LinearGradient(0f, 0f, cx, 0f, 0, Royal.metal, Shader.TileMode.CLAMP)
-        canvas.drawLine(0f, cy, cx - 12 * d, cy, paint)
-        paint.color = Color.BLACK
-        paint.shader = LinearGradient(cx, 0f, width.toFloat(), 0f, Royal.metal, 0, Shader.TileMode.CLAMP)
-        canvas.drawLine(cx + 12 * d, cy, width.toFloat(), cy, paint)
-        paint.shader = null
-        paint.style = Paint.Style.FILL
-        paint.color = Royal.metal
-        canvas.drawPath(RoyalShapes.star8Path(cx, cy, 6 * d), paint)
-        paint.color = Royal.turquoise
-        canvas.drawCircle(cx, cy, 2 * d, paint)
+        paint.color = ThemeEngine.spec.border
+        canvas.drawRect(0f, height / 2f, width.toFloat(), height / 2f + resources.displayMetrics.density, paint)
     }
-}
+    }
 
 /** Custom-drawn toggle so settings do not fall back to the stock Material switch. */
 class RoyalSwitch(context: Context, checked: Boolean) : View(context) {
@@ -1104,36 +996,17 @@ class RoyalSwitch(context: Context, checked: Boolean) : View(context) {
     }
 
     override fun onDraw(canvas: Canvas) {
-        val d = resources.displayMetrics.density
-        val h = min(height.toFloat(), 30 * d)
-        val w = min(width.toFloat(), 54 * d)
-        val left = (width - w) / 2f
-        val top = (height - h) / 2f
-        val track = RectF(left, top, left + w, top + h)
-        paint.style = Paint.Style.FILL
-        paint.color = Color.BLACK
-        paint.shader = if (checked) {
-            LinearGradient(0f, track.top, 0f, track.bottom, Royal.turquoise, Royal.turquoiseDeep, Shader.TileMode.CLAMP)
-        } else {
-            val t = ThemeEngine.spec
-            LinearGradient(0f, track.top, 0f, track.bottom, Royal.mix(t.flatLow or 0xFF000000.toInt(), Royal.ivory, if (t.light) 0.16f else 0.06f),
-                Royal.mix(t.flat or 0xFF000000.toInt(), Royal.ivory, if (t.light) 0.10f else 0.10f), Shader.TileMode.CLAMP)
-        }
-        canvas.drawRoundRect(track, h / 2f, h / 2f, paint)
-        paint.shader = null
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = d
-        paint.color = if (checked) Royal.turquoiseLight else Royal.alpha(Royal.metal, 0.7f)
-        canvas.drawRoundRect(track, h / 2f, h / 2f, paint)
-        paint.style = Paint.Style.FILL
-        val r = h / 2f - 3 * d
-        val cx = if (checked) track.left + r + 3 * d else track.right - r - 3 * d
-        val cy = track.centerY()
-        paint.color = 0x66000000
-        canvas.drawCircle(cx, cy + d, r, paint)
-        paint.color = Color.BLACK
-        paint.shader = RadialGradient(cx - r * 0.3f, cy - r * 0.4f, r * 1.4f, intArrayOf(Royal.metalLight, Royal.metal, Royal.metalDeep), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
-        canvas.drawCircle(cx, cy, r, paint)
-        paint.shader = null
+        val t = ThemeEngine.spec; val d = resources.displayMetrics.density
+        val h = min(height.toFloat(), 28f * d); val w = min(width.toFloat(), 50f * d)
+        val x = (width - w) / 2f; val y = (height - h) / 2f
+        val r = if (t.layout == ThemeLayout.PAPER || t.layout == ThemeLayout.VOLT) 3f * d else h / 2f
+        paint.shader = null; paint.style = Paint.Style.FILL
+        paint.color = if (checked) t.accent else Royal.mix(t.surface, t.muted, .25f)
+        canvas.drawRoundRect(RectF(x, y, x + w, y + h), r, r, paint)
+        val size = h - 8f * d
+        val left = if (checked) x + 4f * d else x + w - size - 4f * d
+        paint.color = if (checked) t.onAccent else t.surface
+        canvas.drawRoundRect(RectF(left, y + 4f * d, left + size, y + h - 4f * d), r * .8f, r * .8f, paint)
+
     }
 }

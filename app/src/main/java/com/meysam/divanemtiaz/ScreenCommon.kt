@@ -127,14 +127,15 @@ fun Screen.avatarPicker(current: Int, onPick: (Int) -> Unit) {
  * Chooses the people of a team (up to [max]) from the saved people, or adds a new person.
  * Teams built from people let every person have his own record in every game.
  */
-fun Screen.memberPicker(current: List<String>, max: Int = 2, title: String = "اعضای تیم", onDone: (List<String>) -> Unit) {
+fun Screen.memberPicker(current: List<String>, max: Int = 2, title: String = "اعضای تیم", unavailable: Set<String> = emptySet(), onDone: (List<String>) -> Unit) {
     val chosen = ArrayList(current)
     lateinit var dialog: Dialog
     val grid = kit.grid(3, emptyList(), 6)
     var query = ""
+    var showSelected = false
     fun fill() {
         grid.removeAllViews()
-        host.repo.roster().filter { !it.isTeam && SearchText.matches(query, it.name) }.forEach { e ->
+        host.repo.roster().filter { !it.isTeam && SearchText.matches(query, it.name) && (showSelected || it.name !in chosen && it.name !in unavailable) }.forEach { e ->
             val on = e.name in chosen
             grid.addView(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
                 background = PanelDrawable(kit.density, if (on) PanelStyle.SELECTED else PanelStyle.FLAT, 14f)
@@ -165,6 +166,7 @@ fun Screen.memberPicker(current: List<String>, max: Int = 2, title: String = "ا
             }
         }, kit.spaced(8))
         if (host.repo.roster().count { !it.isTeam } >= 7) addView(kit.searchBox("جست‌وجوی نام") { q -> query = q; fill() }, kit.spaced(8))
+        addView(kit.switchRow("نمایش افراد انتخاب‌شده", "افراد انتخاب‌شده در این تیم یا تیم‌های دیگر هم نمایش داده شوند", showSelected) { showSelected = it; fill() }, kit.spaced(8))
         addView(grid)
     }
     dialog = kit.dialog(title, if (max >= 99) "هر تعداد از افراد را انتخاب کنید" else "تا ${kit.n(max)} نفر از افراد را انتخاب کنید", body, listOf(
@@ -174,7 +176,7 @@ fun Screen.memberPicker(current: List<String>, max: Int = 2, title: String = "ا
     dialog.show()
 }
 
-fun Screen.rosterPicker(isTeam: Boolean, onPick: (RosterEntry) -> Unit) {
+fun Screen.rosterPicker(isTeam: Boolean, unavailable: Set<String> = emptySet(), onPick: (RosterEntry) -> Unit) {
     val entries = host.repo.roster().filter { it.isTeam == isTeam }
     if (entries.isEmpty()) {
         kit.toast(if (isTeam) "هنوز تیمی در فهرست نیست" else "هنوز بازیکنی در فهرست نیست")
@@ -199,11 +201,20 @@ fun Screen.rosterPicker(isTeam: Boolean, onPick: (RosterEntry) -> Unit) {
             })
         }
     }
-    val rows = (0 until list.childCount).map { list.getChildAt(it) }.zip(entries.map { it.name })
+    var showSelected = false
+    var query = ""
+    fun filter() {
+        entries.forEachIndexed { i, entry ->
+            val selected = entry.name in unavailable || entry.members.any { it in unavailable }
+            list.getChildAt(i).visibility = if (SearchText.matches(query, entry.name) && (showSelected || !selected)) View.VISIBLE else View.GONE
+        }
+    }
     val body = kit.vertical().apply {
-        kit.searchFilter("جست‌وجوی نام", rows, minItems = 7)?.let { addView(it, kit.spaced(8)) }
+        if (unavailable.isNotEmpty()) addView(kit.switchRow("نمایش افراد انتخاب‌شده", "تیم‌ها و افراد استفاده‌شده هم نمایش داده شوند", false) { showSelected = it; filter() }, kit.spaced(8))
+        if (entries.size >= 7) addView(kit.searchBox("جست‌وجوی نام") { query = it; filter() }, kit.spaced(8))
         addView(list)
     }
+    filter()
     dialog = kit.dialog(if (isTeam) "انتخاب از تیم‌ها" else "انتخاب از بازیکنان", null, body, listOf(DialogAction("بستن")))
     dialog.show()
 }
@@ -218,24 +229,22 @@ fun Screen.sideScoreCard(
     accent: Int = Royal.gold,
     onAvatar: (() -> Unit)? = null
 ): View = kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
-    background = PanelDrawable(kit.density, if (leader) PanelStyle.RAISED else PanelStyle.NORMAL, 18f)
-    setPadding(kit.dp(8), kit.dp(8), kit.dp(8), kit.dp(11))
-    addView(FrameLayout(host).apply {
-        addView(kit.avatar(side.avatar, 50).apply {
-            layoutParams = FrameLayout.LayoutParams(kit.dp(50), kit.dp(50), Gravity.CENTER)
+    val t = ThemeEngine.spec
+    val angular = t.layout == ThemeLayout.PAPER || t.layout == ThemeLayout.VOLT
+    background = PanelDrawable(kit.density, if (leader) PanelStyle.SELECTED else PanelStyle.NORMAL, 22f)
+    setPadding(kit.dp(10), kit.dp(16), kit.dp(10), kit.dp(18))
+    addView(kit.horizontal(Gravity.CENTER).apply {
+        addView(kit.avatar(side.avatar, if (angular) 34 else 44).apply {
             if (onAvatar != null) setOnClickListener { kit.tap(it); onAvatar() }
         })
-        if (leader) {
-            addView(IconView(host, RoyalIcon.CROWN, Royal.goldLight), FrameLayout.LayoutParams(kit.dp(18), kit.dp(18), Gravity.TOP or Gravity.CENTER_HORIZONTAL))
-        }
-    }, LinearLayout.LayoutParams(kit.dp(60), kit.dp(60)))
-    addView(kit.text(side.name, TextStyle.BODY_BOLD, Royal.ivory, Gravity.CENTER, 1))
-    addView(kit.text(total, TextStyle.NUMBER_XL, accent, Gravity.CENTER, 1))
+        if (leader) { addView(kit.hgap(6)); addView(kit.icon(RoyalIcon.FLAG, Royal.turquoiseLight, 16)) }
+    })
+    addView(kit.gap(8))
+    addView(kit.text(side.name, TextStyle.LABEL_BOLD, Royal.ivory, Gravity.CENTER, 2))
+    addView(kit.gap(4))
+    addView(kit.text(total, TextStyle.NUMBER_XL, accent, Gravity.CENTER, 1).apply { textSize = kit.textSize(if (angular) 34f else 37f) })
     if (caption != null) addView(kit.text(caption, TextStyle.CAPTION, Royal.muted, Gravity.CENTER, 2))
-    if (progress != null) {
-        addView(kit.gap(4))
-        addView(kit.progress(progress, if (leader) Royal.turquoise else Royal.gold, 6))
-    }
+    if (progress != null) { addView(kit.gap(12)); addView(kit.progress(progress, if (leader) Royal.turquoise else Royal.gold, 4)) }
 }
 
 /** One recorded hand in a board list; tapping opens edit/delete actions. */
@@ -246,11 +255,11 @@ fun Screen.roundRow(
     detail: String,
     onClick: (() -> Unit)?
 ): View = kit.horizontal().apply {
-    background = PanelDrawable(kit.density, PanelStyle.FLAT, 14f)
-    setPadding(kit.dp(9), kit.dp(7), kit.dp(9), kit.dp(10))
-    layoutParams = kit.spaced(5)
+    background = PanelDrawable(kit.density, PanelStyle.NORMAL, 16f)
+    setPadding(kit.dp(12), kit.dp(12), kit.dp(12), kit.dp(14))
+    layoutParams = kit.spaced(8)
     addView(kit.text(kit.n(index + 1), TextStyle.LABEL_BOLD, Royal.night, Gravity.CENTER, 1).apply {
-        background = ButtonDrawable(kit.density, ButtonKind.CHIP_GOLD, 10f)
+        background = ButtonDrawable(kit.density, ButtonKind.PRIMARY, 12f)
         setPadding(0, 0, 0, kit.dp(2))
     }, LinearLayout.LayoutParams(kit.dp(28), kit.dp(28)))
     addView(kit.hgap(8))
@@ -278,8 +287,8 @@ fun Screen.scoreColor(value: Int): Int = when {
 
 fun Screen.emptyState(icon: RoyalIcon, title: String, message: String): View = kit.panel(PanelStyle.FLAT, 18).apply {
     gravity = Gravity.CENTER_HORIZONTAL
-    addView(kit.icon(icon, Royal.gold, 34))
-    addView(kit.gap(6))
+    addView(kit.iconChip(icon, 54))
+    addView(kit.gap(14))
     addView(kit.text(title, TextStyle.BODY_BOLD, Royal.goldLight, Gravity.CENTER))
     addView(kit.text(message, TextStyle.LABEL, Royal.muted, Gravity.CENTER))
 }

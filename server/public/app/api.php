@@ -71,6 +71,7 @@ final class Api
         $store = self::$auth[1]['store'] ?? (in_array($_GET['store'] ?? '', Plans::STORES, true) ? $_GET['store'] : null);
         $cert = Entitlements::certificate($u, $store, self::$auth[1] ?? null);
         return [
+            'rewards' => ProRewards::status((int)$u['id'], self::$auth[1]['device_id'] ?? null),
             'user' => Users::publicView($u),
             'entitlement' => $cert['summary'],
             'certificate' => $cert['certificate'],
@@ -103,7 +104,12 @@ final class Api
                     // The store's public RSA key from the panel (public by design): the app checks each purchase's
                     // signature with it too, so a key changed in the panel reaches installed apps without a new APK.
                     'store_key' => in_array($store, Plans::STORES, true) ? trim((string)(Settings::get($store, [])['public_key'] ?? '')) : '',
+                    'api_url' => App::baseUrl() . '/api/index.php',
+                    'site_url' => PayPages::siteHome(),
+                    'admin_url' => App::baseUrl() . '/admin/',
                     'support_text' => Settings::get('support_text', ''),
+                    'contact_address' => Settings::get('contact_address', '@Meysam_pardaz'),
+                    'sponsor_contact' => Settings::get('sponsor_contact', '@Meysam_pardaz'),
                     'privacy_url' => App::baseUrl() . '/index.php?p=privacy',
                 ];
             }
@@ -144,9 +150,21 @@ final class Api
                 return ['ok' => true];
             }
 
+            case 'v1/rewards/start': {
+                self::post($method);
+                $u = self::user();
+                if (!RateLimit::hit('reward_start:' . $u['id'], 20, 3600)) throw new ApiError('rate_limited', 'کمی بعد دوباره تلاش کنید.', 429);
+                return ProRewards::start($u, self::$auth[1], (int)($in['ad_id'] ?? 0));
+            }
+            case 'v1/rewards/claim': {
+                self::post($method);
+                $u = self::user();
+                ProRewards::claim($u, self::$auth[1], (string)($in['watch_token'] ?? ''));
+                return self::account($u);
+            }
             case 'v1/auth/register': {
                 self::post($method);
-                [$u, $key] = Users::register((string)($in['username'] ?? ''), (string)($in['password'] ?? ''), isset($in['email']) ? (string)$in['email'] : null);
+                [$u, $key] = MafiaTrial::register($in);
                 $token = self::open($u, $in);
                 return ['token' => $token, 'recovery_key' => $key] + self::account($u);
             }

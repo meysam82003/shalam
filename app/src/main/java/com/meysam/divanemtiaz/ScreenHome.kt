@@ -7,90 +7,37 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 
-const val APP_VERSION_NAME = "5.5.1"
-const val APP_VERSION_LABEL = "نسخهٔ ۵.۵.۱"
+const val APP_VERSION_NAME = "5.7.0"
+const val APP_VERSION_LABEL = "نسخهٔ ۵.۷.۰"
 
 class SplashScreen(host: MainActivity) : Screen(host) {
-    /**
-     * The entrance plays on the phone; the web versions already played it on their loading page (same picture),
-     * and with «انیمیشن‌های روان» off the logo is shown still.
-     */
-    private val animated: Boolean get() = settings.general.animations && android.os.Build.DEVICE != "web"
-    private val staged = ArrayList<Pair<View, Long>>()
-
-    override fun build(): View = FrameLayout(host).apply {
-        staged.clear()
-        val fan = SplashFanView(host)
-        addView(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
-            addView(fan, LinearLayout.LayoutParams(kit.dp(280), kit.dp(215)))
-            addView(kit.gap(6))
-            addView(stage(kit.text("دیوان امتیاز", TextStyle.DISPLAY, Royal.goldLight, Gravity.CENTER).apply { textSize = kit.textSize(34f) }, 880))
-            addView(stage(kit.text("داور و دفتر امتیاز شاهانه", TextStyle.BODY, Royal.muted, Gravity.CENTER), 1000))
-            addView(kit.gap(10))
-            addView(stage(kit.divider(), 1090), LinearLayout.LayoutParams(kit.dp(220), kit.dp(18)))
-            addView(stage(kit.text(gameNames(), TextStyle.LABEL_BOLD, Royal.gold, Gravity.CENTER).apply { setLineSpacing(kit.dpf(4f), 1f) }, 1180))
-        }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
-        addView(stage(kit.text("$APP_VERSION_LABEL  •  آفلاین", TextStyle.CAPTION, Royal.dim, Gravity.CENTER), 1280),
-            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply { bottomMargin = kit.dp(28) })
-        isClickable = true
-        setOnClickListener { goHome() }
-        if (animated) {
-            fan.play()
-            staged.forEach { (v, delay) -> rise(v, delay) }
-        } else {
-            fan.still()
-            // The window already shows the same emerald, so the logo only needs a short fade.
-            alpha = 0f
-            animate().alpha(1f).setDuration(180).start()
-        }
-    }
-
-    private fun stage(v: View, delay: Long): View {
-        staged += v to delay
-        if (animated) { v.alpha = 0f; v.translationY = kit.dpf(18f) }
-        return v
-    }
-
-    /** One line of text coming up into place on the spring while it fades in. */
-    private fun rise(v: View, delay: Long) {
-        v.animate().translationY(0f).setStartDelay(delay).setDuration(Motion.SPRING_ITEM).setInterpolator(Motion.SPRING).start()
-        android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
-            startDelay = delay; duration = 300; interpolator = Motion.EASE_OUT
-            addUpdateListener { v.alpha = it.animatedValue as Float }
-            start()
-        }
-    }
-
     private var done = false
-
-    /** Every game of the app (new score games are added automatically), then the mafia narrator. */
-    private fun gameNames(): String {
-        val names = GameType.values().map { it.title } + listOf("راوی مافیا", "پانتومیم", "جاسوس")
-        return names.chunked(4).joinToString("\n") { it.joinToString("  •  ") }
+    override fun build(): View = FrameLayout(host).apply {
+        addView(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
+            addView(HeroCrestView(host), LinearLayout.LayoutParams(kit.dp(132), kit.dp(132)))
+            addView(kit.gap(24))
+            addView(kit.text("دیوان", TextStyle.DISPLAY, Royal.title, Gravity.CENTER).apply { textSize = kit.textSize(42f) })
+            addView(kit.text("هر دورهمی، یک بازی تازه", TextStyle.BODY, Royal.muted, Gravity.CENTER))
+            addView(kit.gap(18))
+            addView(kit.badge(ThemeEngine.spec.latin, Royal.gold, true))
+        }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
+        addView(kit.text(APP_VERSION_LABEL, TextStyle.CAPTION, Royal.dim, Gravity.CENTER),
+            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply { bottomMargin = kit.dp(28) })
+        isClickable = true; setOnClickListener { goHome() }
+        if (settings.general.animations) { alpha = 0f; animate().alpha(1f).setDuration(300).start() }
     }
-
     private fun goHome() {
         if (done) return
-        done = true
-        host.cancelPosts()
+        done = true; host.cancelPosts()
         host.resetTo(if (Themes.isChosen(settings.general.theme)) HomeScreen(host) else ThemeWelcomeScreen(host))
         host.openAfterSplash?.let { intent -> host.openAfterSplash = null; host.post(350) { host.openFromIntent(intent) } }
     }
-
-    /** Home follows once the logo has been seen (after its entrance, or briefly when it is still); a touch skips it. */
-    override fun onShow() {
-        host.post(if (animated) ENTRANCE_MS else LOGO_MS) { goHome() }
-    }
-
+    override fun onShow() { host.post(LOGO_MS) { goHome() } }
+    override fun onHide() { host.cancelPosts() }
     companion object {
-        const val LOGO_MS = 650L
-        /** The whole entrance plus a short look at the finished logo (a touch skips it). */
-        const val ENTRANCE_MS = 1900L
+        const val LOGO_MS = 800L
+        const val ENTRANCE_MS = 800L
         @Volatile var askedThisRun = false
-    }
-
-    override fun onHide() {
-        host.cancelPosts()
     }
 }
 
@@ -134,13 +81,23 @@ class HomeScreen(host: MainActivity) : Screen(host) {
             kit.gameTile(RoleSealView(host, PantoLook.glyph, PantoLook.TINT), "پانتومیم", "پنج نوع مسابقه و دور طلایی",
                 host.panto.latestUnfinished()?.let { "در جریان" }, needsPro("panto")) { Gate.open(this, "panto") { host.push(PantoHomeScreen(host)) } }
         )
-        column.addView(kit.grid(2, tiles, 10), kit.spaced(10))
+        when (ThemeEngine.spec.layout) {
+            ThemeLayout.PAPER, ThemeLayout.WAVE -> tiles.forEach { column.addView(it, kit.spaced(10)) }
+            ThemeLayout.ORBIT -> {
+                column.addView(tiles.first(), kit.spaced(12))
+                column.addView(kit.grid(2, tiles.drop(1).take(4), 12), kit.spaced(12))
+                column.addView(tiles.last(), kit.spaced(12))
+            }
+            ThemeLayout.ATLAS -> column.addView(kit.grid(2, tiles, 8), kit.spaced(10))
+            ThemeLayout.PALM -> column.addView(kit.grid(2, tiles, 14), kit.spaced(14))
+            ThemeLayout.VOLT -> column.addView(kit.grid(2, tiles, 6), kit.spaced(10))
+        }
         column.addView(spyTile(), kit.spaced(6))
-        column.addView(kit.section("دیوان", RoyalIcon.CROWN))
+        column.addView(kit.section("همهٔ ابزارها", RoyalIcon.MENU))
         column.addView(kit.vertical().apply {
             background = PanelDrawable(kit.density, PanelStyle.NORMAL, 22f)
             setPadding(kit.dp(6), kit.dp(10), kit.dp(6), kit.dp(12))
-            addView(kit.grid(5, listOf(
+            addView(kit.grid(2, listOf(
                 kit.toolTile(RoyalIcon.TROPHY, "لیگ‌ها") { Gate.open(this@HomeScreen, "leagues") { host.push(LeagueListScreen(host)) } },
                 kit.toolTile(RoyalIcon.HISTORY, "تاریخچه") { Gate.open(this@HomeScreen, "history") { host.push(HistoryScreen(host)) } },
                 kit.toolTile(RoyalIcon.PLAYERS, "افراد و تیم‌ها") { host.push(PlayersScreen(host)) },
@@ -156,10 +113,11 @@ class HomeScreen(host: MainActivity) : Screen(host) {
                 },
                 kit.toolTile(RoyalIcon.STAR, "ظاهر برنامه") { host.push(ThemeScreen(host)) },
                 kit.toolTile(RoyalIcon.HEART, "درباره") { host.push(AboutScreen(host)) }
-            ), 4))
+            ), 8))
         }, kit.spaced(12))
         AdEngine.slot(this, "home_corner")?.let { column.addView(it) }
         AdEngine.slot(this, "home_bottom")?.let { column.addView(it) }
+        column.addView(kit.button("ثبت تبلیغ و اسپانسری", ButtonKind.GHOST, RoyalIcon.STAR, 44) { host.push(SponsorshipScreen(host)) }, kit.spaced(8))
         column.addView(kit.text("$APP_VERSION_LABEL  •  آفلاین" + if (ProState.isPro) "  •  Pro" else "", TextStyle.CAPTION, Royal.dim, Gravity.CENTER))
         return kit.vertical().apply {
             addView(ScrollView(host).apply {
@@ -176,15 +134,15 @@ class HomeScreen(host: MainActivity) : Screen(host) {
         setPadding(kit.dp(2), kit.dp(6), kit.dp(2), 0)
         addView(kit.vertical().apply {
             addView(kit.text(greeting(), TextStyle.LABEL, Royal.muted, maxLines = 1))
-            addView(kit.text("دیوان امتیاز", TextStyle.TITLE, Royal.title, maxLines = 1))
+            addView(kit.text("دیوان", TextStyle.TITLE, Royal.title, maxLines = 1))
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        addView(giftButton())
         addView(kit.wordButton("Pro", "دیوان Pro", if (ProState.isPro) ButtonKind.SUCCESS else ButtonKind.PRIMARY, 42) {
             host.push(if (ProState.loggedIn) SubscriptionScreen(host) else ProScreen(host))
         })
         addView(kit.hgap(8))
         addView(kit.iconButton(RoyalIcon.STAR, "ظاهر برنامه", ButtonKind.SECONDARY, 42) { host.push(ThemeScreen(host)) })
-        addView(kit.hgap(8))
-        addView(kit.iconButton(RoyalIcon.SETTINGS, "تنظیمات", ButtonKind.SECONDARY, 42) { host.push(SettingsScreen(host)) })
+
     }
 
     private fun greeting(): String {
@@ -192,24 +150,45 @@ class HomeScreen(host: MainActivity) : Screen(host) {
         return when (h) { in 5..11 -> "صبح بخیر"; in 12..16 -> "روز بخیر"; in 17..20 -> "عصر بخیر"; else -> "شب بخیر" }
     }
 
-    /** Headline card: the card-fan crest, the promise of the app and three counters. */
+    /** Each identity composes its opening differently, using the same real game counters. */
     private fun banner(): View = kit.vertical().apply {
-        background = PanelDrawable(kit.density, PanelStyle.RAISED, 26f)
-        setPadding(kit.dp(14), kit.dp(12), kit.dp(14), kit.dp(16))
-        layoutParams = kit.spaced(12)
-        addView(kit.horizontal().apply {
-            addView(kit.vertical().apply {
-                addView(kit.text("دفتر امتیاز دورهمی‌ها", TextStyle.LABEL_BOLD, Royal.gold, maxLines = 1))
-                addView(kit.text("بازی کن،\nامتیاز ثبت کن", TextStyle.TITLE, Royal.title).apply { setLineSpacing(0f, 1.05f) })
-                addView(kit.text("هفت بازی در یک دیوان", TextStyle.CAPTION, Royal.muted, maxLines = 1))
-            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            addView(HeroCrestView(host), LinearLayout.LayoutParams(kit.dp(138), kit.dp(106)))
-        })
-        addView(kit.gap(10))
+        val t = ThemeEngine.spec
+        val editorial = t.layout == ThemeLayout.PAPER
+        val centered = t.layout == ThemeLayout.PALM || t.layout == ThemeLayout.ORBIT
+        if (!editorial) background = PanelDrawable(kit.density, PanelStyle.RAISED, 26f)
+        setPadding(kit.dp(if (editorial) 2 else 20), kit.dp(22), kit.dp(if (editorial) 2 else 20), kit.dp(22))
+        layoutParams = kit.spaced(18)
+        val headline = when (t.layout) {
+            ThemeLayout.ATLAS -> "امشب،\nنوبت بازیه."
+            ThemeLayout.PAPER -> "قصهٔ این دور\nاز اینجا شروع می‌شه."
+            ThemeLayout.ORBIT -> "برو تو مدارِ بازی"
+            ThemeLayout.PALM -> "کنار هم،\nخوش می‌گذره."
+            ThemeLayout.VOLT -> "بزن بریم!"
+            ThemeLayout.WAVE -> "یه دور بازی؟"
+        }
+        if (centered) {
+            gravity = Gravity.CENTER_HORIZONTAL
+            addView(HeroCrestView(host), LinearLayout.LayoutParams(kit.dp(88), kit.dp(88)))
+            addView(kit.gap(14))
+            addView(kit.text(headline, TextStyle.DISPLAY, Royal.title, Gravity.CENTER))
+            addView(kit.text("بازی را انتخاب کن؛ امتیازها با دیوان", TextStyle.LABEL, Royal.muted, Gravity.CENTER))
+        } else {
+            addView(kit.text(if (editorial) "دفتر دورهمی / دیوان" else t.latin + "  /  دیوان", TextStyle.CAPTION, Royal.goldLight))
+            addView(kit.gap(8))
+            addView(kit.horizontal().apply {
+                addView(kit.weight(kit.text(headline, TextStyle.DISPLAY, Royal.title)))
+                if (!editorial) {
+                    addView(kit.hgap(8))
+                    addView(HeroCrestView(host), LinearLayout.LayoutParams(kit.dp(if (t.layout == ThemeLayout.VOLT) 56 else 74), kit.dp(if (t.layout == ThemeLayout.VOLT) 56 else 74)))
+                }
+            })
+            addView(kit.text("هفت بازی، یک جمع، کلی خاطره", TextStyle.LABEL, Royal.muted))
+        }
+        addView(kit.gap(20))
         val games = host.repo.sessions().size + host.mafia.games().count { it.started } + host.panto.matches().size + host.spy.games().size
         val people = host.repo.roster().count { !it.isTeam }
         val leagues = host.repo.leagues().size
-        addView(kit.grid(3, listOf(kit.stat(kit.n(games), "بازی ثبت‌شده"), kit.stat(kit.n(people), "نفر"), kit.stat(kit.n(leagues), "لیگ")), 8))
+        addView(kit.grid(3, listOf(kit.stat(kit.n(games), "بازی"), kit.stat(kit.n(people), "بازیکن"), kit.stat(kit.n(leagues), "لیگ")), if (editorial) 2 else 10))
     }
 
     /** The most recent game in progress of any kind. */

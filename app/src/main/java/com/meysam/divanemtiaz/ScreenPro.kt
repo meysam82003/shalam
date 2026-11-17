@@ -87,6 +87,11 @@ class ProScreen(host: MainActivity, private val reason: String? = null, private 
             addView(kit.text(reason, TextStyle.BODY, Royal.ivory))
         }, kit.spaced(12))
 
+        if (!ProState.loggedIn && reason?.contains("مافیا") == true) addView(kit.button("ثبت‌نام و تست ۱۰ دقیقه‌ای مافیا", ButtonKind.PRIMARY, RoyalIcon.TIMER, 50) {
+            host.push(AccountScreen(host) {
+                if (ProState.mafiaAllowed) host.replace(MafiaHomeScreen(host)) else host.pop()
+            })
+        }, kit.spaced(10))
         val lic = ProState.license
         val now = ProState.now()
         if (ProState.isPro) {
@@ -328,6 +333,10 @@ object Gate {
 
     /** True when the page may open; otherwise explains (or opens the Pro page) and returns false. */
     fun allows(host: MainActivity, screen: Screen): Boolean {
+        if (screen.mafiaArea && !ProState.mafiaAllowed) {
+            host.push(ProScreen(host, "مافیا به اشتراک Pro نیاز دارد. با ثبت‌نام ۱۰ دقیقه تست دارید؛ فقط یک بار برای هر گوشی."))
+            return false
+        }
         val key = screen.featureKey ?: return true
         val current = host.current ?: return true
         var ok = false
@@ -352,8 +361,8 @@ object Gate {
 class AccountScreen(host: MainActivity, private val then: (() -> Unit)? = null) : Screen(host) {
     private var mode = 1 // 0 login, 1 register, 2 recover
 
-    override fun build(): View = scaffold("حساب کاربری", "فقط برای خرید و نگهداری Pro") {
-        addView(kit.text("برای بازی کردن حساب لازم نیست. حساب فقط اشتراک Pro را نگه می‌دارد تا با عوض شدن گوشی یا پاک شدن برنامه از بین نرود. شماره تلفن و ایمیل نمی‌خواهیم.", TextStyle.LABEL, Royal.muted), kit.spaced(10))
+    override fun build(): View = scaffold("حساب کاربری", "خرید Pro و تست ۱۰ دقیقه‌ای مافیا") {
+        addView(kit.text("بازی‌های امتیازی بدون حساب در دسترس‌اند. مافیا به Pro نیاز دارد؛ با ثبت‌نام، تست ۱۰ دقیقه‌ای فوراً آغاز می‌شود و برای هر گوشی فقط یک بار است. ایمیل اختیاری است.", TextStyle.LABEL, Royal.muted), kit.spaced(10))
         val chips = listOf("ورود", "ساخت حساب", "بازیابی").mapIndexed { i, l -> kit.chip(l, i == mode) { mode = i; host.refresh() } }
         addView(kit.chipRail(chips, mode), kit.spaced(10))
         val err = errorLine()

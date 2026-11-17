@@ -1,4 +1,4 @@
-# Divan Emtiaz — root of httpuser87890.ir
+# Divan Emtiaz — root of divan-emtiaz.ir
 # Root opens the introduction site (index.html) directly.
 # Subfolders such as /divan/ keep their own .htaccess and are not affected.
 Options -Indexes

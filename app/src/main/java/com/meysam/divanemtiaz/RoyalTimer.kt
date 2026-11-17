@@ -73,6 +73,22 @@ class RingTimerView(context: Context) : View(context) {
         val colors = if (alert) intArrayOf(Royal.crimson, Royal.alert, Royal.crimson) else t.ring
         val lead = colors[colors.size / 2]
 
+        // Paper and Volta use a typographic countdown and a horizontal remaining-time rail.
+        if (!compact && (t.layout == ThemeLayout.PAPER || t.layout == ThemeLayout.VOLT)) {
+            paint.shader = null; paint.style = Paint.Style.FILL
+            paint.textAlign = Paint.Align.CENTER; paint.typeface = RoyalFonts.get(context, true)
+            paint.textSize = size * .28f; paint.color = if (alert) t.danger else t.text
+            canvas.drawText(clockText(ms), cx, cy, paint)
+            paint.typeface = RoyalFonts.get(context, false); paint.textSize = size * .065f; paint.color = t.muted
+            if (label.isNotBlank()) canvas.drawText(label, cx, cy + size * .13f, paint)
+            val rail = RectF(cx - size * .38f, cy + size * .24f, cx + size * .38f, cy + size * .27f)
+            paint.color = t.ringTrack; canvas.drawRect(rail, paint)
+            paint.color = if (alert) t.danger else t.accent
+            canvas.drawRect(rail.right - rail.width() * fraction, rail.top, rail.right, rail.bottom, paint)
+            if (isRunning()) postInvalidateOnAnimation()
+            return
+        }
+
         // Soft halo behind the ring.
         if (!compact) {
             paint.style = Paint.Style.FILL
@@ -86,7 +102,7 @@ class RingTimerView(context: Context) : View(context) {
             // Minute marks.
             paint.style = Paint.Style.STROKE
             paint.strokeCap = Paint.Cap.ROUND
-            for (i in 0 until 60) {
+            for (i in 0 until if (t.layout == ThemeLayout.ATLAS) 60 else 0) {
                 val a = Math.PI * 2 * i / 60 - Math.PI / 2
                 val major = i % 5 == 0
                 val r1 = r + stroke * 0.95f

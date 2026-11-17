@@ -669,24 +669,6 @@ class RoleSealView(context: Context, glyph: MafiaGlyph, base: Int) : CachedArtVi
     override fun artKey(): Any = listOf(glyph, base, hidden, dead)
 
     override fun drawArt(canvas: Canvas) {
-        val r = min(width, height) / 2f * 0.9f
-        if (r <= 0f) return
-        val cx = width / 2f
-        val cy = height / 2f - r * 0.04f
-        Emblems.drawMedallion(canvas, cx, cy, r, if (hidden) 0xFF23367A.toInt() else base, paint)
-        Emblems.drawRelief(canvas, if (hidden) MafiaArt.glyph(MafiaGlyph.QUESTION) else MafiaArt.glyph(glyph), cx, cy, r, paint, 1.32f)
-        Emblems.drawGloss(canvas, cx, cy, r * 0.83f, paint)
-        if (dead) {
-            paint.style = Paint.Style.FILL
-            paint.shader = null
-            paint.color = 0x99050B1A.toInt()
-            canvas.drawCircle(cx, cy, r, paint)
-            paint.style = Paint.Style.STROKE
-            paint.strokeWidth = r * 0.12f
-            paint.strokeCap = Paint.Cap.ROUND
-            paint.color = Royal.crimson
-            canvas.drawLine(cx - r * 0.55f, cy - r * 0.55f, cx + r * 0.55f, cy + r * 0.55f, paint)
-            paint.style = Paint.Style.FILL
-        }
+        DivanDesign.role(canvas, width, height, glyph, hidden, dead, paint, base)
     }
 }

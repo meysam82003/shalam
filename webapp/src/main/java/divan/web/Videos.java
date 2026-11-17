@@ -27,7 +27,7 @@ public final class Videos {
         Integer id = ids.get(v);
         if (id == null) { id = next++; ids.put(v, id); }
         set(id, src(v.videoPath()), v.wantsPlay(), (vid, kind) -> android.os.Looper.dispatch(() -> {
-            if (kind == 0) v.firePrepared(); else v.fireCompletion();
+            if (kind == 0) v.firePrepared(); else if (kind == 1) v.fireCompletion(); else if (kind == 2) v.fireError(); else if (kind == 3) v.performClick();
         }));
         WebWindow.schedule();
     }

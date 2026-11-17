@@ -230,7 +230,8 @@
   function decode(key, bytes) {
     if (images[key]) return Promise.resolve(images[key]);
     var blob = new Blob([bytes.slice()]);
-    var p = window.createImageBitmap ? createImageBitmap(blob) : new Promise(function (ok, bad) {
+    var gif = bytes.length >= 6 && bytes[0] === 71 && bytes[1] === 73 && bytes[2] === 70;
+    var p = window.createImageBitmap && !gif ? createImageBitmap(blob) : new Promise(function (ok, bad) {
       var img = new Image(), u = URL.createObjectURL(blob);
       img.onload = function () { URL.revokeObjectURL(u); ok(img); };
       img.onerror = function (e) { URL.revokeObjectURL(u); bad(e); };
@@ -519,12 +520,22 @@
       v.className = 'video'; v.muted = true; v.playsInline = true; v.setAttribute('playsinline', '');
       v.addEventListener('loadeddata', function () { cb(id, 0); });
       v.addEventListener('ended', function () { cb(id, 1); });
+      v.addEventListener('error', function () { cb(id, 2); });
+      v.addEventListener('click', function () { cb(id, 3); });
       frame.appendChild(v);
       videos[id] = v;
     }
     if (v.getAttribute('src') !== src) v.src = src;
-    if (play) { var p = v.play(); if (p && p.catch) p.catch(function () {}); } else v.pause();
+    v.divanWantsPlay = play;
+    if (play && !document.hidden) { var p = v.play(); if (p && p.catch) p.catch(function () {}); } else v.pause();
   };
+  document.addEventListener('visibilitychange', function () {
+    Object.keys(videos).forEach(function (id) {
+      var v = videos[id];
+      if (document.hidden) v.pause();
+      else if (v.divanWantsPlay && !v.ended) { var p = v.play(); if (p && p.catch) p.catch(function () {}); }
+    });
+  });
   DH.videoPlace = function (id, x, y, w, h, visible) {
     var v = videos[id]; if (!v) return;
     v.style.left = x + 'px'; v.style.top = y + 'px'; v.style.width = w + 'px'; v.style.height = h + 'px';
