@@ -60,10 +60,10 @@ const profiles=['cobalt','iranic','neon','emerald','copper','ivory'];
         await page.mouse.click(pos.x,pos.y);await page.waitForTimeout(450);
       }
       async function shot(name){assert.equal(await page.locator('#crash.on').count(),0,`${theme}: crash`);await page.screenshot({path:path.join(out,`${theme}-${name}.png`)});}
-      await page.goto(origin);await page.waitForFunction(()=>!document.getElementById('loading'),null,{timeout:30000});
+      await page.goto(origin);await page.locator('#loading').waitFor({state:'detached',timeout:30000});
       await page.waitForTimeout(1000);
-      assert((await labels()).includes('انتخاب بازی'),theme+' home missing');
       await shot('home');
+      assert((await labels()).includes('انتخاب بازی'),theme+' home missing');
       await click('شلم');await shot('setup');
       await click('شروع داوری شلم');await shot('board');
       await click('ثبت دست جدید');await shot('score-entry');
