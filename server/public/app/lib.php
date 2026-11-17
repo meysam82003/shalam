@@ -59,7 +59,7 @@ final class App
     {
         $profile = self::deployment();
         foreach ($profile['legacy_hosts'] ?? [] as $host) {
-            $pattern = '#^https?://' . preg_quote((string)$host, '#') . '(?::443)?(?=/|[?#]|$)#i';
+            $pattern = '~^https?://' . preg_quote((string)$host, '~') . '(?::443)?(?=/|[?#]|$)~i';
             if (preg_match($pattern, $url)) return preg_replace($pattern, rtrim((string)$profile['public_origin'], '/'), $url, 1);
         }
         return $url;
