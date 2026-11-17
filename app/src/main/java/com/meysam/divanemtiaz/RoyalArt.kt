@@ -639,33 +639,27 @@ class EmblemAvatarView(context: Context, avatar: Int = 0) : CachedArtView(contex
     override fun artKey(): Any = avatar * 2 + if (selectedRing) 1 else 0
 
     override fun drawArt(canvas: Canvas) {
-        val r = min(width, height) / 2f * 0.92f
+        val r = min(width, height) / 2f * .92f
         if (r <= 0f) return
-        val cx = width / 2f
-        val cy = height / 2f - r * 0.03f
+        val t = ThemeEngine.spec; val cx = width / 2f; val cy = height / 2f
+        paint.shader = null; paint.style = Paint.Style.FILL
+        paint.color = Royal.mix(t.surface, Emblems.hue(avatar), if (t.light) .13f else .25f)
+        val corner = DivanDesign.radius(t, 20f) * r / 24f
+        canvas.drawRoundRect(RectF(cx - r, cy - r, cx + r, cy + r), corner, corner, paint)
         val photo = PhotoStore.bitmap(avatar)
         if (photo != null) {
-            // A gallery picture inside the metal ring of the medallion.
-            Emblems.drawMedallion(canvas, cx, cy, r, Emblems.hue(avatar), paint, selectedRing)
-            PhotoStore.drawCircle(canvas, photo, cx, cy, r * 0.84f, paint)
-            paint.style = Paint.Style.STROKE
-            paint.strokeWidth = r * 0.03f
-            paint.color = Royal.alpha(Royal.metalLight, 0.6f)
-            canvas.drawCircle(cx, cy, r * 0.84f, paint)
-            paint.style = Paint.Style.FILL
-            if (selectedRing) {
-                paint.style = Paint.Style.STROKE
-                paint.strokeWidth = r * 0.08f
-                paint.color = Royal.turquoise
-                canvas.drawCircle(cx, cy, r * 0.97f, paint)
-                paint.style = Paint.Style.FILL
-            }
-            Emblems.drawGloss(canvas, cx, cy, r * 0.83f, paint)
-            return
+            PhotoStore.drawCircle(canvas, photo, cx, cy, r * .88f, paint)
+        } else {
+            canvas.save(); canvas.translate(cx - r * .7f, cy - r * .7f); canvas.scale(r * 1.4f / 100f, r * 1.4f / 100f)
+            paint.shader = null; paint.style = Paint.Style.FILL; paint.color = t.accent
+            canvas.drawPath(Emblems.motif(avatar), paint)
+            canvas.restore()
         }
-        Emblems.drawMedallion(canvas, cx, cy, r, Emblems.hue(avatar), paint, selectedRing)
-        Emblems.drawRelief(canvas, Emblems.motif(avatar), cx, cy, r, paint)
-        Emblems.drawGloss(canvas, cx, cy, r * 0.83f, paint)
+        if (selectedRing) {
+            paint.shader = null; paint.style = Paint.Style.STROKE; paint.strokeWidth = r * .07f; paint.color = t.success
+            canvas.drawRoundRect(RectF(cx - r, cy - r, cx + r, cy + r), corner, corner, paint)
+            paint.style = Paint.Style.FILL
+        }
     }
 }
 
