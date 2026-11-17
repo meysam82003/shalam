@@ -16,6 +16,13 @@ object PantoLook {
     const val GOLD_TINT = 0xFFC4801C.toInt()
 }
 
+/** Gold rounds retain their state while their face follows the selected light/dark material. */
+private fun RoyalKit.goldenPanel(radius: Float) = android.graphics.drawable.GradientDrawable(
+    android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+    if (ThemeEngine.spec.light) intArrayOf(0xFFFFF4D5.toInt(), 0xFFF1DCAA.toInt())
+    else intArrayOf(0xFF8A6418.toInt(), 0xFF3E2C08.toInt())
+).apply { cornerRadius = dpf(radius); setStroke(dp(2), Royal.goldLight) }
+
 /** The word bank, loaded once from the app's assets (first use may load it in the background). */
 fun Screen.pantoBank(): PantoBank = PantoBank.get { host.assets.open(PantoBank.ASSET) }
 
@@ -322,8 +329,7 @@ class PantoBoardScreen(host: MainActivity, matchId: Long) : PantoScreen(host, ma
 
     private fun roundBanner(): View = kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
         background = PanelDrawable(kit.density, if (m.golden) PanelStyle.SELECTED else PanelStyle.RAISED, 20f)
-        if (m.golden) background = android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(0xFF7A5A12.toInt(), 0xFF3A2A08.toInt())).apply { cornerRadius = kit.dpf(20f); setStroke(kit.dp(2), Royal.goldLight) }
+        if (m.golden) background = kit.goldenPanel(20f)
         setPadding(kit.dp(12), kit.dp(12), kit.dp(12), kit.dp(14))
         layoutParams = kit.spaced(10)
         if (m.golden) addView(kit.icon(RoyalIcon.CROWN, Royal.goldLight, 34))
@@ -394,8 +400,7 @@ class PantoCategoryScreen(host: MainActivity, matchId: Long) : PantoScreen(host,
     }
 
     private fun goldenCard(o: PantoEngine.Option): View = kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
-        background = android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(0xFF8A6418.toInt(), 0xFF3E2C08.toInt())).apply { cornerRadius = kit.dpf(18f); setStroke(kit.dp(2), Royal.goldLight) }
+        background = kit.goldenPanel(18f)
         setPadding(kit.dp(12), kit.dp(12), kit.dp(12), kit.dp(14))
         layoutParams = kit.spaced(8)
         alpha = if (o.enabled) 1f else 0.45f
@@ -515,8 +520,7 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
     private fun wordCard(t: PantoTurn): View = kit.vertical(Gravity.CENTER).apply {
         val golden = t.choice?.golden == true
         val revealed = phase >= 1 && !wordHidden
-        background = if (revealed) CinemaPaperDrawable(kit.density, golden) else if (golden) android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(0xFF8A6418.toInt(), 0xFF3E2C08.toInt())).apply { cornerRadius = kit.dpf(22f); setStroke(kit.dp(2), Royal.goldLight) }
+        background = if (revealed) CinemaPaperDrawable(kit.density, golden) else if (golden) kit.goldenPanel(22f)
         else PanelDrawable(kit.density, PanelStyle.SELECTED, 22f)
         setPadding(kit.dp(14), kit.dp(18), kit.dp(14), kit.dp(20))
         minimumHeight = kit.dp(150)
