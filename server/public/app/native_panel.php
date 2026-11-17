@@ -6,7 +6,7 @@ require_once __DIR__.'/admin/pages_sales.php';
 require_once __DIR__.'/admin/pages_config.php';
 require_once __DIR__.'/admin/iran_ads.php';
 final class NativePanelRedirect extends RuntimeException { public string $query; public function __construct(string $query){parent::__construct('redirect');$this->query=$query;} }
-final class NativePanelFile extends RuntimeException { public array $file; public function __construct(array $file){parent::__construct('file');$this->file=$file;} }
+final class NativePanelFile extends RuntimeException { public array $payload; public function __construct(array $file){parent::__construct('file');$this->payload=$file;} }
 final class NativePanel
 {
     public const PAGES = [
@@ -64,7 +64,7 @@ final class NativePanel
                 ob_start();
                 try {call_user_func(self::PAGES[$page]);$html=ob_get_clean();return ['query'=>$query,'nodes'=>self::document($html)];}
                 catch(NativePanelRedirect $e){ob_end_clean();$query=$e->query;$verb='GET';$post=[];continue;}
-                catch(NativePanelFile $e){ob_end_clean();return ['query'=>$query,'file'=>$e->file,'nodes'=>[]];}
+                catch(NativePanelFile $e){ob_end_clean();return ['query'=>$query,'file'=>$e->payload,'nodes'=>[]];}
                 catch(Throwable $e){ob_end_clean();throw $e;}
             }
             throw new ApiError('panel','تعداد انتقال‌ها زیاد است.');
