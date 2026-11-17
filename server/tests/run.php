@@ -21,6 +21,7 @@ require $src . '/app/monetization.php';
 require $src . '/app/admin_mobile.php';
 require $src . '/app/native_panel.php';
 require $src . '/app/admin_inbox.php';
+require $src . '/app/push.php';
 require $src . '/app/markets.php';
 require $src . '/app/payments.php';
 require $src . '/app/paypages.php';
@@ -1356,7 +1357,8 @@ scenario('reward videos: completion window, single use, one hour Pro and rolling
     ProRewards::claim($u, $session, $watch);
     $summary = Entitlements::summary((int)$u['id']);
     check($summary['pro'] && $summary['expires_at'] === Clock::now() + 3600, 'completed video gives actual one-hour Pro');
-    throws(fn() => ProRewards::claim($u, $session, $watch), 'incomplete_watch', 'replay never grants twice');
+    ProRewards::claim($u, $session, $watch);
+    check((int)Db::value("SELECT COUNT(*) FROM {user_grants} WHERE user_id=? AND reason='ویدئوی جایزه‌ای: یک ساعت Pro'",[$u['id']])===1,'retry after a lost claim response returns success and never grants twice');
     throws(fn() => ProRewards::start($other, $session, $ad), 'reward_cooldown', 'new account on same phone cannot bypass 24h cap');
     throws(fn() => ProRewards::start($u, ['device_id' => str_repeat('f', 64), 'store' => 'bazaar'], $ad), 'reward_cooldown', 'another phone cannot bypass account cap');
     Clock::$fixed = $now + 3630;
@@ -1406,6 +1408,7 @@ scenario('Iran hosting package: legacy domain moves and all payment routes are d
 
 // ---------------------------------------------------------------- report
 require __DIR__ . '/iran_ads.php';
+require __DIR__ . '/push.php';
 
 echo "\n" . ($failed ? "FAILED " . count($failed) . " of " . ($passed + count($failed)) . " checks\n" . implode("\n", $failed) . "\n" : "ALL $passed CHECKS PASSED\n");
 foreach ($pdo->query("SHOW TABLES LIKE 'dvt\\_%'")->fetchAll(PDO::FETCH_COLUMN) as $t) $pdo->exec("DROP TABLE `$t`");

@@ -5,6 +5,7 @@ if (!defined('DIVAN')) { http_response_code(403); exit; }
 require_once __DIR__.'/admin/pages_sales.php';
 require_once __DIR__.'/admin/pages_config.php';
 require_once __DIR__.'/admin/iran_ads.php';
+require_once __DIR__.'/admin/push_page.php';
 final class NativePanelRedirect extends RuntimeException { public string $query; public function __construct(string $query){parent::__construct('redirect');$this->query=$query;} }
 final class NativePanelFile extends RuntimeException { public array $payload; public function __construct(array $file){parent::__construct('file');$this->payload=$file;} }
 final class NativePanel
@@ -31,6 +32,7 @@ final class NativePanel
     'adnetwork' => [ConfigPages::class, 'adnetwork'],
     'iranads' => [IranAdsPage::class, 'show'],
     'notices' => [ConfigPages::class, 'notices'],
+    'push' => [PushPage::class, 'show'],
     'site' => [ConfigPages::class, 'site'],
     'stores' => [ConfigPages::class, 'stores'],
     'bridge' => [ConfigPages::class, 'bridge'],
@@ -42,7 +44,7 @@ final class NativePanel
 ];
     public static function menu(): array {
         AdminMobile::auth('dashboard');
-        $labels=['dashboard'=>'داشبورد','users'=>'کاربران','subscriptions'=>'اشتراک‌ها','transactions'=>'تراکنش‌ها','support'=>'پشتیبانی','gifts'=>'هدیهٔ کاربران','promos'=>'کد تخفیف و هدیه','reports'=>'گزارش‌ها','plans'=>'پلن‌ها و قیمت‌ها','campaigns'=>'کمپین‌ها','features'=>'قابلیت‌ها','ads'=>'تبلیغات مستقیم','placements'=>'جایگاه‌ها','media'=>'رسانه‌ها','adnetwork'=>'تنظیمات تبلیغات مستقیم','iranads'=>'تبلیغات ایرانی و سکه','notices'=>'اعلان‌ها','site'=>'مدیریت سایت','stores'=>'بازار و مایکت','bridge'=>'تنظیمات پرداخت قدیمی','paymethods'=>'روش‌های پرداخت','backups'=>'پشتیبان و بازیابی','audit'=>'گزارش امنیتی','admins'=>'مدیران','account'=>'حساب و ورود دومرحله‌ای'];
+        $labels=['push'=>'اعلان بدون باز کردن اپ','dashboard'=>'داشبورد','users'=>'کاربران','subscriptions'=>'اشتراک‌ها','transactions'=>'تراکنش‌ها','support'=>'پشتیبانی','gifts'=>'هدیهٔ کاربران','promos'=>'کد تخفیف و هدیه','reports'=>'گزارش‌ها','plans'=>'پلن‌ها و قیمت‌ها','campaigns'=>'کمپین‌ها','features'=>'قابلیت‌ها','ads'=>'تبلیغات مستقیم','placements'=>'جایگاه‌ها','media'=>'رسانه‌ها','adnetwork'=>'تنظیمات تبلیغات مستقیم','iranads'=>'تبلیغات ایرانی و سکه','notices'=>'اعلان‌ها','site'=>'مدیریت سایت','stores'=>'بازار و مایکت','bridge'=>'تنظیمات پرداخت قدیمی','paymethods'=>'روش‌های پرداخت','backups'=>'پشتیبان و بازیابی','audit'=>'گزارش امنیتی','admins'=>'مدیران','account'=>'حساب و ورود دومرحله‌ای'];
         $items=[];foreach($labels as $key=>$title)if(Admin::can($key)&&($key!=='bridge'||!App::directPayments()))$items[]=['key'=>$key,'title'=>$title];return ['items'=>$items];
     }
     public static function handle(array $in): array {

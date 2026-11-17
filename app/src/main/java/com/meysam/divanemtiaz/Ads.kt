@@ -399,6 +399,15 @@ object AdEngine {
      */
     fun sticky(screen: Screen?, key: String, bar: FrameLayout) {
         val zone = screen?.adZone
+        if (screen != null && key == "sticky_bottom" && zone !in setOf("home", "shop") && AdsManager.active()) {
+            val tag = "iran:${System.identityHashCode(screen)}:${ProState.isPro}"
+            if (stickyShown[key] == tag && bar.childCount > 0) return
+            val networkBar = AdsManager.banner(screen, key)
+            if (networkBar != null) {
+                bar.removeAllViews(); bar.addView(networkBar); bar.visibility = View.VISIBLE; stickyShown[key] = tag
+                return
+            }
+        }
         val c = cfg()
         val p = c?.optJSONArray("placements")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) }.firstOrNull { it.optString("key") == key } }
         val zones = p?.optJSONArray("screens")?.let { a -> (0 until a.length()).map { a.optString(it) } }.orEmpty()
@@ -506,11 +515,10 @@ object AdEngine {
             else {
                 val grant: (Boolean) -> Unit = { complete ->
                     if (!complete) { rewardBusy = false; done(false) }
-                    else Api.call("POST", "v1/rewards/claim", JSONObject().put("watch_token", token), ProState.token) { account, error ->
+                    else AdsManager.completeDirect(screen.host, data!!) { ok, message ->
                         rewardBusy = false
-                        if (account != null) { event("reward", "rewarded_offer", direct?.id ?: 0); ProState.applyAccount(account) }
-                        else screen.kit.toast(error?.message ?: "ثبت جایزه ممکن نشد")
-                        done(account != null)
+                        screen.kit.toast(message)
+                        done(ok)
                     }
                 }
                 if (direct != null) fullScreen(screen, "rewarded_offer", direct, true, grant)
@@ -555,22 +563,35 @@ object AdEngine {
                 addView(closeBtn)
             }, kit.spaced(12))
             if (rewarded) addView(kit.text("برای یک ساعت Pro، ویدئو را کامل ببینید. خروج زودتر جایزه ندارد.", TextStyle.LABEL, ad.fg, Gravity.CENTER), kit.spaced(8))
+            val mediaBox = FrameLayout(ctx).apply { clipChildren = true }
+            val details = kit.vertical()
+            val scroll = android.widget.ScrollView(ctx).apply {
+                isFillViewport = true
+                addView(details)
+            }
+            addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+            details.addView(mediaBox, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(240)))
+            scroll.addOnLayoutChangeListener { _, _, _, _, bottom, _, _, _, oldBottom ->
+                if (bottom != oldBottom && scroll.height > 0) {
+                    mediaBox.layoutParams = (mediaBox.layoutParams as LinearLayout.LayoutParams).apply { height = (scroll.height * 0.80f).toInt().coerceAtLeast(kit.dp(120)) }
+                }
+            }
             if (ad.mediaKind == "video") {
                 video = VideoView(ctx).apply {
                     setVideoPath(file.path)
                     setOnPreparedListener { start() }
                     setOnCompletionListener { finished = true; countdown.text = if (rewarded) "ثبت جایزه…" else ""; if (rewarded) d.dismiss() }
-                    setOnErrorListener { _, _, _ -> finished = false; d.dismiss(); true }
+                    setOnErrorListener { _, _, _ -> if (!closed) { finished = false; d.dismiss() }; true }
                     if (ad.target != null) setOnClickListener { open(screen, ad, key) }
                 }
-                addView(video, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+                mediaBox.addView(video, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER))
             } else {
                 val media = AdImageView(ctx, file)
                 if (ad.target != null) media.setOnClickListener { open(screen, ad, key) }
-                addView(media, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+                mediaBox.addView(media, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             }
-            if (ad.title.isNotBlank()) addView(kit.text(ad.title, TextStyle.TITLE, ad.fg, Gravity.CENTER), kit.spaced(6))
-            if (ad.body.isNotBlank()) addView(kit.text(ad.body, TextStyle.BODY, ad.fg, Gravity.CENTER), kit.spaced(10))
+            if (ad.title.isNotBlank()) details.addView(kit.text(ad.title, TextStyle.TITLE, ad.fg, Gravity.CENTER), kit.spaced(6))
+            if (ad.body.isNotBlank()) details.addView(kit.text(ad.body, TextStyle.BODY, ad.fg, Gravity.CENTER), kit.spaced(10))
             if (ad.target != null) addView(kit.button(ad.cta ?: "مشاهده", ButtonKind.PRIMARY, null, 48) { open(screen, ad, key) })
         }
         val update = object : Runnable {
@@ -587,12 +608,15 @@ object AdEngine {
         d.setContentView(root)
         d.setOnDismissListener {
             if (!closed) {
-                closed = true; main.removeCallbacks(update); video?.stopPlayback()
+                closed = true; main.removeCallbacks(update); video?.setOnErrorListener(null); video?.setOnCompletionListener(null); video?.stopPlayback()
                 if (!finished) event("close", key, ad.id)
                 done(if (rewarded) finished else true)
             }
         }
         markShown(ad.id); event("impression", key, ad.id)
-        d.show(); main.post(update)
+        root.fitsSystemWindows = true
+        d.show()
+        d.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        main.post(update)
     }
 }

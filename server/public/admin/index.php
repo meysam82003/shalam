@@ -9,6 +9,7 @@ require_once App::$root . '/app/admin/core.php';
 require_once App::$root . '/app/admin/pages_sales.php';
 require_once App::$root . '/app/admin/pages_config.php';
 require_once App::$root . '/app/admin/iran_ads.php';
+require_once App::$root . '/app/admin/push_page.php';
 
 Db::pdo();
 Migrations::run();
@@ -53,6 +54,7 @@ $pages = [
     'adnetwork' => [ConfigPages::class, 'adnetwork'],
     'iranads' => [IranAdsPage::class, 'show'],
     'notices' => [ConfigPages::class, 'notices'],
+    'push' => [PushPage::class, 'show'],
     'site' => [ConfigPages::class, 'site'],
     'stores' => [ConfigPages::class, 'stores'],
     'bridge' => [ConfigPages::class, 'bridge'],

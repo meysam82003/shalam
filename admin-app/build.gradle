@@ -28,9 +28,12 @@ android {
             signingConfig System.getenv('DIVAN_KEYSTORE_FILE') ? signingConfigs.release : signingConfigs.debug
             minifyEnabled true
             shrinkResources true
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt')
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
+    sourceSets.main.java.srcDirs += ['../push-runtime/src/main/java']
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = '17' }
 }
+
+dependencies { implementation 'com.google.firebase:firebase-messaging:24.1.2' }

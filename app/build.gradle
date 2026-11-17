@@ -94,6 +94,7 @@ android {
         sourceSets.main.java.srcDirs += ['src/tapsell/java', 'src/iranAds/java']
     }
 
+    sourceSets.main.java.srcDirs += ['../push-runtime/src/main/java', 'src/push/java']
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
@@ -104,6 +105,7 @@ android {
 }
 
 dependencies {
+    implementation 'com.google.firebase:firebase-messaging:24.1.2'
     bazaarImplementation 'com.github.cafebazaar.Poolakey:poolakey:2.2.0'
     myketImplementation 'com.github.myketstore:myket-billing-client:1.19'
     if (divanTapsell) {

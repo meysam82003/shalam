@@ -60,6 +60,7 @@ class LeagueSetupScreen(host: MainActivity, private val editing: Long? = null) :
     private val existing = editing?.let { host.repo.league(it) }
     override val featureKey: String get() = "leagues"
     override val featureUsed: Int get() = if (existing == null) host.repo.leagues().size else -1
+    private var presetRules: GameRules? = null
     private var game = existing?.game ?: GameType.MENFI
     private var name = existing?.name ?: "لیگ ${PersianText.digits(host.repo.leagueIndex().size + 1, host.settings.general.persianDigits)}"
     private val teams = existing?.teams?.toMutableList() ?: MutableList(4) { Side("تیم ${PersianText.digits(it + 1, host.settings.general.persianDigits)}", (it * 3) % Emblems.COUNT) }
@@ -77,6 +78,29 @@ class LeagueSetupScreen(host: MainActivity, private val editing: Long? = null) :
         subtitle = "تیم‌ها، قالب مسابقه و قوانین",
         bottom = kit.button(if (existing == null) "قرعه‌کشی نهایی و شروع لیگ" else "ذخیرهٔ تغییرات لیگ", ButtonKind.PRIMARY, RoyalIcon.PLAY) { start() }
     ) {
+        addView(rulePresetButton("league", capture = {
+            val base = presetRules ?: existing?.rules ?: settings.rulesFor(game, joker, endPoint)
+            val rules = when (game) {
+                GameType.MENFI -> base.copy(menfi = base.menfi.copy(hands = menfiHands, hidden = menfiHidden))
+                GameType.SHALAM -> base.copy(shalam = base.shalam.copy(joker = joker, endPoint = endPoint, mode = if (base.shalam.joker != joker) settings.shalam.mode(joker) else base.shalam.mode))
+                else -> base
+            }
+            RulePresetPolicy.capture(settings.copy(league = settings.league.copy(format = format, winsNeeded = winsNeeded, doubleRoundRobin = doubleRoundRobin, finalAfterTable = finalAfterTable)), "league")
+                .put("_game", game.key).put("_rules", GameCodec.encodeRules(rules))
+        }, apply = { data ->
+            val selectedGame = data.optString("_game", game.key)
+            if (existing != null && selectedGame != game.key) kit.toast("این ترکیب برای نوع دیگری از بازی است")
+            else {
+                if (existing == null && selectedGame in listOf("shalam", "menfi")) game = GameType.fromKey(selectedGame)
+                applyRulePreset("league", data)
+                presetRules = data.optJSONObject("_rules")?.let { GameCodec.decodeRules(it) } ?: if (data.optBoolean("_factory")) AppSettings().rulesFor(game) else settings.rulesFor(game)
+                format = settings.league.format; winsNeeded = settings.league.winsNeeded
+                doubleRoundRobin = settings.league.doubleRoundRobin; finalAfterTable = settings.league.finalAfterTable
+                joker = presetRules!!.shalam.joker; endPoint = presetRules!!.shalam.endPoint
+                menfiHands = presetRules!!.menfi.hands; menfiHidden = presetRules!!.menfi.hidden
+                host.refresh()
+            }
+        }), kit.spaced(10))
         addView(kit.field("نام لیگ", name).apply { addTextChangedListener(watcher { name = it }) }, kit.spaced(8))
         if (existing == null) addView(kit.grid(2, listOf(GameType.MENFI, GameType.SHALAM).map { g ->
             kit.chip(g.title, game == g, ButtonKind.CHIP_GOLD) { game = g; host.refresh() }
@@ -181,7 +205,7 @@ class LeagueSetupScreen(host: MainActivity, private val editing: Long? = null) :
             kit.toast("نام تیم‌ها نباید تکراری باشد")
             return
         }
-        val base = existing?.rules ?: settings.rulesFor(game, joker, endPoint)
+        val base = presetRules ?: existing?.rules ?: settings.rulesFor(game, joker, endPoint)
         val rules = when (game) {
             GameType.MENFI -> base.copy(menfi = base.menfi.copy(hands = menfiHands, hidden = menfiHidden))
             GameType.SHALAM -> base.copy(shalam = base.shalam.copy(joker = joker, endPoint = endPoint,

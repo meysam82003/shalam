@@ -94,6 +94,7 @@ final class AdminMobile
             $before=Monetization::settings();$c=Monetization::save($in);Audit::log('admin',(int)$a['id'],'iran_ads_settings','settings','iran_ads','برنامهٔ مدیریت',$before,$c);return ['settings'=>$c,'fields'=>self::adsFields()];
         }
         if ($route==='admin/ads/stats') { self::auth('ads');if($method!=='GET')throw new ApiError('method','روش نامعتبر است.',405);return Monetization::stats(); }
+        if ($route==='admin/mobile/push/register') { $a=self::auth('users');if(!Admin::can('transactions'))throw new ApiError('admin_forbidden','دسترسی مجاز نیست.',403);if($method!=='POST')throw new ApiError('method','روش نامعتبر است.',405);return PushDelivery::register($in,null,null,$a); }
         if ($route==='admin/mobile/menu' && $method==='GET') return NativePanel::menu();
         if ($route==='admin/mobile/panel' && $method==='POST') return self::panelInput($in);
         if ($route==='admin/mobile/inbox') { $a=self::auth('dashboard');if($method==='GET')return AdminInbox::list($a,(int)($in['after']??0));if($method==='POST')return AdminInbox::read($a,(int)($in['read_through']??0));throw new ApiError('method','روش نامعتبر است.',405); }

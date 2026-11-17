@@ -89,6 +89,14 @@ class PantoSetupScreen(host: MainActivity) : Screen(host) {
 
     override fun build(): View = scaffold("مسابقهٔ جدید", "پانتومیم • ${mode.title}",
         bottom = kit.button("شروع مسابقه", ButtonKind.PRIMARY, RoyalIcon.PLAY, 54) { start() }) {
+        addView(rulePresetButton("panto", capture = {
+            org.json.JSONObject().put("rounds", rounds).put("manual", manual).put("seconds", seconds).put("mode", mode.name)
+        }, apply = { data ->
+            applyRulePreset("panto", data); val defaults = host.panto.defaults()
+            rounds = defaults.rounds; manual = defaults.manualTime; seconds = defaults.seconds
+            mode = runCatching { PantoMode.valueOf(data.optString("mode", "NORMAL")) }.getOrDefault(PantoMode.NORMAL)
+            host.refresh()
+        }), kit.spaced(10))
         addView(kit.section("نوع مسابقه", RoyalIcon.CARDS))
         addView(kit.grid(2, PantoMode.values().map { m ->
             kit.vertical().apply {

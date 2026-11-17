@@ -14,6 +14,7 @@ require_once __DIR__ . '/monetization.php';
 require_once __DIR__ . '/admin_mobile.php';
 require_once __DIR__ . '/native_panel.php';
 require_once __DIR__ . '/admin_inbox.php';
+require_once __DIR__ . '/push.php';
 require_once __DIR__ . '/markets.php';
 require_once __DIR__ . '/payments.php';
 require_once __DIR__ . '/paypages.php';

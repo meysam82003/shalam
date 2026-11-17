@@ -52,6 +52,7 @@ class SpyHomeScreen(host: MainActivity) : Screen(host) {
                     host.push(if (live.allViewed) SpyTimerScreen(host, live.id) else SpyRevealScreen(host, live.id))
                 })
             }
+            addView(rulePresetButton("spy"), kit.spaced(10))
             addView(kit.section("تنظیمات بازی", RoyalIcon.SLIDERS))
             val count = if (people.isNotEmpty()) people.size else s.players
             addView(kit.stepperRow("تعداد بازیکنان", if (people.isNotEmpty()) "از روی افراد انتخاب‌شده" else null, count, SpyEngine.MIN_PLAYERS, SpyEngine.MAX_PLAYERS, 1) { v ->

@@ -34,7 +34,7 @@ class RewardScreen(host: MainActivity) : Screen(host) {
             if (!active) return
             val left = (ProState.rewardNextAt - ProState.now()).coerceAtLeast(0)
             timer?.text = if (left == 0L) "زمان دریافت جایزه رسیده است" else "دریافت بعدی: " + PersianText.digits("%02d:%02d:%02d".format(left / 3600, left % 3600 / 60, left % 60))
-            watch?.isEnabled = left == 0L && !ProState.isPro
+            watch?.isEnabled = left == 0L && !ProState.isPro && !AdsManager.proRewardPending()
             handler.postDelayed(this, 1000)
         }
     }
@@ -49,7 +49,7 @@ class RewardScreen(host: MainActivity) : Screen(host) {
             else if (AdsManager.active()) AdsManager.reward(this@RewardScreen, { kit.toast(it) }, { host.refresh() }, proReward = true)
             else if (!AdEngine.rewardedAvailable()) kit.toast("فعلاً ویدئویی آماده نیست؛ کمی بعد دوباره امتحان کنید")
             else AdEngine.showRewarded(this@RewardScreen) { ok ->
-                kit.toast(if (ok) "یک ساعت Pro فعال شد" else "جایزه ثبت نشد؛ تماشای کامل لازم است")
+                if (ok) kit.toast("یک ساعت Pro فعال شد")
                 host.refresh()
             }
         }
@@ -63,4 +63,24 @@ class RewardScreen(host: MainActivity) : Screen(host) {
         }
     }
     override fun onHide() { active = false; handler.removeCallbacks(tick) }
+}
+
+
+/** A centered invitation, once per availability window; never interrupts a game. */
+object RewardInvitation {
+    private var shownThisRun=false
+    fun offer(screen:HomeScreen) {
+        if(shownThisRun || ProState.isPro || ProState.rewardNextAt>ProState.now() || AdsManager.proRewardPending())return
+        if(!AdEngine.rewardedAvailable() && !AdsManager.proRewardAvailable())return
+        val prefs=screen.host.getSharedPreferences("divan_reward_invitation",android.content.Context.MODE_PRIVATE)
+        val window=ProState.rewardNextAt
+        if(prefs.getLong("window",Long.MIN_VALUE)==window && ProState.now()-prefs.getLong("shown_at",0)<86400)return
+        screen.host.post(2500) {
+            if(screen.host.current!==screen || screen.host.isFinishing || !Notices.asked(screen.host) || ProState.isPro)return@post
+            if(shownThisRun)return@post
+            shownThisRun=true;prefs.edit().putLong("window",window).putLong("shown_at",ProState.now()).apply()
+            screen.kit.dialog("🎁 هدیهٔ شما آماده است", "می‌توانید یک ویدئوی کامل ببینید و یک ساعت از امکانات Pro استفاده کنید.", null,
+                listOf(DialogAction("دریافت یک ساعت Pro",ButtonKind.PRIMARY){screen.host.push(RewardScreen(screen.host))},DialogAction("بعداً"))).show()
+        }
+    }
 }

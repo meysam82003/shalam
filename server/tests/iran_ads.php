@@ -58,7 +58,7 @@ scenario('native admin: TOTP, same permissions, all panel forms and genuine even
     throws(fn()=>AdminMobile::verify(['challenge'=>$login['challenge'],'code'=>Totp::code($secret,intdiv(Clock::now(),30))]),'totp','challenge and TOTP cannot replay');
     $previous=$_SERVER['HTTP_AUTHORIZATION']??null;$_SERVER['HTTP_AUTHORIZATION']='Bearer '.$session['token'];
     $menu=NativePanel::menu();check(count($menu['items'])>=20,'native menu covers all management sections');
-    foreach(['plans','features','gifts','ads','placements','notices','site','stores','paymethods','backups','admins','account','iranads'] as $page){$doc=NativePanel::handle(['query'=>'p='.$page,'verb'=>'GET']);check(count($doc['nodes'])>0,'native widgets generated from real '.$page.' controller');}
+    foreach(['plans','features','gifts','ads','placements','notices','site','stores','paymethods','backups','admins','account','iranads','push'] as $page){$doc=NativePanel::handle(['query'=>'p='.$page,'verb'=>'GET']);check(count($doc['nodes'])>0,'native widgets generated from real '.$page.' controller');}
     $doc=NativePanel::document('<main><form method="post"><label>تعداد</label><input name="data[amount]" value="100"><input type="checkbox" name="pages[]" value="home" checked><button name="action" value="save">ذخیره</button></form></main>');
     check($doc[0]['fields'][0]['name']==='data[amount]'&&$doc[0]['fields'][1]['checked']&&$doc[0]['buttons'][0]['value']==='save','typed names, arrays and submit actions preserved');
     $admin=AdminMobile::auth('dashboard');$events=AdminInbox::list($admin);check(count($events['items'])>=3,'real registrations appear in inbox');

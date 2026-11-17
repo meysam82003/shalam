@@ -11,7 +11,7 @@ final class Monetization
     public static function defaults(): array
     {
         return ['revision' => 1, 'enabled' => false, 'primary' => 'tapsell', 'fallback' => 'adivery', 'vip_ads' => false,
-            'banner' => ['enabled' => true, 'pages' => ['home', 'shop'], 'placements' => ['home_inline' => true, 'home_bottom' => true, 'shop_bottom' => true]],
+            'banner' => ['enabled' => true, 'pages' => ['home','shop','history','settings','hub','leagues','ranking','about'], 'placements' => ['home_inline' => true, 'home_bottom' => false, 'shop_bottom' => true, 'sticky_bottom' => true]],
             'interstitial' => ['enabled' => true, 'hands' => 3, 'min_seconds' => 180, 'daily_cap' => 10],
             'rewarded' => ['enabled' => true, 'amount' => 100, 'daily_cap' => 5, 'min_seconds' => 30],
             'networks' => [
@@ -109,7 +109,7 @@ final class Monetization
             Db::insert('coin_watches',$w);return self::watchView($w);
         });
     }
-    private static function watchView(array $w): array { return ['watch_id'=>$w['id'],'network'=>$w['network'],'placement'=>$w['placement'],'test_mode'=>(bool)$w['test_mode'],'amount'=>(int)$w['amount'],'expires_at'=>(int)$w['started_at']+3600,'claimed'=>$w['claimed_at']!==null]; }
+    private static function watchView(array $w): array { return ['watch_id'=>$w['id'],'network'=>$w['network'],'placement'=>$w['placement'],'test_mode'=>(bool)$w['test_mode'],'amount'=>(int)$w['amount'],'claim_after'=>(int)$w['started_at']+(int)$w['min_seconds'],'expires_at'=>(int)$w['started_at']+3600,'claimed'=>$w['claimed_at']!==null]; }
     private static function quota(int $uid,string $device,int $cap): void {
         $day=self::dayStart();
         $n=(int)Db::value('SELECT COUNT(*) FROM {coin_watches} WHERE claimed_at >= ? AND (user_id = ? OR device = ?)',[$day,$uid,$device]);

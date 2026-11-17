@@ -15,6 +15,7 @@ class SettingsScreen(host: MainActivity, private var tab: Int = TAB_GENERAL) : S
         addView(kit.chipRail(listOf("عمومی", "شلم", "منفی", "هزارتایی", "دو لو گشنیز", "لیگ", "راوی مافیا", "پانتومیم", "جاسوس").mapIndexed { i, label ->
             kit.chip(label, tab == i, ButtonKind.CHIP_GOLD) { tab = i; host.refresh() }.apply { setPadding(kit.dp(14), kit.dp(4), kit.dp(14), kit.dp(6)) }
         }, tab), kit.spaced(8))
+        listOf("", "shalam", "menfi", "hezartaii", "dolo", "league", "mafia", "panto", "spy").getOrNull(tab)?.takeIf { it.isNotBlank() }?.let { addView(rulePresetButton(it), kit.spaced(10)) }
         when (tab) {
             TAB_SHALAM -> shalam(this)
             TAB_MENFI -> {

@@ -65,7 +65,7 @@ final class ProRewards
         if ($ad === null) throw new ApiError('no_ad', 'ویدئوی جایزه‌ای معتبر موجود نیست.');
         $token = bin2hex(random_bytes(32));
         Db::insert('reward_watches', ['token_hash' => Crypto::hash($token), 'user_id' => $u['id'], 'device' => $device, 'ad_id' => $adId, 'started_at' => Clock::now(), 'min_seconds' => max(1, (int)($ad['reward_seconds'] ?? 30)), 'is_test' => $isTest ? 1 : 0, 'claimed_at' => null]);
-        return ['watch_token' => $token, 'test_mode' => $isTest];
+        return ['watch_token' => $token, 'test_mode' => $isTest, 'claim_after' => Clock::now() + max(1, (int)($ad['reward_seconds'] ?? 30)), 'expires_at' => Clock::now() + 3600];
     }
 
     public static function claim(array $u, array $session, string $token): bool
@@ -78,12 +78,13 @@ final class ProRewards
             Db::run('INSERT IGNORE INTO {reward_devices} (device, user_id, claimed_at) VALUES (?, ?, 0)', [$device, $u['id']]);
             Db::one('SELECT device FROM {reward_devices} WHERE device = ? FOR UPDATE', [$device]);
             $w = Db::one('SELECT * FROM {reward_watches} WHERE token_hash = ? AND user_id = ? AND device = ? FOR UPDATE', [Crypto::hash($token), $u['id'], $device]);
-            if ($w === null || $w['claimed_at'] !== null || Clock::now() < (int)$w['started_at'] + (int)$w['min_seconds'] || Clock::now() > (int)$w['started_at'] + 3600)
+            if ($w === null || Clock::now() < (int)$w['started_at'] + (int)$w['min_seconds'] || Clock::now() > (int)$w['started_at'] + 3600)
                 throw new ApiError('incomplete_watch', 'ویدئو کامل نشده یا درخواست منقضی شده است.');
+            if ($w['claimed_at'] !== null) return (int)$w['is_test'] === 1;
             if (self::status((int)$u['id'], $device)['next_at'] > Clock::now()) throw new ApiError('reward_cooldown', 'هر ۲۴ ساعت فقط یک جایزه می‌توانید بگیرید.');
             Db::update('reward_watches', ['claimed_at' => Clock::now()], 'token_hash = ?', [Crypto::hash($token)]);
-            Db::update('reward_devices', ['user_id' => $u['id'], 'claimed_at' => Clock::now()], 'device = ?', [$device]);
             if ((int)$w['is_test'] === 1) return true;
+            Db::update('reward_devices', ['user_id' => $u['id'], 'claimed_at' => Clock::now()], 'device = ?', [$device]);
             Db::insert('user_grants', ['user_id' => $u['id'], 'feature_k' => 'pro', 'expires_at' => Clock::sql(Clock::now() + 3600), 'reason' => 'ویدئوی جایزه‌ای: یک ساعت Pro', 'created_at' => Clock::sql()]);
             return false;
         });

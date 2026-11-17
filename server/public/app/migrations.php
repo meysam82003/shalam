@@ -480,6 +480,10 @@ final class Migrations
                 "CREATE TABLE IF NOT EXISTS {admin_inbox} (id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, source_key VARCHAR(100) NOT NULL UNIQUE, title VARCHAR(120) NOT NULL, body VARCHAR(500) NOT NULL, created_at DATETIME NOT NULL) $e",
                 "CREATE TABLE IF NOT EXISTS {admin_inbox_reads} (admin_id BIGINT UNSIGNED PRIMARY KEY, last_id BIGINT UNSIGNED NOT NULL DEFAULT 0) $e",
             ],
+            14 => [
+                "CREATE TABLE IF NOT EXISTS {push_devices} (token_hash CHAR(64) PRIMARY KEY, token_enc TEXT NOT NULL, kind VARCHAR(10) NOT NULL, client VARCHAR(12) NOT NULL, device CHAR(64) NOT NULL, user_id BIGINT UNSIGNED NULL, admin_id BIGINT UNSIGNED NULL, session_hash CHAR(64) NULL, offers TINYINT NOT NULL, pro_optin TINYINT NOT NULL, seen_at BIGINT NOT NULL, last_scan BIGINT NOT NULL DEFAULT 0) $e",
+                "CREATE TABLE IF NOT EXISTS {push_deliveries} (id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, device_hash CHAR(64) NOT NULL, source_key VARCHAR(100) NOT NULL, attempts INT NOT NULL DEFAULT 0, next_at BIGINT NOT NULL, expires_at BIGINT NOT NULL, sent_at BIGINT NULL, last_error VARCHAR(60) NULL, UNIQUE KEY uq_push (device_hash,source_key), KEY k_due (sent_at,next_at)) $e",
+            ],
         ];
     }
 

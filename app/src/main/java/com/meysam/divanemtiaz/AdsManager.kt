@@ -46,6 +46,8 @@ object AdsManager {
         return c.takeIf { it.optBoolean("enabled") && (fetchedAt == 0L || ProState.now() - fetchedAt <= 600) }
     }
     fun active() = config() != null
+    fun proRewardAvailable() = chain("rewarded").isNotEmpty()
+    fun proRewardPending():Boolean { val q=pending(ProState.userId);return (0 until q.length()).any {q.getJSONObject(it).optString("purpose")=="pro"} }
     fun refresh(host: MainActivity) {
         init(host)
         if (fetching || fetchedAt > 0 && ProState.now() - fetchedAt < 300) return
@@ -184,7 +186,7 @@ object AdsManager {
                                     if(kind=="close"||kind=="error"){
                                         ended=true;fullScreen=false;rewardBusy=false
                                         if(!completed){status("تبلیغ کامل دیده نشد؛ پاداش ثبت نشد.");done(false)}else{
-                                            val pending=JSONObject().put("watch_id",watchId).put("network",name).put("placement",zone).put("event_id",id()).put("purpose",if(proReward)"pro" else "coins")
+                                            val pending=JSONObject().put("watch_id",watchId).put("network",name).put("placement",zone).put("event_id",id()).put("purpose",if(proReward)"pro" else "coins").put("claim_after",watch.optLong("claim_after")).put("expires_at",watch.optLong("expires_at"))
                                             remember(pending)
                                             settle(host,pending){ok,message->status(message);done(ok)}
                                         }
@@ -203,14 +205,37 @@ object AdsManager {
     }
     private fun remember(w:JSONObject){val uid=ProState.userId;val q=pending(uid);if((0 until q.length()).none{q.getJSONObject(it).optString("watch_id")==w.optString("watch_id")})q.put(w);prefs?.edit()?.putString("pending_$uid",q.toString())?.commit()}
     private fun forget(uid:Long,id:String){val q=pending(uid);val rest=JSONArray();for(i in 0 until q.length()){val w=q.getJSONObject(i);if(w.optString("watch_id")!=id)rest.put(w)};prefs?.edit()?.putString("pending_$uid",rest.toString())?.apply()}
+    /** Completion is durable before any network call. A short video may finish before the server's safety window. */
+    fun completeDirect(host:MainActivity,watch:JSONObject,done:(Boolean,String)->Unit){
+        init(host)
+        val item=JSONObject().put("watch_id",watch.getString("watch_token")).put("purpose","pro").put("direct",true).put("claim_after",watch.optLong("claim_after")).put("expires_at",watch.optLong("expires_at"))
+        remember(item);settle(host,item,done)
+    }
+    private val settling=HashSet<String>()
     private fun settle(host:MainActivity,pending:JSONObject,done:((Boolean,String)->Unit)?=null){
         val uid=ProState.userId;val watch=pending.getString("watch_id");val pro=pending.optString("purpose")=="pro"
+        if(!settling.add(watch))return
+        val expires=pending.optLong("expires_at")
+        if(expires>0&&ProState.now()>expires){settling.remove(watch);forget(uid,watch);done?.invoke(false,"مهلت ثبت پاداش تمام شد؛ لطفاً با پشتیبانی تماس بگیرید.");return}
+        val wait=(pending.optLong("claim_after")-ProState.now()).coerceAtLeast(0)
+        if(wait>0){
+            done?.invoke(false,"ویدئو کامل شد؛ ثبت جایزه در حال نهایی شدن است.")
+            val weakHost=WeakReference(host)
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                settling.remove(watch)
+                val live=weakHost.get()
+                if(live!=null&&!live.isFinishing&&ProState.userId==uid)settle(live,pending){ok,message->live.current?.kit?.toast(message);if(ok)live.refresh()}
+            },wait.coerceAtMost(60)*1000+250)
+            return
+        }
         fun claim(){
             Api.call("POST",if(pro)"v1/rewards/claim" else "ads/reward/claim",JSONObject().put(if(pro)"watch_token" else "watch_id",watch),ProState.token){data,err->
+                settling.remove(watch)
+                if(ProState.userId!=uid)return@call
                 if(data!=null){
                     forget(uid,watch)
                     val test=data.optBoolean("test_reward")
-                    if(pro){AdEngine.event("reward","rewarded_offer",network=true);ProState.applyAccount(data)}
+                    if(pro){AdEngine.event("reward","rewarded_offer",network=!pending.optBoolean("direct"));ProState.applyAccount(data)}
                     done?.invoke(true,if(test)"ویدئوی آزمایشی تکمیل شد؛ جایزهٔ واقعی پرداخت نمی‌شود." else if(pro)"یک ساعت Pro فعال شد." else "سکه‌ها به حساب شما اضافه شد.")
                 } else {
                     if(err?.code in setOf("reward_limit","reward_cooldown","watch"))forget(uid,watch)
@@ -220,7 +245,7 @@ object AdsManager {
         }
         if(pro){claim();return}
         event(pending.getString("network"),"rewarded",pending.getString("placement"),"complete",watch,pending.getString("event_id")){sent->
-            if(!sent){done?.invoke(false,"ثبت پاداش در انتظار اتصال است؛ دوباره بررسی می‌شود.");return@event}
+            if(!sent){settling.remove(watch);done?.invoke(false,"ثبت پاداش در انتظار اتصال است؛ دوباره بررسی می‌شود.");return@event}
             claim()
         }
     }

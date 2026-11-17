@@ -22,7 +22,7 @@ final class AdminInbox
         $latest=(int)(Db::value('SELECT MAX(id) FROM {admin_inbox}')??0);
         $items=$after>0?Db::all('SELECT * FROM {admin_inbox} WHERE id>? ORDER BY id LIMIT 100',[$after]):Db::all('SELECT * FROM {admin_inbox} ORDER BY id DESC LIMIT 100');
         foreach($items as &$v){$v['id']=(int)$v['id'];$v['read']=$v['id']<=$read;}unset($v);
-        return ['items'=>$items,'latest_id'=>$latest,'read_through'=>$read,'delivery'=>'foreground_and_android_periodic_job'];
+        return ['items'=>$items,'latest_id'=>$latest,'read_through'=>$read,'delivery'=>'fcm_with_periodic_fallback'];
     }
     public static function read(array $admin,int $id):array {
         $latest=(int)(Db::value('SELECT MAX(id) FROM {admin_inbox}')??0);$id=max(0,min($latest,$id));

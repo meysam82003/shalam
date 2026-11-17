@@ -25,3 +25,12 @@
 -keep class com.meysam.divanemtiaz.*IranAdapter { *; }
 
 -keep class ir.tapsell.mediation.core.internal.init.Initializer { *; }
+
+# Adivery exposes two optional MBridge native/video signatures without bundling those formats.
+# These paths are not used by the banner/interstitial/rewarded adapters. Official sample suppresses MBridge.
+-dontwarn com.mbridge.msdk.nativex.view.MBMediaView
+-dontwarn com.mbridge.msdk.video.bt.module.orglistener.g
+
+-keep class com.meysam.divanemtiaz.PlayerPushHooks { *; }
+
+-keep class com.meysam.divanpush.PushRuntime { *; }

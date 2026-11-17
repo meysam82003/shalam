@@ -113,6 +113,7 @@ class HomeScreen(host: MainActivity) : Screen(host) {
     override fun onShow() {
         super.onShow()
         askAboutOffers()
+        RewardInvitation.offer(this)
     }
 
     override val adZone: String? get() = "home"

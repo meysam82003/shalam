@@ -95,6 +95,8 @@ final class Api
             if ($normalized === 'ads/reward/claim') return Monetization::claim($u, self::$auth[1], $in);
             return Monetization::events($u, self::$auth[1], $in);
         }
+        if($normalized==='push/config'&&$method==='GET')return PushDelivery::publicConfig((string)($in['client']??'bazaar'));
+        if($normalized==='push/register'){self::post($method);$u=self::optionalUser();return PushDelivery::register($in,$u,self::$auth[1]??null);}
         // Keep pending store checks moving even without cron.
         if (random_int(1, 20) === 1) { try { Purchases::recheck(3); } catch (Throwable $e) { error_log('[divan] recheck ' . $e->getMessage()); } }
 

@@ -165,7 +165,7 @@ class MainActivity : Activity() {
     private val accessTick = object : Runnable {
         override fun run() {
             if (!resumed) return
-            if (android.os.SystemClock.uptimeMillis() - lastNoticeCheck >= 60_000) { lastNoticeCheck = android.os.SystemClock.uptimeMillis(); Notices.check(this@MainActivity) }
+            if (android.os.SystemClock.uptimeMillis() - lastNoticeCheck >= 60_000) { lastNoticeCheck = android.os.SystemClock.uptimeMillis(); Notices.check(this@MainActivity); AdsManager.refresh(this@MainActivity) }
             if (current?.mafiaArea == true && !ProState.mafiaAllowed) {
                 kit.dismissDialogs()
                 if (audioUsed) { audio.stopCue(); audio.stopMusic() }
@@ -276,6 +276,8 @@ class MainActivity : Activity() {
         gameAudio.enter(current?.audioScope)
         current?.onShow()
         Notices.check(this)
+        // Native-only bridge: the web build has no Firebase dependency.
+        runCatching { Class.forName("com.meysam.divanpush.PushRuntime").getField("INSTANCE").get(null).let { runtime -> runtime.javaClass.getMethod("connect", android.content.Context::class.java, String::class.java, String::class.java).invoke(runtime, this, StoreInfo.apiBase, StoreInfo.storeId) } }
         AdsManager.refresh(this)
         AdsManager.recover(this)
     }

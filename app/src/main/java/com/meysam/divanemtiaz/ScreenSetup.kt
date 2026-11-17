@@ -35,6 +35,19 @@ class SetupScreen(host: MainActivity, private val game: GameType) : Screen(host)
         subtitle = game.subtitle,
         bottom = kit.button("شروع داوری ${game.title}", ButtonKind.PRIMARY, RoyalIcon.PLAY) { start() }
     ) {
+        addView(rulePresetButton(game.key, capture = {
+            val shalam = settings.shalam.copy(defaultJoker = joker, dealType = dealType,
+                noJoker = if (!joker) settings.shalam.noJoker.copy(defaultEndPoint = endPoint) else settings.shalam.noJoker,
+                joker = if (joker) settings.shalam.joker.copy(defaultEndPoint = endPoint) else settings.shalam.joker)
+            RulePresetPolicy.capture(settings.copy(shalam = shalam, menfi = settings.menfi.copy(hands = menfiHands, hidden = menfiHidden),
+                hezar = settings.hezar.copy(target = hezarTarget, rounds = hezarRounds, zeroPenalty = hezarPenalty), dolo = settings.dolo.copy(rules = dolo)), game.key)
+        }, apply = { data ->
+            applyRulePreset(game.key, data)
+            joker = settings.shalam.defaultJoker; endPoint = settings.shalam.mode(joker).defaultEndPoint; dealType = settings.shalam.dealType
+            menfiHands = settings.menfi.hands; menfiHidden = settings.menfi.hidden
+            hezarTarget = settings.hezar.target; hezarRounds = settings.hezar.rounds; hezarPenalty = settings.hezar.zeroPenalty; dolo = settings.dolo.rules
+            host.refresh()
+        }), kit.spaced(10))
         addView(kit.section(if (game.isTeamGame) "تیم‌ها" else "بازیکنان (${kit.n(sides.size)})", RoyalIcon.PLAYERS))
         if (game == GameType.SHALAM) addView(kit.button("صداها و موسیقی شلم", ButtonKind.GHOST, RoyalIcon.PLAY) { host.push(GameAudioSettingsScreen(host, "shalam")) })
         if (game.isTeamGame) addView(versus())
