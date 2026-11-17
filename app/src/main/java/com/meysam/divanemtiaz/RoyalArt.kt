@@ -964,42 +964,10 @@ class TrophyView(context: Context) : CachedArtView(context) {
     override fun artKey(): Any = "trophy"
 
     override fun drawArt(canvas: Canvas) {
-        val s = min(width, height).toFloat()
-        if (s <= 0f) return
-        val left = (width - s) / 2f
-        val top = (height - s) / 2f
-        val m = Matrix().apply { setRectToRect(RectF(0f, 0f, 100f, 100f), RectF(left, top, left + s, top + s), Matrix.ScaleToFit.CENTER) }
-        paint.style = Paint.Style.FILL
-        paint.color = Color.BLACK
-        paint.shader = RadialGradient(width / 2f, height / 2f, s * 0.55f, intArrayOf(Royal.alpha(Royal.metal, 0.35f), 0), null, Shader.TileMode.CLAMP)
-        canvas.drawCircle(width / 2f, height / 2f, s * 0.55f, paint)
-        val cup = Path().apply {
-            moveTo(28f, 16f); lineTo(72f, 16f); lineTo(72f, 34f); cubicTo(72f, 50f, 62f, 60f, 50f, 60f); cubicTo(38f, 60f, 28f, 50f, 28f, 34f); close()
-            addRect(45f, 60f, 55f, 72f, Path.Direction.CW)
-            addRect(36f, 72f, 64f, 78f, Path.Direction.CW)
-            addRect(30f, 78f, 70f, 86f, Path.Direction.CW)
-        }
-        val handles = Path().apply {
-            moveTo(28f, 22f); cubicTo(12f, 22f, 12f, 44f, 31f, 44f); lineTo(32f, 39f); cubicTo(20f, 39f, 19f, 27f, 28f, 27f); close()
-            moveTo(72f, 22f); cubicTo(88f, 22f, 88f, 44f, 69f, 44f); lineTo(68f, 39f); cubicTo(80f, 39f, 81f, 27f, 72f, 27f); close()
-        }
-        val all = Path().apply { addPath(cup); addPath(handles) }
-        all.transform(m)
-        paint.shader = null
-        paint.color = 0x77000000
-        canvas.drawPath(Path(all).apply { offset(0f, s * 0.02f) }, paint)
-        paint.color = Color.BLACK
-        paint.shader = LinearGradient(left, 0f, left + s, 0f, intArrayOf(Royal.metalDeep, Royal.metalLight, Royal.metal, Royal.metalDeep), floatArrayOf(0f, 0.35f, 0.6f, 1f), Shader.TileMode.CLAMP)
-        canvas.drawPath(all, paint)
-        paint.shader = null
-        val star = RoyalShapes.star8Path(50f, 34f, 10f).apply { transform(m) }
-        paint.color = Royal.turquoise
-        canvas.drawPath(star, paint)
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = s * 0.008f
-        paint.color = Royal.metalShadow
-        canvas.drawPath(all, paint)
-        paint.style = Paint.Style.FILL
+        val size = min(width, height).toFloat()
+        paint.shader = null; paint.style = Paint.Style.FILL; paint.color = Royal.alpha(Royal.gold, .10f)
+        canvas.drawCircle(width / 2f, height / 2f, size * .46f, paint)
+        RoyalIcons.draw(canvas, RoyalIcon.TROPHY, RectF(width / 2f - size * .29f, height / 2f - size * .29f, width / 2f + size * .29f, height / 2f + size * .29f), Royal.gold, paint, size * .035f)
     }
 }
 

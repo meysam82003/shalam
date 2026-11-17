@@ -91,7 +91,7 @@ class RoleCardView(context: Context) : CachedArtView(context) {
             canvas.restore()
         } else {
             canvas.save(); canvas.translate(picture.left, picture.top)
-            DivanDesign.role(canvas, picture.width().toInt(), picture.height().toInt(), glyph, faceDown, false, paint)
+            DivanDesign.role(canvas, picture.width().toInt(), picture.height().toInt(), glyph, faceDown, false, paint, tint)
             canvas.restore()
         }
         paint.style = Paint.Style.FILL; paint.shader = null

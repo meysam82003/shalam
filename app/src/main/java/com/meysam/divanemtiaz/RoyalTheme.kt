@@ -117,7 +117,7 @@ object Themes {
             intArrayOf(success, success, success), if (light) c(0xFFFFFFFF) else c(0xFF08261C),
             intArrayOf(danger, danger, danger), if (light) c(0xFFFFFFFF) else c(0xFF410914),
             if (layout == ThemeLayout.WAVE) 3f else radius, layout == ThemeLayout.ORBIT,
-            intArrayOf(a, a, a), Royal.alpha(a, .14f), intArrayOf(bg, a, surface), layout)
+            intArrayOf(a, a, a), (a and 0x00FFFFFF) or 0x24000000, intArrayOf(bg, a, surface), layout)
     }
 
     val COBALT = style("cobalt", "اطلس", "ATLAS", "اتاق فرمان؛ شبکه‌ای، دقیق و آبیِ شب", ThemeLayout.ATLAS,

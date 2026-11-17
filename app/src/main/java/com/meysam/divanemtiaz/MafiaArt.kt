@@ -669,6 +669,6 @@ class RoleSealView(context: Context, glyph: MafiaGlyph, base: Int) : CachedArtVi
     override fun artKey(): Any = listOf(glyph, base, hidden, dead)
 
     override fun drawArt(canvas: Canvas) {
-        DivanDesign.role(canvas, width, height, glyph, hidden, dead, paint)
+        DivanDesign.role(canvas, width, height, glyph, hidden, dead, paint, base)
     }
 }

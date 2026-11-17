@@ -229,24 +229,22 @@ fun Screen.sideScoreCard(
     accent: Int = Royal.gold,
     onAvatar: (() -> Unit)? = null
 ): View = kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
-    background = PanelDrawable(kit.density, if (leader) PanelStyle.RAISED else PanelStyle.NORMAL, 18f)
-    setPadding(kit.dp(8), kit.dp(8), kit.dp(8), kit.dp(11))
-    addView(FrameLayout(host).apply {
-        addView(kit.avatar(side.avatar, 50).apply {
-            layoutParams = FrameLayout.LayoutParams(kit.dp(50), kit.dp(50), Gravity.CENTER)
+    val t = ThemeEngine.spec
+    val angular = t.layout == ThemeLayout.PAPER || t.layout == ThemeLayout.VOLT
+    background = PanelDrawable(kit.density, if (leader) PanelStyle.SELECTED else PanelStyle.NORMAL, 22f)
+    setPadding(kit.dp(10), kit.dp(16), kit.dp(10), kit.dp(18))
+    addView(kit.horizontal(Gravity.CENTER).apply {
+        addView(kit.avatar(side.avatar, if (angular) 34 else 44).apply {
             if (onAvatar != null) setOnClickListener { kit.tap(it); onAvatar() }
         })
-        if (leader) {
-            addView(IconView(host, RoyalIcon.CROWN, Royal.goldLight), FrameLayout.LayoutParams(kit.dp(18), kit.dp(18), Gravity.TOP or Gravity.CENTER_HORIZONTAL))
-        }
-    }, LinearLayout.LayoutParams(kit.dp(60), kit.dp(60)))
-    addView(kit.text(side.name, TextStyle.BODY_BOLD, Royal.ivory, Gravity.CENTER, 1))
-    addView(kit.text(total, TextStyle.NUMBER_XL, accent, Gravity.CENTER, 1))
+        if (leader) { addView(kit.hgap(6)); addView(kit.icon(RoyalIcon.FLAG, Royal.turquoiseLight, 16)) }
+    })
+    addView(kit.gap(8))
+    addView(kit.text(side.name, TextStyle.LABEL_BOLD, Royal.ivory, Gravity.CENTER, 2))
+    addView(kit.gap(4))
+    addView(kit.text(total, TextStyle.NUMBER_XL, accent, Gravity.CENTER, 1).apply { textSize = kit.textSize(if (angular) 34f else 37f) })
     if (caption != null) addView(kit.text(caption, TextStyle.CAPTION, Royal.muted, Gravity.CENTER, 2))
-    if (progress != null) {
-        addView(kit.gap(4))
-        addView(kit.progress(progress, if (leader) Royal.turquoise else Royal.gold, 6))
-    }
+    if (progress != null) { addView(kit.gap(12)); addView(kit.progress(progress, if (leader) Royal.turquoise else Royal.gold, 4)) }
 }
 
 /** One recorded hand in a board list; tapping opens edit/delete actions. */
@@ -257,11 +255,11 @@ fun Screen.roundRow(
     detail: String,
     onClick: (() -> Unit)?
 ): View = kit.horizontal().apply {
-    background = PanelDrawable(kit.density, PanelStyle.FLAT, 14f)
-    setPadding(kit.dp(9), kit.dp(7), kit.dp(9), kit.dp(10))
-    layoutParams = kit.spaced(5)
+    background = PanelDrawable(kit.density, PanelStyle.NORMAL, 16f)
+    setPadding(kit.dp(12), kit.dp(12), kit.dp(12), kit.dp(14))
+    layoutParams = kit.spaced(8)
     addView(kit.text(kit.n(index + 1), TextStyle.LABEL_BOLD, Royal.night, Gravity.CENTER, 1).apply {
-        background = ButtonDrawable(kit.density, ButtonKind.CHIP_GOLD, 10f)
+        background = ButtonDrawable(kit.density, ButtonKind.PRIMARY, 12f)
         setPadding(0, 0, 0, kit.dp(2))
     }, LinearLayout.LayoutParams(kit.dp(28), kit.dp(28)))
     addView(kit.hgap(8))
@@ -289,8 +287,8 @@ fun Screen.scoreColor(value: Int): Int = when {
 
 fun Screen.emptyState(icon: RoyalIcon, title: String, message: String): View = kit.panel(PanelStyle.FLAT, 18).apply {
     gravity = Gravity.CENTER_HORIZONTAL
-    addView(kit.icon(icon, Royal.gold, 34))
-    addView(kit.gap(6))
+    addView(kit.iconChip(icon, 54))
+    addView(kit.gap(14))
     addView(kit.text(title, TextStyle.BODY_BOLD, Royal.goldLight, Gravity.CENTER))
     addView(kit.text(message, TextStyle.LABEL, Royal.muted, Gravity.CENTER))
 }

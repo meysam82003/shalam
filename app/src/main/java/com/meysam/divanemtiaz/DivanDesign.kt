@@ -110,7 +110,7 @@ object DivanDesign {
         p.style = Paint.Style.FILL; canvas.restore()
     }
 
-    fun role(canvas: Canvas, width: Int, height: Int, glyph: MafiaGlyph, hidden: Boolean, dead: Boolean, p: Paint) {
+    fun role(canvas: Canvas, width: Int, height: Int, glyph: MafiaGlyph, hidden: Boolean, dead: Boolean, p: Paint, tint: Int = ThemeEngine.spec.accent) {
         val t = ThemeEngine.spec
         val k = min(width, height) / 100f
         if (k <= 0f) return
@@ -119,7 +119,7 @@ object DivanDesign {
         val r = radius(t, 26f)
         canvas.drawRoundRect(RectF(4f, 4f, 96f, 96f), r, r, p)
         canvas.save(); canvas.translate(22f, 22f); canvas.scale(.56f, .56f)
-        p.color = if (dead) t.danger else t.accent
+        p.color = if (dead) t.danger else if (hidden) t.accent else if (t.light) tint else Royal.mix(tint, 0xFFFFFFFF.toInt(), .55f)
         canvas.drawPath(MafiaArt.glyph(if (hidden) MafiaGlyph.QUESTION else glyph), p)
         canvas.restore()
         if (dead) {
