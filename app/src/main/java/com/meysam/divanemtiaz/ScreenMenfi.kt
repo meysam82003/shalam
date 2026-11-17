@@ -6,6 +6,7 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 
 class MenfiBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(host, session) {
+    override val visualScene: CinemaScene get() = CinemaScene.MENFI
     private val rules get() = session.rules.menfi
     private var revealed = false
 
@@ -58,15 +59,7 @@ class MenfiBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(h
                 })
             }
         ) {
-            addView(CinemaArtView(host, CinemaScene.CARDS, GameType.MENFI), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(95)))
-            addView(kit.horizontal(Gravity.TOP).apply {
-                layoutParams = kit.spaced(8)
-                session.sides.forEachIndexed { i, side ->
-                    if (i > 0) addView(kit.hgap(10))
-                    val total = if (hiddenNow) "•••" else kit.signed(totals[i])
-                    addView(kit.weight(sideScoreCard(side, total, if (hiddenNow) "جمع پنهان است" else null, leader == i, null)))
-                }
-            })
+            addView(boardArena(session, totals, leader, hidden = hiddenNow))
             addView(statusRow("دست ${kit.n(played)} از ${menfiHandsText(rules)}"))
             if (MenfiEngine.isComplete(played, totals, rules)) {
                 addView(kit.panel(PanelStyle.SUCCESS, 12).apply {
@@ -330,6 +323,7 @@ class HezarBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(h
                 })
             }
         ) {
+            addView(cinemaHero(CinemaScene.CARDS, "رقابت هزارتایی", "هدف ${kit.n(rules.target)} امتیاز", GameType.HEZARTAII))
             addView(kit.section("رتبه‌بندی", RoyalIcon.TROPHY))
             ranking.forEachIndexed { place, side ->
                 addView(rankRow(place, session.sides[side], totals[side], place == 0 && totals.distinct().size > 1))
@@ -399,7 +393,10 @@ class HezarBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(h
             addView(kit.progress(if (rules.target > 0) total.toFloat() / rules.target else 0f, if (leader) Royal.turquoise else Royal.gold, 5))
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         addView(kit.hgap(8))
-        addView(kit.text(kit.signed(total), TextStyle.HEADING, if (leader) Royal.goldLight else Royal.ivory, Gravity.CENTER))
+        addView(kit.text(kit.signed(total), TextStyle.HEADING, if (leader) Royal.goldLight else Royal.ivory, Gravity.CENTER).apply {
+            background = PanelDrawable(kit.density, if (total < 0) PanelStyle.DANGER else PanelStyle.FLAT, 14f)
+            setPadding(kit.dp(14), kit.dp(12), kit.dp(14), kit.dp(14))
+        })
     }
 }
 

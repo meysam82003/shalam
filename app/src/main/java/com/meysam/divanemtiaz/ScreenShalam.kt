@@ -131,20 +131,7 @@ class ShalamBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(
                 })
             }
         ) {
-            addView(CinemaArtView(host, CinemaScene.CARDS, GameType.SHALAM), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(110)))
-            addView(kit.horizontal(Gravity.TOP).apply {
-                layoutParams = kit.spaced(8)
-                session.sides.forEachIndexed { i, side ->
-                    if (i > 0) addView(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
-                        setPadding(0, kit.dp(24), 0, 0)
-                        addView(kit.text("اختلاف", TextStyle.CAPTION, Royal.dim, Gravity.CENTER, 1))
-                        addView(kit.text(kit.n(abs(totals[0] - totals[1])), TextStyle.HEADING, Royal.goldLight, Gravity.CENTER, 1))
-                        addView(kit.icon(RoyalIcon.STAR, Royal.alpha(Royal.gold, 0.7f), 14))
-                    }, LinearLayout.LayoutParams(kit.dp(56), ViewGroup.LayoutParams.WRAP_CONTENT))
-                    val fraction = if (rules.endPoint > 0) totals[i].toFloat() / rules.endPoint else null
-                    addView(kit.weight(sideScoreCard(side, kit.signed(totals[i]), "پایان: ${kit.n(rules.endPoint)}", leader == i, fraction)))
-                }
-            })
+            addView(boardArena(session, totals, leader, target = rules.endPoint))
             addView(statusRow("${kit.n(GameEngine.playedHands(session))} دست"))
             if (rules.highLimitEnabled) {
                 val above = session.sides.indices.filter { totals[it] >= rules.highLimit }

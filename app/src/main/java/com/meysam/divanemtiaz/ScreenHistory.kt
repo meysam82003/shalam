@@ -240,6 +240,7 @@ class HistoryScreen(host: MainActivity) : Screen(host) {
             (filter == null || e.kind == filter) && when (status) { 1 -> !e.finished; 2 -> e.finished; else -> true }
         }.sortedByDescending { it.time }
         return scaffold(title = "تاریخچهٔ بازی‌ها", subtitle = "${kit.n(entries.size)} بازی ذخیره‌شده") {
+            addView(dashboardStats(listOf("همهٔ بازی‌ها" to kit.n(entries.size), "در جریان" to kit.n(entries.count { !it.finished }), "پایان‌یافته" to kit.n(entries.count { it.finished }))))
             addView(SlidingTabs(host, kit, listOf("همه", "در جریان", "پایان‌یافته"), status) { i ->
                 status = i
                 host.post(Motion.ITEM.toLong()) { host.refresh() }

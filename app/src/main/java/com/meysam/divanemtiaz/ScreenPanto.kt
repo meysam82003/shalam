@@ -483,8 +483,8 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
                 val active = if (m.mode == PantoMode.JANGI) m.inside.getOrNull(t.jangiPos) else t.team
                 addView(kit.grid(minOf(6, m.teams.size).coerceAtLeast(3), m.teams.indices.map { turnChip(it, it == active) }, 6), kit.spaced(10))
             }
-            addView(timerCard(t))
             addView(wordCard(t))
+            addView(timerCard(t))
             if (m.mode == PantoMode.SPEEDY || m.mode == PantoMode.SEDA) {
                 addView(kit.text("کلمهٔ ${kit.n((t.index + 1).coerceAtMost(t.words.size))} از ${kit.n(t.words.size)} • ${kit.n(t.correct)} درست", TextStyle.BODY_BOLD, Royal.turquoiseLight, Gravity.CENTER), kit.spaced(8))
             }
@@ -514,7 +514,19 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
             runningSource = { timer?.running == true }
             update(t.remainingMs, false)
         }
-        addView(ring, LinearLayout.LayoutParams(kit.dp(if (m.mode == PantoMode.FIVE) 150 else 176), kit.dp(if (m.mode == PantoMode.FIVE) 150 else 176)))
+        addView(kit.horizontal(Gravity.CENTER).apply {
+            addView(kit.weight(kit.vertical(Gravity.CENTER).apply {
+                addView(kit.icon(RoyalIcon.CHECK, Royal.turquoiseLight, 24))
+                addView(kit.text(kit.n(t.correct), TextStyle.HEADING, Royal.ivory, Gravity.CENTER))
+                addView(kit.text("درست", TextStyle.CAPTION, Royal.muted, Gravity.CENTER))
+            }))
+            addView(ring, LinearLayout.LayoutParams(kit.dp(148), kit.dp(148)))
+            addView(kit.weight(kit.vertical(Gravity.CENTER).apply {
+                addView(kit.icon(RoyalIcon.TROPHY, Royal.goldLight, 24))
+                addView(kit.text(kit.n(m.teams[t.team].points), TextStyle.HEADING, Royal.ivory, Gravity.CENTER))
+                addView(kit.text("امتیاز تیم", TextStyle.CAPTION, Royal.muted, Gravity.CENTER))
+            }))
+        }, kit.fill())
     }
 
     private fun wordCard(t: PantoTurn): View = kit.vertical(Gravity.CENTER).apply {

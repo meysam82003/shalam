@@ -77,8 +77,9 @@ class ProScreen(host: MainActivity, private val reason: String? = null, private 
     override fun onHide() { ProState.listeners -= listener }
 
     override fun build(): View = scaffold("دیوان Pro", "بدون تبلیغ، با همهٔ قابلیت‌ها") {
-        addView(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
-            addView(RegalCrownView(host), LinearLayout.LayoutParams(kit.dp(190), kit.dp(140)))
+        addView(kit.panel(PanelStyle.RAISED, 18, 28f).apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+            addView(RegalCrownView(host), LinearLayout.LayoutParams(kit.dp(170), kit.dp(122)))
             addView(kit.text("دیوان Pro", TextStyle.DISPLAY, Royal.goldLight, Gravity.CENTER))
             addView(kit.text("حمایت از ساخت دیوان، بدون تبلیغ و با همهٔ قابلیت‌ها", TextStyle.BODY, Royal.muted, Gravity.CENTER))
         }, kit.spaced(12))

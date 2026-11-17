@@ -132,7 +132,8 @@ class SpyRevealScreen(host: MainActivity, private val gameId: Long) : Screen(hos
                 addView(kit.hgap(10))
                 addView(kit.text(g.players[i], TextStyle.TITLE, Royal.goldLight))
             })
-            addView(card(g, i), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(360)))
+            addView(kit.progress(i.toFloat() / g.players.size.coerceAtLeast(1), SpyLook.TINT, 4), kit.spaced(12).apply { height = kit.dp(4) })
+            addView(secretDeck(card(g, i)), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(360)))
             addView(kit.text(if (g.revealed) "بعد از دیدن، کارت را بپوشانید تا نفر بعد نقش شما را نبیند." else "دستگاه را به ${g.players[i]} بدهید.", TextStyle.LABEL, Royal.muted, Gravity.CENTER), kit.spaced(10))
         }
     }

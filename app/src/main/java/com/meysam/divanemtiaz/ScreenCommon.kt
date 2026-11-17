@@ -254,26 +254,27 @@ fun Screen.roundRow(
     scoreColors: List<Int>,
     detail: String,
     onClick: (() -> Unit)?
-): View = kit.horizontal().apply {
-    background = PanelDrawable(kit.density, PanelStyle.NORMAL, 16f)
-    setPadding(kit.dp(12), kit.dp(12), kit.dp(12), kit.dp(14))
+): View = kit.panel(PanelStyle.NORMAL, 12, 20f).apply {
     layoutParams = kit.spaced(8)
-    addView(kit.text(kit.n(index + 1), TextStyle.LABEL_BOLD, Royal.night, Gravity.CENTER, 1).apply {
-        background = ButtonDrawable(kit.density, ButtonKind.PRIMARY, 12f)
-        setPadding(0, 0, 0, kit.dp(2))
-    }, LinearLayout.LayoutParams(kit.dp(28), kit.dp(28)))
-    addView(kit.hgap(8))
-    addView(kit.vertical().apply {
-        addView(kit.horizontal().apply {
-            scores.forEachIndexed { i, s ->
-                if (i > 0) addView(kit.text("|", TextStyle.LABEL, Royal.dim, Gravity.CENTER).apply { setPadding(kit.dp(6), 0, kit.dp(6), 0) })
-                addView(kit.text(s, TextStyle.BODY_BOLD, scoreColors.getOrElse(i) { Royal.ivory }, Gravity.CENTER, 1))
-            }
-        })
-        if (detail.isNotBlank()) addView(kit.text(detail, TextStyle.CAPTION, Royal.muted, maxLines = 2))
-    }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+    addView(kit.horizontal().apply {
+        addView(kit.weight(kit.text("دست ${kit.n(index + 1)}", TextStyle.LABEL_BOLD, Royal.goldLight)))
+        if (onClick != null) addView(kit.icon(RoyalIcon.MENU, Royal.muted, 18))
+    })
+    addView(kit.gap(8))
+    addView(kit.horizontal().apply {
+        scores.forEachIndexed { i, value ->
+            if (i > 0) addView(kit.hgap(8))
+            addView(kit.weight(kit.text(value, TextStyle.HEADING, scoreColors.getOrElse(i) { Royal.ivory }, Gravity.CENTER, 1).apply {
+                background = PanelDrawable(kit.density, PanelStyle.FLAT, 12f)
+                setPadding(kit.dp(8), kit.dp(7), kit.dp(8), kit.dp(9))
+            }))
+        }
+    })
+    if (detail.isNotBlank()) {
+        addView(kit.gap(6))
+        addView(kit.text(detail, TextStyle.CAPTION, Royal.muted, maxLines = 3))
+    }
     if (onClick != null) {
-        addView(kit.icon(RoyalIcon.MENU, Royal.dim, 18))
         isClickable = true
         setOnClickListener { kit.tap(it); onClick() }
     }

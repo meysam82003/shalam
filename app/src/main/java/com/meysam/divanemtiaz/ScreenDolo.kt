@@ -168,7 +168,10 @@ class DoloBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(ho
             val caption = listOfNotNull(note, stage?.let { "امتیاز این مرحله ${kit.signed(it)}" }).joinToString("  •  ")
             if (caption.isNotBlank()) addView(kit.text(caption, TextStyle.CAPTION, Royal.muted))
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        addView(kit.text(kit.signed(total), TextStyle.HEADING, scoreColor(total), Gravity.CENTER))
+        addView(kit.text(kit.signed(total), TextStyle.HEADING, scoreColor(total), Gravity.CENTER).apply {
+            background = PanelDrawable(kit.density, if (total < 0) PanelStyle.DANGER else PanelStyle.FLAT, 14f)
+            setPadding(kit.dp(14), kit.dp(12), kit.dp(14), kit.dp(14))
+        })
     }
 }
 

@@ -91,7 +91,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Divan-5.7-review-apks
+          name: Divan-5.7.1-review-apks
           path: app/build/outputs/apk/*/release/*.apk
   web-ui:
     runs-on: ubuntu-latest
@@ -109,7 +109,7 @@ jobs:
         run: python3 build-play.py
       - uses: actions/upload-artifact@v4
         with:
-          name: Divan-5.7-shared-web
+          name: Divan-5.7.1-shared-web
           path: webapp/build/play/
       - name: Review real screens in all six styles
         env:
@@ -120,5 +120,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Divan-5.7-UI-review
+          name: Divan-5.7.1-UI-review
           path: webapp/build/ui-review/

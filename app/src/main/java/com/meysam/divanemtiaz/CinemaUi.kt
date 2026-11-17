@@ -37,7 +37,7 @@ object CinemaLook {
     fun onPrimary(): Int = if (scene == CinemaScene.MAFIA || scene == CinemaScene.MENFI || scene == CinemaScene.THEATRE) Color.WHITE else ThemeEngine.spec.primaryText
 }
 
-/** Native scene painting: velvet folds, stage light, felt, city silhouette and metallic inlays. */
+/** Quiet native backgrounds. Dark materials deliberately contain no photographic artwork. */
 class CinemaBackdrop(private val context: Context, private val density: Float, private val scene: CinemaScene) : SimpleDrawable() {
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
     private var cached: Bitmap? = null
@@ -45,8 +45,7 @@ class CinemaBackdrop(private val context: Context, private val density: Float, p
     override fun draw(canvas: Canvas) {
         val w = bounds.width(); val h = bounds.height()
         if (w <= 0 || h <= 0) return
-        val palace = if (ThemeEngine.spec.light) null else CinemaAssets.get(context, "palace")
-        val key = "$w.$h.${ThemeEngine.version}.$scene.${palace != null}.${palace?.generationId ?: 0}"
+        val key = "$w.$h.${ThemeEngine.version}.$scene"
         if (stamp != key || cached == null) {
             cached?.recycle()
             cached = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also { paintScene(Canvas(it), w.toFloat(), h.toFloat()) }
@@ -67,15 +66,15 @@ class CinemaBackdrop(private val context: Context, private val density: Float, p
         p.style = Paint.Style.FILL
         p.shader = LinearGradient(0f, 0f, w, h, intArrayOf(Royal.mix(t.bg[0], tint, if (t.light) .05f else .32f), t.bg[0], t.bg[0]), null, Shader.TileMode.CLAMP)
         c.drawRect(0f, 0f, w, h, p)
-        if (!t.light) CinemaAssets.get(context, "palace")?.let { image ->
-            p.shader = null; p.alpha = if (scene == CinemaScene.MAFIA || scene == CinemaScene.THEATRE) 90 else 175
-            p.isFilterBitmap = true
-            c.drawBitmap(image, null, RectF(0f, 0f, w, h), p)
-            p.alpha = 255
-        }
         fun glow(x: Float, y: Float, r: Float, color: Int, strength: Float) {
             p.shader = RadialGradient(x, y, r.coerceAtLeast(1f), intArrayOf(Royal.alpha(color, strength), 0), null, Shader.TileMode.CLAMP)
             c.drawRect(0f, 0f, w, h, p)
+        }
+        if (!t.light) {
+            // Material identity lives in the controls; the page itself stays clear.
+            glow(w * .78f, h * .08f, w * .9f, t.accent, .035f)
+            p.shader = null
+            return
         }
         glow(w * .5f, h * .15f, w * .8f, if (t.light) t.accent else tint, if (t.light) .08f else .65f)
         glow(w * .98f, h * .75f, w * .75f, CinemaLook.tint(t), if (t.light) .035f else .12f)
@@ -159,7 +158,7 @@ object CinemaAssets {
     private val cache = HashMap<String, Bitmap>()
     fun get(context: Context, name: String): Bitmap? {
         cache[name]?.takeIf { !it.isRecycled }?.let { return it }
-        val bitmap = runCatching { context.assets.open("cinema/" + name + if (name == "palace") ".webp" else ".jpg").use { BitmapFactory.decodeStream(it) } }.getOrNull()
+        val bitmap = runCatching { context.assets.open("cinema/" + name + ".jpg").use { BitmapFactory.decodeStream(it) } }.getOrNull()
         if (bitmap != null) cache[name] = bitmap
         return bitmap
     }
@@ -274,12 +273,23 @@ class CinemaArtView(context: Context, private val scene: CinemaScene, private va
     }
 }
 
-fun Screen.cinemaHero(scene: CinemaScene, title: String, caption: String, game: GameType? = null, action: View? = null): View = kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
-    layoutParams = kit.spaced(12)
-    addView(CinemaArtView(host, scene, game), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(if (scene == CinemaScene.CARDS) 122 else 160)))
-    addView(kit.text(title, TextStyle.DISPLAY, Royal.goldLight, Gravity.CENTER))
-    addView(kit.text(caption, TextStyle.LABEL, Royal.muted, Gravity.CENTER))
-    if (action != null) { addView(kit.gap(12)); addView(action, kit.fill()) }
+fun Screen.cinemaHero(scene: CinemaScene, title: String, caption: String, game: GameType? = null, action: View? = null): View = kit.panel(PanelStyle.RAISED, 16, 26f).apply {
+    layoutParams = kit.spaced(14)
+    addView(kit.horizontal().apply {
+        val art = when (scene) {
+            CinemaScene.THEATRE -> RoleSealView(host, MafiaGlyph.THEATER, CinemaLook.tint())
+            CinemaScene.SPY -> RoleSealView(host, MafiaGlyph.FEDORA, CinemaLook.tint())
+            CinemaScene.MAFIA -> RoleSealView(host, MafiaGlyph.MASK, CinemaLook.tint())
+            else -> GameSealView(host, game ?: GameType.SHALAM)
+        }
+        addView(art, LinearLayout.LayoutParams(kit.dp(82), kit.dp(82)))
+        addView(kit.hgap(12))
+        addView(kit.weight(kit.vertical().apply {
+            addView(kit.text(title, TextStyle.TITLE, Royal.goldLight))
+            addView(kit.text(caption, TextStyle.LABEL, Royal.muted))
+        }))
+    })
+    if (action != null) { addView(kit.gap(14)); addView(action, kit.fill()) }
 }
 
 class RegalCrownView(context: Context) : CachedArtView(context) {

@@ -20,6 +20,8 @@ class LeagueListScreen(host: MainActivity) : Screen(host) {
             subtitle = "مسابقهٔ چند تیم در شلم یا منفی",
             bottom = kit.button("لیگ تازه", ButtonKind.PRIMARY, RoyalIcon.PLUS) { host.push(LeagueSetupScreen(host)) }
         ) {
+            addView(cinemaHero(CinemaScene.TROPHY, "تالار رقابت", "تیم‌ها، جدول و مسیر قهرمانی", GameType.HEZARTAII))
+            addView(dashboardStats(listOf("لیگ‌ها" to kit.n(leagues.size), "در جریان" to kit.n(leagues.count { !it.finished }), "تیم‌ها" to kit.n(leagues.sumOf { it.teams.size }))))
             if (leagues.isEmpty()) {
                 addView(emptyState(RoyalIcon.TROPHY, "هنوز لیگی ساخته نشده", "تیم‌ها را وارد کنید؛ قرعه، رویارویی‌ها، جدول و فینال خودکار مشخص می‌شود."))
             }

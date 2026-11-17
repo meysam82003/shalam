@@ -12,6 +12,16 @@ class SettingsScreen(host: MainActivity, private var tab: Int = TAB_GENERAL) : S
     private var shalamTab = 0
 
     override fun build(): View = scaffold(title = "تنظیمات", subtitle = "همهٔ تغییرات خودکار ذخیره می‌شوند") {
+        if (tab == TAB_GENERAL) addView(kit.panel(PanelStyle.RAISED, 14, 24f).apply {
+            addView(kit.horizontal().apply {
+                addView(kit.iconChip(RoyalIcon.SLIDERS, 48))
+                addView(kit.hgap(12))
+                addView(kit.weight(kit.vertical().apply {
+                    addView(kit.text("دیوان، به سلیقهٔ شما", TextStyle.TITLE, Royal.title))
+                    addView(kit.text("ظاهر، صدا و تنظیمات بازی‌ها", TextStyle.CAPTION, Royal.muted))
+                }))
+            })
+        }, kit.spaced(12))
         addView(kit.chipRail(listOf("عمومی", "شلم", "منفی", "هزارتایی", "دو لو گشنیز", "لیگ", "راوی مافیا", "پانتومیم", "جاسوس").mapIndexed { i, label ->
             kit.chip(label, tab == i, ButtonKind.CHIP_GOLD) { tab = i; host.refresh() }.apply { setPadding(kit.dp(14), kit.dp(4), kit.dp(14), kit.dp(6)) }
         }, tab), kit.spaced(8))

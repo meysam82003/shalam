@@ -26,12 +26,12 @@ class MafiaHomeScreen(host: MainActivity) : Screen(host) {
             addView(resumeStrip(seal(if (g.isDay) MafiaGlyph.CROWN else MafiaGlyph.MOON, null, 46), "ادامهٔ بازی — ${g.phaseTitle}",
                 "${kit.n(g.alive.size)} نفر در بازی  •  ${kit.n(g.out.size)} نفر بیرون") { host.push(MafiaGameScreen(host, g.id)) })
         }
-        addView(kit.listGroup(listOf(
-            row(MafiaGlyph.SCROLL, "سناریوها", "${kit.n(MafiaScenarios.builtin.size)} سناریو + سناریوی خودت") { host.push(MafiaScenarioListScreen(host, browse = true)) },
-            row(MafiaGlyph.MASK, "نقش‌ها و قوانین", "${kit.n(MafiaRoleRegistry.available().size)} نقش • افزودن و ویرایش") { host.push(MafiaRolesScreen(host)) },
-            row(MafiaGlyph.CARDS, "کارت حرکت آخر", "${kit.n(MafiaLastCard.values().size)} کارت") { host.push(MafiaCardsScreen(host)) },
-            row(MafiaGlyph.SCROLL, "گروه بازی", "بازیکنان و نقش‌های ذخیره‌شده") { host.push(MafiaGroupsScreen(host)) }
-        ), "بازی و نقش‌ها"))
+        addView(kit.grid(2, listOf(
+            tile(MafiaGlyph.SCROLL, "سناریوها", "${kit.n(MafiaScenarios.builtin.size)} سناریو + سناریوی خودت") { host.push(MafiaScenarioListScreen(host, browse = true)) },
+            tile(MafiaGlyph.MASK, "نقش‌ها و قوانین", "${kit.n(MafiaRoleRegistry.available().size)} نقش • افزودن و ویرایش") { host.push(MafiaRolesScreen(host)) },
+            tile(MafiaGlyph.CARDS, "کارت حرکت آخر", "${kit.n(MafiaLastCard.values().size)} کارت") { host.push(MafiaCardsScreen(host)) },
+            tile(MafiaGlyph.SCROLL, "گروه بازی", "بازیکنان و نقش‌های ذخیره‌شده") { host.push(MafiaGroupsScreen(host)) }
+        ), 10), kit.spaced(12))
         addView(kit.listGroup(listOf(
             row(MafiaGlyph.HOURGLASS, "بازی‌های گذشته", "ادامه و گزارش بازی") { host.push(MafiaGamesScreen(host)) },
             row(MafiaGlyph.BOOK, "قوانین بازی", "روند شب و روز") { host.push(MafiaRulesScreen(host)) },
@@ -44,7 +44,8 @@ class MafiaHomeScreen(host: MainActivity) : Screen(host) {
 
     private fun hero(): View = kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
         layoutParams = kit.spaced(8)
-        addView(CinemaArtView(host, CinemaScene.MAFIA), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(176)))
+        addView(CinemaArtView(host, CinemaScene.MAFIA), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(160)))
+        addView(kit.text("راوی مافیا", TextStyle.DISPLAY, Royal.goldLight, Gravity.CENTER))
         addView(kit.text("گردانندگی شب و روز، رأی‌گیری و کارت حرکت آخر", TextStyle.LABEL, Royal.muted, Gravity.CENTER), kit.spaced(10))
     }
 

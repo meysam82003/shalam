@@ -26,7 +26,7 @@ const profiles=['cobalt','iranic','neon','emerald','copper','ivory'];
     for(const theme of profiles){
       const context = await browser.newContext({viewport:{width:390,height:844},deviceScaleFactor:1,serviceWorkers:'block'});
       await context.route('**/*',r=>r.request().url().startsWith(origin)?r.continue():r.abort());
-      const page=await context.newPage(); const errors=[];
+      const page=await context.newPage(); const errors=[]; const screens=[];
       page.on('pageerror',e=>errors.push(String(e)));
       await page.addInitScript(()=>{
         window.__labels=[];
@@ -59,7 +59,7 @@ const profiles=['cobalt','iranic','neon','emerald','copper','ivory'];
         assert(pos,`${theme}: label missing: ${text}; ${await labels()}`);
         await page.mouse.click(pos.x,pos.y);await page.waitForTimeout(450);
       }
-      async function shot(name){assert.equal(await page.locator('#crash.on').count(),0,`${theme}: crash`);await page.screenshot({path:path.join(out,`${theme}-${name}.png`)});}
+      async function shot(name){screens.push(name);assert.equal(await page.locator('#crash.on').count(),0,`${theme}: crash`);await page.screenshot({path:path.join(out,`${theme}-${name}.png`)});}
       await page.goto(origin);await page.locator('#loading').waitFor({state:'detached',timeout:30000});
       await page.waitForTimeout(1000);
       await shot('home');
@@ -68,6 +68,11 @@ const profiles=['cobalt','iranic','neon','emerald','copper','ivory'];
         await click('پانتومیم'); await shot('panto-hub');
         await page.keyboard.press('Escape'); await page.waitForTimeout(400);
         await click('جاسوس'); await shot('spy-hub');
+        await click('شروع بازی'); await shot('spy-deck-covered');
+        assert(!(await labels()).includes('کلمهٔ مخفی'), 'covered card leaked its word');
+        await page.mouse.click(195,390); await page.waitForTimeout(450); await shot('spy-deck-revealed');
+        assert((await labels()).some(s=>s==='کلمهٔ مخفی'||s.includes('نقش شما: جاسوس')), 'spy card did not reveal');
+        await page.keyboard.press('Escape'); await page.waitForTimeout(400);
         await page.keyboard.press('Escape'); await page.waitForTimeout(400);
         await click('راوی مافیا'); await shot('mafia-access');
         await page.keyboard.press('Escape'); await page.waitForTimeout(400);
@@ -78,6 +83,29 @@ const profiles=['cobalt','iranic','neon','emerald','copper','ivory'];
       // In-app back preserves the running game and its settings.
       await page.keyboard.press('Escape');await page.waitForTimeout(400);
       await page.keyboard.press('Escape');await page.waitForTimeout(400);
+      if (theme === 'cobalt' || theme === 'ivory') {
+        for (const [game,name] of [['منفی','menfi'],['هزارتایی','hezar'],['دو لو گشنیز','dolo']]) {
+          await click(game); await shot(name+'-setup');
+          await click('شروع داوری '+game); await shot(name+'-board');
+          await page.keyboard.press('Escape'); await page.waitForTimeout(400);
+        }
+        await click('لیگ‌ها'); await shot('league-list');
+        await page.keyboard.press('Escape'); await page.waitForTimeout(400);
+        await click('تاریخچه'); await shot('history');
+        await page.keyboard.press('Escape'); await page.waitForTimeout(400);
+      }
+      if (theme === 'cobalt' || theme === 'neon') {
+        await click('پانتومیم'); await click('مسابقهٔ جدید'); await shot('panto-setup');
+        await click('شروع مسابقه'); await shot('panto-board');
+        const turn=(await labels()).reverse().find(s=>s.startsWith('نوبت ')&&!s.includes('اجراکننده'));
+        assert(turn,'missing pantomime turn button'); await click(turn); await shot('panto-categories');
+        const level=(await labels()).find(s=>s.includes('آسان')&&s.includes('ث'));
+        assert(level,'missing category level'); await click(level); await shot('panto-word-covered');
+        await click('نمایش کلمه به اجراکننده'); await shot('panto-word');
+        await click('عوض کردن کلمه (۱ امتیاز کم می‌شود)'); await shot('panto-previous-word');
+        assert((await labels()).includes('کلمهٔ اول (فقط نمایش)'), 'previous word is missing');
+        for(let i=0;i<3;i++){await page.keyboard.press('Escape');await page.waitForTimeout(400);}
+      }
       await click('تنظیمات');
       await shot('settings');
       await page.mouse.move(190,500);await page.mouse.wheel(0,550);await page.waitForTimeout(400);
@@ -85,10 +113,10 @@ const profiles=['cobalt','iranic','neon','emerald','copper','ivory'];
       assert.deepEqual(errors,[],`${theme}: browser exceptions`);
       await page.reload();await page.waitForTimeout(2200);
       assert.equal(await page.locator('#crash.on').count(),0);
-      report.push({theme,viewport:'390x844',screens:['home','setup','board','score-entry','settings','settings-controls'],errors});
+      report.push({theme,viewport:'390x844',screens,errors});
       await context.close();
     }
     fs.writeFileSync(path.join(out,'report.json'),JSON.stringify(report,null,2));
-    console.log('UI smoke passed: six styles, 36 screen captures, game creation and reload.');
+    console.log('UI smoke passed: six styles, '+report.reduce((n,r)=>n+r.screens.length,0)+' screen captures, native game flows, privacy and reload.');
   } finally {await browser.close();await new Promise(r=>server.close(r));}
 })().catch(e=>{console.error(e);server.close();process.exitCode=1});

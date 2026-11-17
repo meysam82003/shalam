@@ -283,13 +283,18 @@ class ProfileScreen(host: MainActivity, private val name: String, private val is
             subtitle = if (isTeam) "کارنامهٔ تیم" else "کارنامهٔ بازیکن",
             actions = if (p != null) listOf(kit.iconButton(RoyalIcon.SHARE, "اشتراک تصویر کارنامه", ButtonKind.SECONDARY, 44) { shareProfile(p, place) }) else emptyList()
         ) {
-            addView(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
-                background = PanelDrawable(kit.density, PanelStyle.RAISED, 20f)
-                setPadding(kit.dp(12), kit.dp(12), kit.dp(12), kit.dp(14))
-                layoutParams = kit.spaced(8)
-                addView(kit.avatar(avatar, 64))
-                addView(kit.text(name, TextStyle.TITLE, Royal.goldLight, Gravity.CENTER))
-                if (p != null) addView(profileHeadline(p, place))
+            addView(kit.panel(PanelStyle.RAISED, 16, 26f).apply {
+                layoutParams = kit.spaced(12)
+                addView(kit.horizontal().apply {
+                    addView(kit.avatar(avatar, 70))
+                    addView(kit.hgap(14))
+                    addView(kit.weight(kit.vertical().apply {
+                        addView(kit.text(name, TextStyle.TITLE, Royal.goldLight))
+                        addView(kit.text(if (isTeam) "کارنامهٔ تیم" else "کارنامهٔ بازیکن", TextStyle.LABEL, Royal.muted))
+                    }))
+                    addView(kit.icon(RoyalIcon.CROWN, Royal.goldLight, 24))
+                })
+                if (p != null) { addView(kit.gap(10)); addView(profileHeadline(p, place)) }
             })
             if (p == null || p.games == 0) {
                 addView(emptyState(RoyalIcon.CHART, "هنوز بازی پایان‌یافته‌ای نیست", "پس از پایان اولین بازی، آمار و نمودارها اینجا نمایش داده می‌شوند."))

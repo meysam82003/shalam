@@ -151,6 +151,11 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
     /** Section title: a tinted icon chip, the title and an optional trailing control. */
     fun section(title: String, icon: RoyalIcon? = null, trailing: View? = null): View = horizontal().apply {
         layoutParams = fill().apply { topMargin = dp(14); bottomMargin = dp(10) }
+        if (CinemaLook.scene != CinemaScene.HOME) {
+            addView(View(context).apply { background = android.graphics.drawable.ColorDrawable(CinemaLook.tint()) },
+                LinearLayout.LayoutParams(dp(3), dp(26)))
+            addView(hgap(9))
+        }
         if (icon != null) {
             addView(iconChip(icon, 30))
             addView(hgap(10))

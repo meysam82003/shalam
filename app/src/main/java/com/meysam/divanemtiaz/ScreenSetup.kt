@@ -36,7 +36,7 @@ class SetupScreen(host: MainActivity, private val game: GameType) : Screen(host)
         subtitle = game.subtitle,
         bottom = kit.button("شروع داوری ${game.title}", ButtonKind.PRIMARY, RoyalIcon.PLAY) { start() }
     ) {
-        addView(CinemaArtView(host, CinemaScene.CARDS, game), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(102)))
+        addView(cinemaHero(CinemaScene.CARDS, game.title, "ترکیب و قوانین میز را آماده کنید", game))
         addView(kit.section(if (game.isTeamGame) "تیم‌ها" else "بازیکنان (${kit.n(sides.size)})", RoyalIcon.PLAYERS))
         if (game == GameType.SHALAM) addView(kit.button("صداها و موسیقی شلم", ButtonKind.GHOST, RoyalIcon.PLAY) { host.push(GameAudioSettingsScreen(host, "shalam")) })
         if (game.isTeamGame) addView(versus())
