@@ -48,7 +48,7 @@ object MafiaGeneric {
         val modes = ArrayList<JobMode>()
         modes += mode(a, d)
         d.altAbility?.takeIf { it != MafiaAbility.NONE && it != a }?.let { modes += mode(it, d) }
-        val prompt = d.prompt ?: ("${r.faName} بیدار شود\n" + a.hint + (d.altAbility?.takeIf { it != MafiaAbility.NONE }?.let { " — یا: " + it.hint } ?: ""))
+        val prompt = (d.prompt ?: ("${r.faName} بیدار شود\n" + a.hint + (d.altAbility?.takeIf { it != MafiaAbility.NONE }?.let { " — یا: " + it.hint } ?: ""))) + "\n" + MafiaRoleText.explain(r)
         return NightJob(MafiaRoleRegistry.jobKey(r), r.faName, r, r.side, r.glyph, prompt, modes, holders.map { it.id })
     }
 

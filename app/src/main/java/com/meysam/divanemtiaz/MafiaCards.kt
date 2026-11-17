@@ -70,39 +70,49 @@ class RoleCardView(context: Context) : CachedArtView(context) {
     }
 
     override fun drawArt(canvas: Canvas) {
-        val w = width.toFloat()
-        val h = height.toFloat()
-        val u = w / 100f
-        val outer = RectF(u * 1f, u * 1f, w - u * 1f, h - u * 1f)
-        // Shadow and body.
+        val t = ThemeEngine.spec
+        val w = width.toFloat(); val h = height.toFloat(); val u = w / 100f
+        val r = DivanDesign.radius(t, 8f) * u
+        val outer = RectF(u, u, w - u, h - u)
+        paint.shader = null; paint.style = Paint.Style.FILL; paint.color = CinemaLook.surface(t)
+        canvas.drawRoundRect(outer, r, r, paint)
+        paint.style = Paint.Style.STROKE; paint.strokeWidth = u; paint.color = t.border
+        canvas.drawRoundRect(outer, r, r, paint)
         paint.style = Paint.Style.FILL
-        paint.shader = null
-        paint.color = 0x66000000
-        canvas.drawRoundRect(RectF(outer.left, outer.top + u * 1.2f, outer.right, outer.bottom + u * 0.8f), u * 5f, u * 5f, paint)
-        paint.color = Color.BLACK
-        paint.shader = LinearGradient(0f, 0f, 0f, h, intArrayOf(0xFF1A0B12.toInt(), 0xFF0B0610.toInt()), null, Shader.TileMode.CLAMP)
-        canvas.drawRoundRect(outer, u * 5f, u * 5f, paint)
-        paint.shader = null
-        if (faceDown) {
-            drawBack(canvas, outer, u)
+        val picture = RectF(u * 5f, u * 5f, w - u * 5f, h * .66f)
+        val photo = portrait
+        if (!faceDown && photo != null && !photo.isRecycled) {
+            canvas.save()
+            canvas.clipPath(Path().apply { addRoundRect(picture, r * .6f, r * .6f, Path.Direction.CW) })
+            val scale = maxOf(picture.width() / photo.width, picture.height() / photo.height)
+            val m = Matrix().apply { setScale(scale, scale); postTranslate(picture.centerX() - photo.width * scale / 2f, picture.centerY() - photo.height * scale / 2f) }
+            paint.shader = BitmapShader(photo, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).apply { setLocalMatrix(m) }
+            paint.color = Color.BLACK; canvas.drawRect(picture, paint); paint.shader = null
+            canvas.restore()
         } else {
-            val plateTop = h * 0.64f
-            val panel = RectF(outer.left + u * 4f, outer.top + u * 4f, outer.right - u * 4f, plateTop + u * 4f)
-            drawPortrait(canvas, panel, u)
-            drawPlate(canvas, RectF(outer.left + u * 3f, plateTop, outer.right - u * 3f, outer.bottom - u * 3f), u)
+            canvas.save(); canvas.translate(picture.left, picture.top)
+            DivanDesign.role(canvas, picture.width().toInt(), picture.height().toInt(), glyph, faceDown, false, paint, tint)
+            canvas.restore()
         }
-        drawFrame(canvas, outer, u)
+        paint.style = Paint.Style.FILL; paint.shader = null
+        paint.typeface = RoyalFonts.get(context, true); paint.textAlign = Paint.Align.CENTER
+        paint.textSize = u * 8f
+        val heading = if (faceDown) "نقش مخفی" else title
+        while (paint.measureText(heading) > w - u * 14f && paint.textSize > u * 4f) paint.textSize -= u * .3f
+        paint.color = t.text; canvas.drawText(heading, w / 2f, h * .78f, paint)
+        paint.typeface = RoyalFonts.get(context, false); paint.textSize = u * 4.5f; paint.color = t.muted
+        val detail = if (faceDown) "برای دیدن نقش، کارت را باز کن" else subtitle
+        val lines = ArrayList<String>(); var line = ""
+        detail.split(" ").forEach { word ->
+            val next = if (line.isBlank()) word else "$line $word"
+            if (paint.measureText(next) > w - u * 14f && line.isNotBlank()) { lines += line; line = word } else line = next
+        }
+        if (line.isNotBlank()) lines += line
+        lines.take(3).forEachIndexed { i, text -> canvas.drawText(text, w / 2f, h * .84f + i * u * 6f, paint) }
         if (dead) {
-            paint.style = Paint.Style.FILL
-            paint.shader = null
-            paint.color = 0xAA050B1A.toInt()
-            canvas.drawRoundRect(outer, u * 5f, u * 5f, paint)
-            paint.color = RoyalClassic.crimson
-            paint.style = Paint.Style.STROKE
-            paint.strokeWidth = u * 3f
-            paint.strokeCap = Paint.Cap.ROUND
-            canvas.drawLine(w * 0.22f, h * 0.22f, w * 0.78f, h * 0.78f, paint)
-            canvas.drawLine(w * 0.78f, h * 0.22f, w * 0.22f, h * 0.78f, paint)
+            paint.style = Paint.Style.STROKE; paint.strokeWidth = u * 2f; paint.strokeCap = Paint.Cap.ROUND; paint.color = t.danger
+            canvas.drawLine(w * .2f, h * .2f, w * .8f, h * .6f, paint)
+            canvas.drawLine(w * .8f, h * .2f, w * .2f, h * .6f, paint)
             paint.style = Paint.Style.FILL
         }
     }

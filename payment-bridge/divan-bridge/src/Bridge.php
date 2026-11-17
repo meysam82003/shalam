@@ -1,6 +1,6 @@
 <?php
 /**
- * Divan Emtiaz — payment verification gateway (runs on the Iranian host, pay.httpuser87890.ir).
+ * Divan Emtiaz — payment verification gateway (runs on the Iranian host, pay.divan-emtiaz.ir).
  *
  * Only the main Divan server may call it. Every request is signed with a shared key (HMAC-SHA256)
  * over a timestamp, a one-time nonce and the body; a nonce is accepted once. Only fixed actions exist,
@@ -225,7 +225,7 @@ final class Bridge
         if ($what === 'request') {
             $cb = (string)($p['callback_url'] ?? '');
             $host = strtolower((string)parse_url($cb, PHP_URL_HOST));
-            $hosts = (array)($this->cfg['callback_hosts'] ?? ['httpuser87890.ir']);
+            $hosts = (array)($this->cfg['callback_hosts'] ?? ['divan-emtiaz.ir']);
             if (stripos($cb, 'https://') !== 0 || strlen($cb) > 300 || !in_array($host, $hosts, true) || preg_match('/[\s"<>]/', $cb)) throw new BadRequest('callback_url');
             $order = (string)($p['metadata']['order_id'] ?? '');
             if (!preg_match('/^[a-z0-9]{20}$/', $order)) throw new BadRequest('order_id');
@@ -279,7 +279,7 @@ final class Bridge
                 if (!isset($in[$k])) continue;
                 $u = (string)$in[$k];
                 $host = strtolower((string)parse_url($u, PHP_URL_HOST));
-                $hosts = (array)($this->cfg['callback_hosts'] ?? ['httpuser87890.ir']);
+                $hosts = (array)($this->cfg['callback_hosts'] ?? ['divan-emtiaz.ir']);
                 if (stripos($u, 'https://') !== 0 || strlen($u) > 300 || !in_array($host, $hosts, true) || preg_match('/[\s"<>]/', $u)) throw new BadRequest($k);
                 $out[$k] = $u;
             }

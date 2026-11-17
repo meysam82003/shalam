@@ -20,90 +20,44 @@ class ThemePreviewView(context: Context, private val spec: ThemeSpec) : View(con
     private val rect = RectF()
 
     override fun onDraw(canvas: Canvas) {
-        val w = width.toFloat()
-        val h = height.toFloat()
-        if (w <= 0f || h <= 0f) return
-        val d = resources.displayMetrics.density
-        val t = spec
-        val outer = 14f * d
-        paint.style = Paint.Style.FILL
-        paint.shader = LinearGradient(0f, 0f, 0f, h, t.bg, floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
-        rect.set(0f, 0f, w, h)
-        canvas.drawRoundRect(rect, outer, outer, paint)
-        t.glows.take(2).forEach { g ->
-            paint.shader = android.graphics.RadialGradient(w * g.x, h * g.y, w * g.radius, g.color, 0, Shader.TileMode.CLAMP)
-            canvas.drawRoundRect(rect, outer, outer, paint)
+        val w = width.toFloat(); val h = height.toFloat(); if (w <= 0 || h <= 0) return
+        val t = spec; val k = w / 180f; val height = h / k
+        canvas.save(); canvas.scale(k,k)
+        paint.style = Paint.Style.FILL; paint.shader = LinearGradient(0f,0f,180f,height,t.bg[0],t.surface,Shader.TileMode.CLAMP)
+        canvas.drawRoundRect(RectF(0f,0f,180f,height),14f,14f,paint)
+        paint.shader = android.graphics.RadialGradient(90f,24f,120f,intArrayOf(Royal.alpha(t.accent,.13f),0),null,Shader.TileMode.CLAMP)
+        canvas.drawRoundRect(RectF(0f,0f,180f,height),14f,14f,paint)
+        fun box(x:Float,y:Float,bw:Float,bh:Float,color:Int,r:Float=7f) {
+            paint.shader=null;paint.style=Paint.Style.FILL;paint.color=color
+            canvas.drawRoundRect(RectF(x,y,x+bw,y+bh),r,r,paint)
+            paint.style=Paint.Style.STROKE;paint.strokeWidth=.7f
+            paint.shader=LinearGradient(x,y,x+bw,y+bh,t.metalLight,t.border,Shader.TileMode.CLAMP)
+            canvas.drawRoundRect(RectF(x,y,x+bw,y+bh),r,r,paint);paint.shader=null;paint.style=Paint.Style.FILL
         }
-        paint.shader = null
-        val pad = 10f * d
-        // Title bar
-        paint.color = t.titleColor
-        canvas.drawRoundRect(RectF(w - pad - w * 0.42f, pad, w - pad, pad + 6f * d), 3f * d, 3f * d, paint)
-        paint.color = Royal.alpha(t.muted, 0.7f)
-        canvas.drawRoundRect(RectF(w - pad - w * 0.28f, pad + 9f * d, w - pad, pad + 12.5f * d), 2f * d, 2f * d, paint)
-        // Card with a timer ring
-        val r = 10f * d * t.radius
-        val card = RectF(pad, pad + 20f * d, w - pad, h * 0.62f)
-        paint.color = Royal.alpha(t.shadow or 0xFF000000.toInt(), Color.alpha(t.shadow) / 255f * 0.5f)
-        canvas.drawRoundRect(RectF(card.left, card.top + 2.5f * d, card.right, card.bottom + 2.5f * d), r, r, paint)
-        paint.shader = LinearGradient(0f, card.top, 0f, card.bottom, t.raised, t.raisedLow, Shader.TileMode.CLAMP)
-        canvas.drawRoundRect(card, r, r, paint)
-        paint.shader = null
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = t.frameWidth * d
-        paint.shader = LinearGradient(card.left, card.top, card.left, card.bottom, t.border, t.borderLow, Shader.TileMode.CLAMP)
-        canvas.drawRoundRect(card, r, r, paint)
-        paint.shader = null
-        val ringR = min(card.height(), card.width()) * 0.30f
-        val cx = card.left + card.width() * 0.3f
-        val cy = card.centerY()
-        paint.strokeWidth = 4.5f * d
-        paint.strokeCap = Paint.Cap.ROUND
-        paint.color = t.ringTrack
-        canvas.drawCircle(cx, cy, ringR, paint)
-        paint.shader = SweepGradient(cx, cy, t.ring + t.ring[0], null)
-        canvas.drawArc(RectF(cx - ringR, cy - ringR, cx + ringR, cy + ringR), -90f, 250f, false, paint)
-        paint.shader = null
-        paint.style = Paint.Style.FILL
-        paint.color = t.text
-        canvas.drawRoundRect(RectF(card.right - pad - card.width() * 0.38f, cy - 9f * d, card.right - pad, cy - 3f * d), 3f * d, 3f * d, paint)
-        paint.color = t.muted
-        canvas.drawRoundRect(RectF(card.right - pad - card.width() * 0.26f, cy + 2f * d, card.right - pad, cy + 6f * d), 2f * d, 2f * d, paint)
-        // Chips
-        val chipTop = h * 0.66f
-        val chipH = 11f * d
-        val chipW = (w - pad * 2 - 6f * d * 2) / 3f
-        for (i in 0 until 3) {
-            val left = w - pad - (i + 1) * chipW - i * 6f * d
-            val chip = RectF(left, chipTop, left + chipW, chipTop + chipH)
-            val fill = if (i == 0) t.successFill else t.chip
-            paint.shader = LinearGradient(0f, chip.top, 0f, chip.bottom, fill, null, Shader.TileMode.CLAMP)
-            canvas.drawRoundRect(chip, chipH / 2f, chipH / 2f, paint)
-            paint.shader = null
-            if (i != 0) {
-                paint.style = Paint.Style.STROKE
-                paint.strokeWidth = d
-                paint.color = t.chipBorder
-                canvas.drawRoundRect(chip, chipH / 2f, chipH / 2f, paint)
-                paint.style = Paint.Style.FILL
-            }
+        val crown=android.graphics.Path().apply {moveTo(76f,23f);lineTo(72f,9f);lineTo(83f,15f);lineTo(90f,4f);lineTo(97f,15f);lineTo(108f,9f);lineTo(104f,23f);close()}
+        paint.shader=LinearGradient(75f,4f,105f,26f,t.metalLight,t.accent,Shader.TileMode.CLAMP);canvas.drawPath(crown,paint)
+        paint.shader=null;paint.color=t.accent;canvas.drawRoundRect(RectF(52f,30f,128f,35f),2f,2f,paint)
+        val cellH=(height-88f)/3f
+        val icons=listOf(RoyalIcon.CARDS,RoyalIcon.SPADE,RoyalIcon.TROPHY,RoyalIcon.CLUB)
+        for(i in 0..3){val x=10f+(i%2)*83f;val y=45f+(i/2)*(cellH+5f)
+            box(x,y,77f,cellH,t.surface)
+            RoyalIcons.draw(canvas,icons[i],RectF(x+25f,y+6f,x+52f,y+33f),if(i%2==0)t.accent else t.success,paint,1.5f)
+            paint.color=t.text;canvas.drawRoundRect(RectF(x+20f,y+cellH-11f,x+57f,y+cellH-8f),1f,1f,paint)
         }
-        // Primary button
-        val btn = RectF(pad, h - pad - 15f * d, w - pad, h - pad)
-        val br = (8f * d * t.buttonRadius).coerceAtMost(btn.height() / 2f)
-        paint.shader = if (t.primaryHorizontal) LinearGradient(btn.right, 0f, btn.left, 0f, t.primary, null, Shader.TileMode.CLAMP)
-        else LinearGradient(0f, btn.top, 0f, btn.bottom, t.primary, null, Shader.TileMode.CLAMP)
-        canvas.drawRoundRect(btn, br, br, paint)
-        paint.shader = null
-        paint.color = t.primaryText
-        canvas.drawRoundRect(RectF(btn.centerX() - w * 0.14f, btn.centerY() - 1.6f * d, btn.centerX() + w * 0.14f, btn.centerY() + 1.6f * d), d, d, paint)
+        val y=45f+2*(cellH+5f)
+        for(i in 0..2){val x=10f+i*55f;box(x,y,50f,cellH*.72f,t.surface)
+            RoyalIcons.draw(canvas,listOf(RoyalIcon.USER,RoyalIcon.PLAY,RoyalIcon.EYE)[i],RectF(x+15f,y+6f,x+35f,y+26f),t.accent,paint,1.3f)
+        }
+        box(10f,height-20f,160f,13f,t.surface)
+        for(i in 0..4){paint.color=if(i==4)t.accent else t.muted;canvas.drawCircle(30f+i*30f,height-13f,2.6f,paint)}
+        canvas.restore()
     }
 }
 
 /** «ظاهر برنامه»: the six styles with a live miniature of each; the choice applies to every page at once. */
 class ThemeScreen(host: MainActivity) : Screen(host) {
     override fun build(): View = scaffold("ظاهر برنامه", "${kit.n(Themes.all.size)} سبک • همهٔ صفحه‌ها و بازی‌ها") {
-        addView(kit.text("هر سبک رنگ، قاب کارت‌ها، دکمه‌ها، نور و بافت پس‌زمینه و زمان‌سنج‌های خودش را دارد؛ داده‌ها و بازی‌ها تغییری نمی‌کنند.",
+        addView(kit.text("شش دنیای متفاوت برای دیوان؛ سبک دلخواهت را لمس کن تا تمام برنامه همان لحظه تغییر کند.",
             TextStyle.CAPTION, Royal.muted), kit.spaced(10))
         addView(themeGrid(this@ThemeScreen))
     }
@@ -121,7 +75,7 @@ class ThemeWelcomeScreen(host: MainActivity) : Screen(host) {
             host.resetTo(HomeScreen(host))
         }) {
         addView(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
-            addView(HeroCrestView(host), LinearLayout.LayoutParams(kit.dp(200), kit.dp(150)))
+            addView(RegalCrownView(host), LinearLayout.LayoutParams(kit.dp(92), kit.dp(92)))
         }, kit.spaced(4))
         addView(kit.text("یکی از شش سبک را لمس کنید تا همین حالا روی برنامه ببینید؛ بعداً هم از «تنظیمات ← ظاهر برنامه» قابل تغییر است.",
             TextStyle.LABEL, Royal.muted, Gravity.CENTER), kit.spaced(10))
@@ -138,20 +92,20 @@ fun themeGrid(screen: Screen, onPick: ((ThemeSpec) -> Unit)? = null): View {
         kit.vertical().apply {
             background = PanelDrawable(kit.density, if (t.id == current) PanelStyle.SELECTED else PanelStyle.NORMAL, 18f)
             setPadding(kit.dp(8), kit.dp(8), kit.dp(8), kit.dp(12))
-            addView(ThemePreviewView(host, t), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(132)))
+            addView(ThemePreviewView(host, t), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(192)))
             addView(kit.gap(6))
             addView(kit.horizontal().apply {
                 addView(kit.weight(kit.text(t.title, TextStyle.BODY_BOLD, if (t.id == current) Royal.turquoiseLight else Royal.goldLight, maxLines = 1)))
                 if (t.id == current) addView(kit.icon(RoyalIcon.CHECK, Royal.turquoiseLight, 18))
-                else if (Gate.itemLocked("themes", t.id)) addView(Gate.badge(screen))
             })
             addView(kit.text(t.latin, TextStyle.CAPTION, Royal.dim, maxLines = 1).apply { textDirection = View.TEXT_DIRECTION_LTR; gravity = Gravity.END })
             addView(kit.text(t.summary, TextStyle.CAPTION, Royal.muted, maxLines = 3))
+            addView(kit.gap(8))
+            addView(kit.badge(if (t.id == current) "ظاهر فعلی" else "انتخاب سبک", if (t.id == current) Royal.turquoise else Royal.gold, true))
             isClickable = true
             contentDescription = "سبک ${t.title}"
             setOnClickListener {
                 kit.tap(it)
-                if (t.id != current && Gate.itemLocked("themes", t.id)) { Gate.lockedItem(screen, "سبک " + t.title); return@setOnClickListener }
                 if (onPick != null) onPick(t)
                 else if (t.id != ThemeEngine.spec.id) host.updateSettings { s -> s.copy(general = s.general.copy(theme = t.id)) }
             }

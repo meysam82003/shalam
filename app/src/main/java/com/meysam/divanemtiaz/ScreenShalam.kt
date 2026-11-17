@@ -12,6 +12,8 @@ import kotlin.math.abs
 
 /** Timer bookkeeping shared by the three live boards. */
 abstract class BoardScreen(host: MainActivity, val session: GameSession) : Screen(host) {
+    override val visualScene: CinemaScene get() = if (session.game == GameType.MENFI) CinemaScene.MENFI else CinemaScene.CARDS
+    override val audioScope: String? get() = if (session.game == GameType.SHALAM) "shalam" else null
     override val sessionId: Long get() = session.id
     private var shownAt = 0L
     private var active = false
@@ -43,6 +45,7 @@ abstract class BoardScreen(host: MainActivity, val session: GameSession) : Scree
 
     /** Called after any change; saves and moves to the result page when the game ended. */
     protected fun afterChange() {
+        if (session.game == GameType.SHALAM) host.gameAudio.play("shalam", "score")
         val ended = SessionOps.commitAndCheck(host, session)
         if (ended) host.replace(ResultScreen(host, session)) else host.refresh()
     }
@@ -72,6 +75,7 @@ abstract class BoardScreen(host: MainActivity, val session: GameSession) : Scree
         }
 
     protected fun commonMenu(): List<Pair<String, () -> Unit>> = listOfNotNull(
+        if (session.game == GameType.SHALAM) "صداها و موسیقی" to { host.push(GameAudioSettingsScreen(host, "shalam")) } else null,
         "نمودار بازی" to { gameChartDialog(session) },
         if (session.game.isTeamGame && (session.leagueId == 0L || host.repo.league(session.leagueId) == null))
             "افزودن این بازی به لیگ" to { addToLeague(session) { host.refresh() } } else null,
@@ -127,19 +131,7 @@ class ShalamBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(
                 })
             }
         ) {
-            addView(kit.horizontal(Gravity.TOP).apply {
-                layoutParams = kit.spaced(8)
-                session.sides.forEachIndexed { i, side ->
-                    if (i > 0) addView(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
-                        setPadding(0, kit.dp(24), 0, 0)
-                        addView(kit.text("اختلاف", TextStyle.CAPTION, Royal.dim, Gravity.CENTER, 1))
-                        addView(kit.text(kit.n(abs(totals[0] - totals[1])), TextStyle.HEADING, Royal.goldLight, Gravity.CENTER, 1))
-                        addView(kit.icon(RoyalIcon.STAR, Royal.alpha(Royal.gold, 0.7f), 14))
-                    }, LinearLayout.LayoutParams(kit.dp(56), ViewGroup.LayoutParams.WRAP_CONTENT))
-                    val fraction = if (rules.endPoint > 0) totals[i].toFloat() / rules.endPoint else null
-                    addView(kit.weight(sideScoreCard(side, kit.signed(totals[i]), "پایان: ${kit.n(rules.endPoint)}", leader == i, fraction)))
-                }
-            })
+            addView(boardArena(session, totals, leader, target = rules.endPoint))
             addView(statusRow("${kit.n(GameEngine.playedHands(session))} دست"))
             if (rules.highLimitEnabled) {
                 val above = session.sides.indices.filter { totals[it] >= rules.highLimit }
@@ -245,6 +237,7 @@ fun Screen.shalamStatsDialog(session: GameSession) {
 
 /** Two-step hand entry: contractor + bid, then opponent points with a live result preview. */
 class ShalamHandScreen(host: MainActivity, private val session: GameSession, private val editIndex: Int?) : Screen(host) {
+    override val visualScene: CinemaScene get() = CinemaScene.CARDS
     private val rules get() = session.rules.shalam
     private val mode get() = rules.mode
     private val editing: Round? = editIndex?.let { session.rounds.getOrNull(it) }
@@ -259,6 +252,7 @@ class ShalamHandScreen(host: MainActivity, private val session: GameSession, pri
     private var preview: LinearLayout? = null
     private var footer: FrameLayout? = null
 
+    override val audioScope: String? get() = if (session.game == GameType.SHALAM) "shalam" else null
     override val sessionId: Long get() = session.id
 
     override fun onBack(): Boolean {
@@ -515,6 +509,7 @@ class ShalamHandScreen(host: MainActivity, private val session: GameSession, pri
     }
 
     private fun finishEntry() {
+        if (session.game == GameType.SHALAM) host.gameAudio.play("shalam", "score")
         val ended = SessionOps.commitAndCheck(host, session)
         host.pop()
         if (ended) host.replace(ResultScreen(host, session))

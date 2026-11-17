@@ -31,10 +31,19 @@ import java.util.concurrent.Executors
 // ================================================================ store of this build
 /** Values written into the manifest by the build flavor (bazaar / myket). */
 object StoreInfo {
-    const val DEFAULT_API = "https://httpuser87890.ir/divan/api/index.php"
+    const val DEFAULT_API = "https://divan-emtiaz.ir/divan/api/index.php"
 
     var storeId: String = "bazaar"; private set
-    var apiBase: String = DEFAULT_API; private set
+    var apiBase: String = DEFAULT_API
+        private set
+        get() {
+            val override = ProState.config.optString("api_url")
+            return if (validApi(override)) override else field
+        }
+    fun validApi(value: String): Boolean = runCatching {
+        val u = java.net.URI(value)
+        u.scheme == "https" && !u.host.isNullOrBlank() && u.rawUserInfo == null && u.port == -1 && u.rawQuery == null && u.rawFragment == null && u.path.endsWith("/api/index.php")
+    }.getOrDefault(false)
     var pinnedKey: String = ""; private set
     var myketKey: String = ""; private set
     var tapsellAppId: String = ""; private set
@@ -148,6 +157,7 @@ data class License(
     val features: JSONObject = JSONObject(),
     val store: String? = null,
     val kid: String = "",
+    val mafiaTrialUntil: Long = 0,
     /** Phone the subscription is active on, when it is not this one. */
     val elsewhere: String? = null
 ) {
@@ -189,6 +199,7 @@ data class License(
             val samePhone = device == null || expectedDevice == null || device == expectedDevice
             val conflict = j.optJSONObject("device_conflict")
             return License(
+                mafiaTrialUntil = if (samePhone) j.optLong("mafia_trial_until") else 0,
                 valid = true, reason = if (samePhone) "ok" else "device", uid = uid, user = j.optString("user"), pro = j.optBoolean("pro") && samePhone,
                 lifetime = j.optBoolean("lifetime"), plan = if (j.isNull("plan")) null else j.optString("plan"),
                 expiresAt = optLongOrNull("exp"), grace = optLongOrNull("grace"), issuedAt = j.optLong("iat"),
@@ -385,6 +396,9 @@ object ProState {
         Tls.context = context.applicationContext
         @Suppress("HardwareIds")
         val androidId = runCatching { android.provider.Settings.Secure.getString(context.contentResolver, android.provider.Settings.Secure.ANDROID_ID) }.getOrNull()
+        if (getS("trial_device_id") == null && !androidId.isNullOrBlank()) {
+            putS("trial_device_id", MessageDigest.getInstance("SHA-256").digest("divan-trial|$androidId".toByteArray()).joinToString("") { "%02x".format(it) })
+        }
         if (getS("device_id") == null) {
             // Stable per phone (and kept on reinstall on Android 8+); only its hash ever leaves the phone.
             val seed = androidId?.takeIf { it.isNotBlank() && it != "9774d56d682e549c" } ?: java.util.UUID.randomUUID().toString()
@@ -394,6 +408,10 @@ object ProState {
 
     /** SHA-256 identifier of this phone, sent to the server to keep one subscription on one phone. */
     val deviceId: String get() = getS("device_id") ?: (java.util.UUID.randomUUID().toString() + java.util.UUID.randomUUID().toString()).replace("-", "").also { putS("device_id", it) }
+
+    val trialDeviceId: String get() = getS("trial_device_id") ?: deviceId
+    val mafiaAllowed: Boolean get() = isPro || loggedIn && StoreInfo.integrityOk && license.valid && license.reason == "ok" && now() < license.offlineUntil && now() < license.mafiaTrialUntil
+    val rewardNextAt: Long get() = accountJson?.let { runCatching { JSONObject(it).optJSONObject("rewards")?.optLong("next_at") ?: 0L }.getOrDefault(0L) } ?: 0L
 
     // ---- small typed storage (works without prefs in tests)
     private fun getS(k: String): String? = prefs?.getString(k, null) ?: memory[k] as? String
@@ -451,6 +469,7 @@ object ProState {
     class Access(val mode: String, val allowed: Boolean, val limit: Int?, val items: Set<String>, val allItems: Boolean)
 
     fun access(key: String): Access {
+        if (key == "mafia" || key.startsWith("mafia_")) return Access("pro", mafiaAllowed, null, emptySet(), !mafiaAllowed && key in ITEM_MODULES)
         val signed = if (loggedIn && license.valid) license.features.optJSONObject(key) else null
         // The panel's latest rules (fetched with the account, cached for offline use) win over the older signed copy.
         val f = config.optJSONObject("features")?.optJSONObject(key) ?: signed ?: return Access("free", true, null, emptySet(), false)
@@ -581,7 +600,7 @@ object ProSync {
 
     fun register(username: String, password: String, email: String?, done: (String?, ApiError?) -> Unit) = ensureKey { e ->
         if (e != null) { done(null, e); return@ensureKey }
-        val body = device().put("username", username).put("password", password)
+        val body = device().put("trial_device_id", ProState.trialDeviceId).put("username", username).put("password", password)
         if (!email.isNullOrBlank()) body.put("email", email)
         Api.call("POST", "v1/auth/register", body, null) { data, err ->
             if (data != null) { ProState.applyAccount(data); refreshConfig(force = true) }

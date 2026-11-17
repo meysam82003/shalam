@@ -35,6 +35,14 @@ abstract class Screen(val host: MainActivity) {
     var savedScroll = 0
 
     /** Pages of a running game keep a compact page bar instead of the large title. */
+    open val visualScene: CinemaScene get() = when {
+        mafiaArea -> CinemaScene.MAFIA
+        audioScope == "panto" || featureKey?.startsWith("panto") == true -> CinemaScene.THEATRE
+        featureKey?.startsWith("spy") == true -> CinemaScene.SPY
+        sessionId != null -> CinemaScene.CARDS
+        else -> CinemaScene.GENERAL
+    }
+
     open val compactHeader: Boolean get() = sessionId != null
 
     /** Tab of the bottom navigation this page belongs to ([NavBar]); -1 = no navigation bar. */
@@ -45,6 +53,8 @@ abstract class Screen(val host: MainActivity) {
 
     /** Module of this page for the free / Pro rules of the panel (null: always open). */
     open val featureKey: String? get() = null
+    open val mafiaArea: Boolean get() = false
+    open val audioScope: String? get() = null
 
     /** For count-limited modules: how many the player already has when this page creates a new one (-1: not a create page). */
     open val featureUsed: Int get() = -1
@@ -77,11 +87,12 @@ abstract class Screen(val host: MainActivity) {
             bar.addView(kit.hgap(10))
         }
         // Game pages keep a compact title; other pages show a large title that slides into the bar on scroll.
-        val large = !compactHeader
+        val large = false
+        val design = ThemeEngine.spec.layout
         val smallTitle = kit.vertical().apply {
-            addView(kit.text(title, if (large) TextStyle.HEADING else TextStyle.TITLE, Royal.title, maxLines = 1))
+            addView(kit.text(title, if (large) TextStyle.HEADING else TextStyle.TITLE, Royal.title, Gravity.CENTER, maxLines = 2))
             subtitleView = null
-            if (!large && !subtitle.isNullOrBlank()) addView(kit.text(subtitle, TextStyle.CAPTION, Royal.muted, maxLines = 1).also { subtitleView = it })
+            if (!large && !subtitle.isNullOrBlank()) addView(kit.text(subtitle, TextStyle.CAPTION, Royal.muted, Gravity.CENTER, maxLines = 1).also { subtitleView = it })
             if (large) alpha = 0f
         }
         bar.addView(smallTitle, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
@@ -99,16 +110,17 @@ abstract class Screen(val host: MainActivity) {
         }
         root.addView(hairline, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(1)))
         val header = if (large) kit.vertical().apply {
-            setPadding(kit.dp(4), kit.dp(2), kit.dp(4), kit.dp(14))
-            addView(kit.text(title, TextStyle.DISPLAY, Royal.title, maxLines = 2).apply { setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, kit.textSize(26f)) })
+            setPadding(kit.dp(2), kit.dp(10), kit.dp(2), kit.dp(20))
+            addView(kit.text(title, TextStyle.DISPLAY, Royal.title, maxLines = 2).apply { setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, kit.textSize(if (design == ThemeLayout.PAPER) 34f else if (design == ThemeLayout.VOLT) 30f else 28f)) })
             if (!subtitle.isNullOrBlank()) addView(kit.text(subtitle, TextStyle.LABEL, Royal.muted, maxLines = 2).also { subtitleView = it })
             addView(View(host).apply {
                 background = android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.RIGHT_LEFT,
                     ThemeEngine.spec.primary).apply { cornerRadius = kit.dpf(2f) }
-            }, LinearLayout.LayoutParams(kit.dp(34), kit.dp(3)).apply { topMargin = kit.dp(8) })
+            }, LinearLayout.LayoutParams(if (design == ThemeLayout.PAPER || design == ThemeLayout.VOLT) ViewGroup.LayoutParams.MATCH_PARENT else kit.dp(if (design == ThemeLayout.ATLAS) 48 else 24), kit.dp(if (design == ThemeLayout.VOLT) 4 else 2)).apply { topMargin = kit.dp(8) })
         } else null
         val column = kit.vertical().apply {
-            setPadding(kit.dp(16), kit.dp(if (large) 2 else 10), kit.dp(16), kit.dp(22))
+            val gutter = if (design == ThemeLayout.ORBIT || design == ThemeLayout.PALM) 20 else 16
+            setPadding(kit.dp(gutter), kit.dp(if (large) 2 else 12), kit.dp(gutter), kit.dp(24))
             layoutDirection = View.LAYOUT_DIRECTION_RTL
             if (header != null) addView(header, kit.fill())
             content()
@@ -158,6 +170,22 @@ class MainActivity : Activity() {
     private val stack = ArrayList<Screen>()
     private val handler = Handler(Looper.getMainLooper())
     private var resumed = false
+    private val accessHandler = Handler(Looper.getMainLooper())
+    private var lastNoticeCheck = 0L
+    private val accessTick = object : Runnable {
+        override fun run() {
+            if (!resumed) return
+            if (android.os.SystemClock.uptimeMillis() - lastNoticeCheck >= 60_000) { lastNoticeCheck = android.os.SystemClock.uptimeMillis(); Notices.check(this@MainActivity) }
+            if (current?.mafiaArea == true && !ProState.mafiaAllowed) {
+                kit.dismissDialogs()
+                if (audioUsed) { audio.stopCue(); audio.stopMusic() }
+                current?.onHide()
+                stack += ProScreen(this@MainActivity, "زمان تست مافیا تمام شد؛ برای ادامه اشتراک Pro بخرید. بازی شما ذخیره شده است.")
+                render()
+            }
+            accessHandler.postDelayed(this, 1000)
+        }
+    }
 
     val current: Screen? get() = stack.lastOrNull()
 
@@ -170,6 +198,7 @@ class MainActivity : Activity() {
 
     /** Narrator cues, night music and voice recording. */
     val audio: MafiaAudio by lazy { MafiaAudio(this) }
+    val gameAudio: GameAudio by lazy { GameAudio(this) }
     private var audioUsed = false
     fun audio(): MafiaAudio { audioUsed = true; return audio }
 
@@ -252,13 +281,19 @@ class MainActivity : Activity() {
         // Plans, module access and the account are refreshed in the background; games never wait for it.
         if (Build.FINGERPRINT != "robolectric") ProSync.onStart()
         resumed = true
+        accessHandler.removeCallbacks(accessTick)
+        accessHandler.post(accessTick)
+        gameAudio.enter(current?.audioScope)
         current?.onShow()
+        Notices.check(this)
     }
 
     override fun onPause() {
         AdEngine.flush()
+        gameAudio.pause()
         current?.onHide()
         resumed = false
+        accessHandler.removeCallbacks(accessTick)
         if (audioUsed) {
             audio.stopMusic()
             if (audio.isRecording) audio.stopRecording(discard = true)
@@ -269,6 +304,7 @@ class MainActivity : Activity() {
     override fun onDestroy() {
         ProState.listeners -= proListener
         ProSync.signedOutElsewhere = null
+        gameAudio.release()
         if (audioUsed) audio.release()
         super.onDestroy()
     }
@@ -323,7 +359,7 @@ class MainActivity : Activity() {
         if (next === ThemeEngine.spec) return
         ThemeEngine.apply(next)
         LaunchLook.remember(this, next)
-        rootView.background = BackdropDrawable(resources.displayMetrics.density)
+        rootView.background = CinemaBackdrop(this, resources.displayMetrics.density, current?.visualScene ?: CinemaScene.HOME)
         paintSystemBars()
         refresh()
     }
@@ -625,8 +661,18 @@ class MainActivity : Activity() {
 
     private fun render(animate: Boolean = true, forward: Boolean = true, notify: Boolean = true) {
         val screen = current ?: return
+        if (screen.mafiaArea && !ProState.mafiaAllowed) {
+            kit.dismissDialogs()
+            if (audioUsed) { audio.stopCue(); audio.stopMusic() }
+            screen.onHide()
+            stack += ProScreen(this, "مافیا به اشتراک Pro نیاز دارد؛ تست ۱۰ دقیقه‌ای فقط یک بار پس از ثبت‌نام فعال می‌شود.")
+            render(animate, forward, notify)
+            return
+        }
         pageFade?.cancel()
         pageFade = null
+        CinemaLook.scene = screen.visualScene
+        rootView.background = CinemaBackdrop(this, resources.displayMetrics.density, screen.visualScene)
         val view = screen.build()
         restoreScroll(view, screen.savedScroll)
         if (!animate || !settings.general.animations) {
@@ -674,6 +720,7 @@ class MainActivity : Activity() {
                 }
             })
         }
+        if (resumed) gameAudio.enter(screen.audioScope)
         if (notify && resumed) screen.onShow()
         updateStickyAds()
     }

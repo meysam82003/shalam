@@ -8,6 +8,7 @@ import android.widget.LinearLayout
 
 /** «راوی مافیا» start page (source: startup screen). */
 class MafiaHomeScreen(host: MainActivity) : Screen(host) {
+    override val mafiaArea: Boolean get() = true
     override val adZone: String? get() = "hub"
     override val featureKey: String get() = "mafia"
     override fun build(): View = run { MafiaRoleRegistry.activate(null); page() }
@@ -25,12 +26,12 @@ class MafiaHomeScreen(host: MainActivity) : Screen(host) {
             addView(resumeStrip(seal(if (g.isDay) MafiaGlyph.CROWN else MafiaGlyph.MOON, null, 46), "ادامهٔ بازی — ${g.phaseTitle}",
                 "${kit.n(g.alive.size)} نفر در بازی  •  ${kit.n(g.out.size)} نفر بیرون") { host.push(MafiaGameScreen(host, g.id)) })
         }
-        addView(kit.listGroup(listOf(
-            row(MafiaGlyph.SCROLL, "سناریوها", "${kit.n(MafiaScenarios.builtin.size)} سناریو + سناریوی خودت") { host.push(MafiaScenarioListScreen(host, browse = true)) },
-            row(MafiaGlyph.MASK, "نقش‌ها و قوانین", "${kit.n(MafiaRoleRegistry.available().size)} نقش • افزودن و ویرایش") { host.push(MafiaRolesScreen(host)) },
-            row(MafiaGlyph.CARDS, "کارت حرکت آخر", "${kit.n(MafiaLastCard.values().size)} کارت") { host.push(MafiaCardsScreen(host)) },
-            row(MafiaGlyph.SCROLL, "گروه بازی", "بازیکنان و نقش‌های ذخیره‌شده") { host.push(MafiaGroupsScreen(host)) }
-        ), "بازی و نقش‌ها"))
+        addView(kit.grid(2, listOf(
+            tile(MafiaGlyph.SCROLL, "سناریوها", "${kit.n(MafiaScenarios.builtin.size)} سناریو + سناریوی خودت") { host.push(MafiaScenarioListScreen(host, browse = true)) },
+            tile(MafiaGlyph.MASK, "نقش‌ها و قوانین", "${kit.n(MafiaRoleRegistry.available().size)} نقش • افزودن و ویرایش") { host.push(MafiaRolesScreen(host)) },
+            tile(MafiaGlyph.CARDS, "کارت حرکت آخر", "${kit.n(MafiaLastCard.values().size)} کارت") { host.push(MafiaCardsScreen(host)) },
+            tile(MafiaGlyph.SCROLL, "گروه بازی", "بازیکنان و نقش‌های ذخیره‌شده") { host.push(MafiaGroupsScreen(host)) }
+        ), 10), kit.spaced(12))
         addView(kit.listGroup(listOf(
             row(MafiaGlyph.HOURGLASS, "بازی‌های گذشته", "ادامه و گزارش بازی") { host.push(MafiaGamesScreen(host)) },
             row(MafiaGlyph.BOOK, "قوانین بازی", "روند شب و روز") { host.push(MafiaRulesScreen(host)) },
@@ -43,12 +44,9 @@ class MafiaHomeScreen(host: MainActivity) : Screen(host) {
 
     private fun hero(): View = kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
         layoutParams = kit.spaced(8)
-        addView(FrameLayout(host).apply {
-            addView(roleCard(MafiaRole.GODFATHER).apply { rotation = 8f }, FrameLayout.LayoutParams(kit.dp(108), kit.dp(153), Gravity.CENTER).apply { leftMargin = kit.dp(110) })
-            addView(roleCard(MafiaRole.DETECTIVE).apply { rotation = -8f }, FrameLayout.LayoutParams(kit.dp(108), kit.dp(153), Gravity.CENTER).apply { rightMargin = kit.dp(110) })
-            addView(roleCard(MafiaRole.CITIZEN), FrameLayout.LayoutParams(kit.dp(120), kit.dp(170), Gravity.CENTER))
-        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(186)))
-        addView(kit.text("گردانندگی شب و روز، رأی‌گیری و کارت حرکت آخر", TextStyle.LABEL, Royal.muted, Gravity.CENTER), kit.spaced(12))
+        addView(CinemaArtView(host, CinemaScene.MAFIA), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(160)))
+        addView(kit.text("راوی مافیا", TextStyle.DISPLAY, Royal.goldLight, Gravity.CENTER))
+        addView(kit.text("گردانندگی شب و روز، رأی‌گیری و کارت حرکت آخر", TextStyle.LABEL, Royal.muted, Gravity.CENTER), kit.spaced(10))
     }
 
     private fun tile(glyph: MafiaGlyph, title: String, caption: String, onClick: () -> Unit): View =
@@ -67,6 +65,7 @@ class MafiaHomeScreen(host: MainActivity) : Screen(host) {
 
 /** «نقش‌ها و قوانین»: every role card with its rules, filtered by side; add a role or edit any role's rules. */
 class MafiaRolesScreen(host: MainActivity) : Screen(host) {
+    override val mafiaArea: Boolean get() = true
     private var side = MafiaSide.CITY
     private var query = ""
     private var grid: CardGrid? = null
@@ -116,6 +115,7 @@ class MafiaRolesScreen(host: MainActivity) : Screen(host) {
 
 /** «کارت حرکت آخر» catalogue. */
 class MafiaCardsScreen(host: MainActivity) : Screen(host) {
+    override val mafiaArea: Boolean get() = true
     override val featureKey: String get() = "mafia_last_cards"
     override fun build(): View = scaffold("کارت حرکت آخر", "${kit.n(MafiaLastCard.values().size)} کارت") {
         addView(kit.text("بازیکنی که در روز از بازی خارج می‌شود، در صورت داشتن حق انتخاب، یکی از کارت‌های برعکس را برمی‌دارد.", TextStyle.LABEL, Royal.muted, Gravity.CENTER), kit.spaced(10))
@@ -132,6 +132,7 @@ class MafiaCardsScreen(host: MainActivity) : Screen(host) {
 
 /** Saved and finished narrator games. */
 class MafiaGamesScreen(host: MainActivity) : Screen(host) {
+    override val mafiaArea: Boolean get() = true
     override fun build(): View = scaffold("بازی‌های گذشته", "ادامه یا گزارش بازی") {
         val games = host.mafia.games().filter { it.started }
         if (games.isEmpty()) {
@@ -168,6 +169,7 @@ class MafiaGamesScreen(host: MainActivity) : Screen(host) {
 
 /** «گروه بازی»: saved line-ups with roles, options and cards; starting one goes straight to distribution. */
 class MafiaGroupsScreen(host: MainActivity) : Screen(host) {
+    override val mafiaArea: Boolean get() = true
     override val featureKey: String get() = "mafia_groups"
     override fun build(): View = scaffold("گروه بازی", "بازیکنان، نقش‌ها و کارت‌های ذخیره‌شده",
         bottom = kit.button("ساخت گروه جدید", ButtonKind.PRIMARY, RoyalIcon.PLUS, 52) { create() }) {
@@ -279,6 +281,7 @@ class MafiaGroupsScreen(host: MainActivity) : Screen(host) {
 
 /** Short guide to the narrator flow. */
 class MafiaRulesScreen(host: MainActivity) : Screen(host) {
+    override val mafiaArea: Boolean get() = true
     override fun build(): View = scaffold("قوانین بازی", "روند گردانندگی") {
         listOf(
             "طراحی بازی" to "بازیکنان را انتخاب کنید، نقش‌ها و قابلیت‌هایشان را تنظیم کنید و در صورت تمایل کارت‌های حرکت آخر را اضافه کنید. تعداد نقش‌ها باید با تعداد بازیکنان برابر باشد و نقش‌های شهروندی بیشتر از مافیا باشند.",

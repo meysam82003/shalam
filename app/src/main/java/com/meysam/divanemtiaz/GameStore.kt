@@ -628,6 +628,7 @@ object GameCodec {
         put("updatedAt", l.updatedAt)
         put("finished", l.finished)
         put("avatar", l.avatar)
+        put("pastGames", JSONArray(l.pastGames))
         put("config", encodeLeagueConfig(l.config))
         put("rules", encodeRules(l.rules))
         put("teams", JSONArray().apply { l.teams.forEach { put(encodeSide(it)) } })
@@ -680,7 +681,8 @@ object GameCodec {
             },
             updatedAt = o.optLong("updatedAt", id),
             finished = o.optBoolean("finished", false),
-            avatar = o.optInt("avatar", -1)
+            avatar = o.optInt("avatar", -1),
+            pastGames = o.optJSONArray("pastGames")?.let { a -> List(a.length()) { a.optLong(it) } }.orEmpty()
         )
     }
 

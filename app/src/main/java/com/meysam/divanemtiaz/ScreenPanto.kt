@@ -16,22 +16,24 @@ object PantoLook {
     const val GOLD_TINT = 0xFFC4801C.toInt()
 }
 
+/** Gold rounds retain their state while their face follows the selected light/dark material. */
+private fun RoyalKit.goldenPanel(radius: Float) = android.graphics.drawable.GradientDrawable(
+    android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+    if (ThemeEngine.spec.light) intArrayOf(0xFFFFF4D5.toInt(), 0xFFF1DCAA.toInt())
+    else intArrayOf(0xFF8A6418.toInt(), 0xFF3E2C08.toInt())
+).apply { cornerRadius = dpf(radius); setStroke(dp(2), Royal.goldLight) }
+
 /** The word bank, loaded once from the app's assets (first use may load it in the background). */
 fun Screen.pantoBank(): PantoBank = PantoBank.get { host.assets.open(PantoBank.ASSET) }
 
 /** Starts loading the bank off the main thread so the first match opens instantly. */
 fun Screen.preloadPantoBank() { Thread { runCatching { pantoBank() } }.start() }
 
-private val Screen.pantoSounds: GameSounds get() = PantoSoundHolder.get(host)
-
-private object PantoSoundHolder {
-    private var sounds: GameSounds? = null
-    fun get(host: MainActivity): GameSounds = sounds ?: GameSounds { host.spy.sound() }.also { sounds = it }
-}
+private val Screen.pantoSounds: GameAudio.Effects get() = host.gameAudio.panto
 
 /** Big emblem card used at the top of the game pages. */
 fun Screen.gameHero(glyph: MafiaGlyph, tint: Int, title: String, caption: String, action: View? = null): View =
-    hubBanner(RoleSealView(host, glyph, tint), title, caption, action)
+    cinemaHero(if (glyph == SpyLook.glyph) CinemaScene.SPY else CinemaScene.THEATRE, title, caption, action = action)
 
 /** Square menu tile (icon, title, caption). */
 fun Screen.menuTile(icon: RoyalIcon, title: String, caption: String, onClick: () -> Unit): View = kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
@@ -48,6 +50,8 @@ fun Screen.menuTile(icon: RoyalIcon, title: String, caption: String, onClick: ()
 
 /** «پانتومیم» home. */
 class PantoHomeScreen(host: MainActivity) : Screen(host) {
+    override val visualScene: CinemaScene get() = CinemaScene.THEATRE
+    override val audioScope: String get() = "panto"
     override val adZone: String? get() = "hub"
     override val featureKey: String get() = "panto"
     override fun build(): View {
@@ -66,13 +70,15 @@ class PantoHomeScreen(host: MainActivity) : Screen(host) {
                 kit.listRow(kit.iconChip(RoyalIcon.HISTORY), "مسابقه‌های گذشته", "${kit.n(host.panto.index().size)} مسابقه") { host.push(PantoMatchesScreen(host)) },
                 kit.listRow(kit.iconChip(RoyalIcon.RULES), "قوانین", "قوانین مشترک و هر نوع مسابقه") { host.push(PantoRulesScreen(host)) }
             ), "ابزارها"))
-            addView(kit.switchRow("صدای بازی", "صدای پاسخ درست و نادرست، ثانیه‌های آخر و زنگ پایان", host.spy.sound()) { host.spy.setSound(it) })
+            addView(kit.button("صداها و موسیقی پس‌زمینه", ButtonKind.SECONDARY, RoyalIcon.PLAY) { host.push(GameAudioSettingsScreen(host, "panto")) })
         }
     }
 }
 
 /** «مسابقهٔ جدید»: match type, teams and their people, rounds, time and the referee. */
 class PantoSetupScreen(host: MainActivity) : Screen(host) {
+    override val visualScene: CinemaScene get() = CinemaScene.THEATRE
+    override val audioScope: String get() = "panto"
     private var mode = PantoMode.NORMAL
     private val teams = ArrayList<PantoTeam>()
     private val defaults = host.panto.defaults()
@@ -189,10 +195,9 @@ class PantoSetupScreen(host: MainActivity) : Screen(host) {
             if (!mode.individual) {
                 addView(kit.hgap(6))
                 addView(kit.iconButton(RoyalIcon.FLAG, "انتخاب از تیم‌های ثبت‌شده", ButtonKind.CHIP, 40) {
-                    rosterPicker(true) { e ->
-                        val taken = teams.filterIndexed { j, _ -> j != i }.flatMap { it.members }.toSet()
+                    rosterPicker(true, unavailable = teams.filterIndexed { j, _ -> j != i }.flatMap { it.members + it.name }.toSet()) { e ->
                         t.name = e.name; t.avatar = e.avatar
-                        t.members.clear(); t.members += e.members.filter { it !in taken }
+                        t.members.clear(); t.members += e.members
                         if (t.members.isNotEmpty()) t.size = maxOf(2, t.members.size)
                         host.refresh()
                     }
@@ -200,11 +205,8 @@ class PantoSetupScreen(host: MainActivity) : Screen(host) {
             }
             addView(kit.hgap(6))
             addView(kit.iconButton(RoyalIcon.PLAYERS, "اعضای ${t.name}", ButtonKind.CHIP_GOLD, 40) {
-                val taken = teams.filterIndexed { j, _ -> j != i }.flatMap { it.members }.toSet()
-                memberPicker(t.members, if (mode.individual) 1 else 999, if (mode.individual) "شرکت‌کننده" else "اعضای ${t.name}") { names ->
-                    val clash = names.filter { it in taken }
-                    if (clash.isNotEmpty()) kit.toast("${clash.joinToString("، ")} در تیم دیگری است")
-                    t.members.clear(); t.members += names.filter { it !in taken }
+                memberPicker(t.members, if (mode.individual) 1 else 999, if (mode.individual) "شرکت‌کننده" else "اعضای ${t.name}", unavailable = teams.filter { it !== t }.flatMap { it.members }.toSet()) { names ->
+                    t.members.clear(); t.members += names
                     if (t.members.isNotEmpty()) t.size = t.members.size
                     if (mode.individual && t.members.size == 1) {
                         t.name = t.members.first()
@@ -233,6 +235,8 @@ class PantoSetupScreen(host: MainActivity) : Screen(host) {
 
 /** Base of the match pages: loads and saves the match. */
 abstract class PantoScreen(host: MainActivity, protected val matchId: Long) : Screen(host) {
+    override val visualScene: CinemaScene get() = CinemaScene.THEATRE
+    override val audioScope: String get() = "panto"
     override val compactHeader: Boolean get() = true
 
     protected lateinit var m: PantoMatch
@@ -325,8 +329,7 @@ class PantoBoardScreen(host: MainActivity, matchId: Long) : PantoScreen(host, ma
 
     private fun roundBanner(): View = kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
         background = PanelDrawable(kit.density, if (m.golden) PanelStyle.SELECTED else PanelStyle.RAISED, 20f)
-        if (m.golden) background = android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(0xFF7A5A12.toInt(), 0xFF3A2A08.toInt())).apply { cornerRadius = kit.dpf(20f); setStroke(kit.dp(2), Royal.goldLight) }
+        if (m.golden) background = kit.goldenPanel(20f)
         setPadding(kit.dp(12), kit.dp(12), kit.dp(12), kit.dp(14))
         layoutParams = kit.spaced(10)
         if (m.golden) addView(kit.icon(RoyalIcon.CROWN, Royal.goldLight, 34))
@@ -397,8 +400,7 @@ class PantoCategoryScreen(host: MainActivity, matchId: Long) : PantoScreen(host,
     }
 
     private fun goldenCard(o: PantoEngine.Option): View = kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
-        background = android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(0xFF8A6418.toInt(), 0xFF3E2C08.toInt())).apply { cornerRadius = kit.dpf(18f); setStroke(kit.dp(2), Royal.goldLight) }
+        background = kit.goldenPanel(18f)
         setPadding(kit.dp(12), kit.dp(12), kit.dp(12), kit.dp(14))
         layoutParams = kit.spaced(8)
         alpha = if (o.enabled) 1f else 0.45f
@@ -481,8 +483,8 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
                 val active = if (m.mode == PantoMode.JANGI) m.inside.getOrNull(t.jangiPos) else t.team
                 addView(kit.grid(minOf(6, m.teams.size).coerceAtLeast(3), m.teams.indices.map { turnChip(it, it == active) }, 6), kit.spaced(10))
             }
-            addView(timerCard(t))
             addView(wordCard(t))
+            addView(timerCard(t))
             if (m.mode == PantoMode.SPEEDY || m.mode == PantoMode.SEDA) {
                 addView(kit.text("کلمهٔ ${kit.n((t.index + 1).coerceAtMost(t.words.size))} از ${kit.n(t.words.size)} • ${kit.n(t.correct)} درست", TextStyle.BODY_BOLD, Royal.turquoiseLight, Gravity.CENTER), kit.spaced(8))
             }
@@ -512,13 +514,25 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
             runningSource = { timer?.running == true }
             update(t.remainingMs, false)
         }
-        addView(ring, LinearLayout.LayoutParams(kit.dp(if (m.mode == PantoMode.FIVE) 150 else 176), kit.dp(if (m.mode == PantoMode.FIVE) 150 else 176)))
+        addView(kit.horizontal(Gravity.CENTER).apply {
+            addView(kit.weight(kit.vertical(Gravity.CENTER).apply {
+                addView(kit.icon(RoyalIcon.CHECK, Royal.turquoiseLight, 24))
+                addView(kit.text(kit.n(t.correct), TextStyle.HEADING, Royal.ivory, Gravity.CENTER))
+                addView(kit.text("درست", TextStyle.CAPTION, Royal.muted, Gravity.CENTER))
+            }))
+            addView(ring, LinearLayout.LayoutParams(kit.dp(148), kit.dp(148)))
+            addView(kit.weight(kit.vertical(Gravity.CENTER).apply {
+                addView(kit.icon(RoyalIcon.TROPHY, Royal.goldLight, 24))
+                addView(kit.text(kit.n(m.teams[t.team].points), TextStyle.HEADING, Royal.ivory, Gravity.CENTER))
+                addView(kit.text("امتیاز تیم", TextStyle.CAPTION, Royal.muted, Gravity.CENTER))
+            }))
+        }, kit.fill())
     }
 
     private fun wordCard(t: PantoTurn): View = kit.vertical(Gravity.CENTER).apply {
         val golden = t.choice?.golden == true
-        background = if (golden) android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(0xFF8A6418.toInt(), 0xFF3E2C08.toInt())).apply { cornerRadius = kit.dpf(22f); setStroke(kit.dp(2), Royal.goldLight) }
+        val revealed = phase >= 1 && !wordHidden
+        background = if (revealed) CinemaPaperDrawable(kit.density, golden) else if (golden) kit.goldenPanel(22f)
         else PanelDrawable(kit.density, PanelStyle.SELECTED, 22f)
         setPadding(kit.dp(14), kit.dp(18), kit.dp(14), kit.dp(20))
         minimumHeight = kit.dp(150)
@@ -533,12 +547,18 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
             addView(kit.text("اجراکننده: ${m.teams[t.team].performer}", TextStyle.HEADING, Royal.turquoiseLight, Gravity.CENTER))
             addView(kit.text("فقط اجراکننده صفحه را ببیند و «نمایش کلمه» را بزند.", TextStyle.LABEL, Royal.muted, Gravity.CENTER))
         } else {
-            if (golden) addView(kit.text("موضوع طلایی", TextStyle.LABEL_BOLD, Royal.goldLight, Gravity.CENTER))
+            if (golden) addView(kit.text("موضوع طلایی", TextStyle.LABEL_BOLD, 0xFF725019.toInt(), Gravity.CENTER))
             val word = t.word?.shown ?: "—"
-            addView(kit.text(word, TextStyle.DISPLAY, Royal.ivory, Gravity.CENTER).apply {
+            addView(kit.text(word, TextStyle.DISPLAY, 0xFF302217.toInt(), Gravity.CENTER).apply {
                 setTextSize(TypedValue.COMPLEX_UNIT_PX, kit.dpf(if (word.length > 28) 26f else if (word.length > 14) 32f else 40f))
             })
-            t.word?.takeIf { it.cat in PantoCategories.names }?.let { addView(kit.text(PantoCategories.name(it.cat), TextStyle.CAPTION, Royal.muted, Gravity.CENTER)) }
+            t.previousWord?.let { previous ->
+                addView(kit.panel(PanelStyle.FLAT, 12).apply {
+                    addView(kit.text("کلمهٔ اول (فقط نمایش)", TextStyle.CAPTION, Royal.muted, Gravity.CENTER))
+                    addView(kit.text(previous.shown, TextStyle.BODY_BOLD, Royal.goldLight, Gravity.CENTER))
+                }, kit.spaced(8))
+            }
+            t.word?.takeIf { it.cat in PantoCategories.names }?.let { addView(kit.text(PantoCategories.name(it.cat), TextStyle.CAPTION, 0xFF66543A.toInt(), Gravity.CENTER)) }
         }
     }
 
@@ -666,6 +686,7 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
     private fun changeWord() {
         val used = host.panto.used()
         if (PantoEngine.changeWord(m, pantoBank(), host.panto.userWords(), used, Random.Default)) {
+            host.gameAudio.play("panto", "swap")
             host.panto.saveUsed(used)
             m.turn?.remainingMs = timer?.remaining ?: (m.turn?.remainingMs ?: 0)
             wordHidden = false
@@ -800,6 +821,8 @@ class PantoResultScreen(host: MainActivity, matchId: Long) : PantoScreen(host, m
 
 /** «کلمات من»: the players' own words in three levels (add, edit, delete, search). */
 class PantoWordsScreen(host: MainActivity) : Screen(host) {
+    override val visualScene: CinemaScene get() = CinemaScene.THEATRE
+    override val audioScope: String get() = "panto"
     override val featureKey: String get() = "panto_words"
     private var level = 1
     private var query = ""
@@ -866,6 +889,8 @@ class PantoWordsScreen(host: MainActivity) : Screen(host) {
 
 /** Browse the whole bank by category and level, with search (read only). */
 class PantoBankScreen(host: MainActivity) : Screen(host) {
+    override val visualScene: CinemaScene get() = CinemaScene.THEATRE
+    override val audioScope: String get() = "panto"
     private var cat = 1
     private var level = 0
     private var query = ""
@@ -945,6 +970,8 @@ class PantoBankScreen(host: MainActivity) : Screen(host) {
 }
 
 class PantoRulesScreen(host: MainActivity) : Screen(host) {
+    override val visualScene: CinemaScene get() = CinemaScene.THEATRE
+    override val audioScope: String get() = "panto"
     override fun build(): View = scaffold("قوانین پانتومیم", "قوانین مشترک و هر نوع مسابقه") {
         addView(kit.section("قوانین مشترک", RoyalIcon.RULES))
         PantoEngine.commonRules.forEach { addView(kit.text("•  $it", TextStyle.BODY, Royal.ivory), kit.spaced(4)) }
@@ -957,6 +984,8 @@ class PantoRulesScreen(host: MainActivity) : Screen(host) {
 
 /** Past and unfinished matches. */
 class PantoMatchesScreen(host: MainActivity) : Screen(host) {
+    override val visualScene: CinemaScene get() = CinemaScene.THEATRE
+    override val audioScope: String get() = "panto"
     override fun build(): View {
         val list = host.panto.matches()
         return scaffold("مسابقه‌های گذشته", "${kit.n(list.size)} مسابقه") {

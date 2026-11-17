@@ -72,20 +72,25 @@ class MafiaAudio(private val context: Context) {
         if (choice == null || !choice.isSet) return false
         val player = create(choice) ?: return false
         cue = player
+        music?.setVolume(musicVolume * 0.12f, musicVolume * 0.12f)
         player.setVolume(volume, volume)
         player.setOnCompletionListener {
-            if (cue === it) cue = null
+            if (cue === it) { cue = null; restoreMusic() }
             it.release()
             onDone?.invoke()
         }
-        runCatching { player.start() }.onFailure { player.release(); cue = null; return false }
+        player.setOnErrorListener { _, _, _ -> stopCue(); onDone?.invoke(); true }
+        runCatching { player.start() }.onFailure { player.release(); cue = null; restoreMusic(); return false }
         return true
     }
 
     fun stopCue() {
         cue?.let { runCatching { it.stop() }; it.release() }
         cue = null
+        restoreMusic()
     }
+
+    private fun restoreMusic() { runCatching { music?.setVolume(musicVolume, musicVolume) } }
 
     val isPlaying: Boolean get() = runCatching { cue?.isPlaying == true }.getOrDefault(false)
 
@@ -95,7 +100,8 @@ class MafiaAudio(private val context: Context) {
         if (choice == null || !choice.isSet) return
         val player = create(choice) ?: return
         player.isLooping = true
-        player.setVolume(musicVolume, musicVolume)
+        val level = if (cue != null) musicVolume * 0.12f else musicVolume
+        player.setVolume(level, level)
         runCatching { player.start() }.onFailure { player.release(); return }
         music = player
     }

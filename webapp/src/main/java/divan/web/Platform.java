@@ -40,7 +40,7 @@ public final class Platform {
     public static android.os.Bundle metaData() {
         android.os.Bundle b = new android.os.Bundle();
         b.putString("divan.store", or(cfg("store"), "direct"));
-        b.putString("divan.api", or(cfg("api"), "https://httpuser87890.ir/divan/api/index.php"));
+        b.putString("divan.api", or(cfg("api"), "https://divan-emtiaz.ir/divan/api/index.php"));
         b.putString("divan.licenseKey", or(cfg("licenseKey"), ""));
         b.putString("divan.myketKey", "");
         b.putString("divan.tapsellAppId", "");

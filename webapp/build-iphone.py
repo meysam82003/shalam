@@ -2,7 +2,7 @@
 """Writes iPhone.mobileconfig: a Web Clip only (no MDM, certificate, VPN or proxy) that adds «دیوان امتیاز» to the
 home screen and opens the web version (/play/) full screen, like an app. It is the web version, not a native iOS app.
 
-    python3 build-iphone.py [--url https://httpuser87890.ir/play/] [--out build/iPhone.mobileconfig]
+    python3 build-iphone.py [--url https://divan-emtiaz.ir/play/] [--out build/iPhone.mobileconfig]
 
 Unsigned profiles show «Not Verified» on install; sign on the server with the site's own certificate:
     openssl smime -sign -signer cert.pem -inkey key.pem -certfile chain.pem -nodetach -outform der \
@@ -12,7 +12,7 @@ import argparse, base64, os, plistlib, uuid
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ap = argparse.ArgumentParser()
-ap.add_argument('--url', default='https://httpuser87890.ir/play/')
+ap.add_argument('--url', default='https://divan-emtiaz.ir/play/')
 ap.add_argument('--out', default=os.path.join(HERE, 'build', 'iPhone.mobileconfig'))
 args = ap.parse_args()
 

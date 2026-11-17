@@ -196,7 +196,7 @@ class MafiaEngineTest {
         val s = repo.settings()
         assertEquals(45, s.speakTime)
         assertEquals("/x.m4a", s.cue(MafiaCues.NIGHT_START)?.path)
-        assertEquals("mafia_morning_sound", s.cue(MafiaCues.DAY_START)?.builtin)
+        assertNull(s.cue(MafiaCues.DAY_START))
         assertTrue(JSONObject(MafiaCodec.encodeGame(g).toString()).has("players"))
     }
 

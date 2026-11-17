@@ -77,7 +77,7 @@ final class Stores
  */
 final class PaymentBridge
 {
-    public const DEFAULT_URL = 'https://pay.httpuser87890.ir/';
+    public const DEFAULT_URL = 'https://pay.divan-emtiaz.ir/';
     private const TAG = 'DIVAN-BRIDGE-V1';
 
     public static function cfg(): array
@@ -94,7 +94,7 @@ final class PaymentBridge
     }
 
     /** «bridge» or «direct» for one store. */
-    public static function route(string $store): string { return (self::cfg()['route_' . $store] ?? 'direct') === 'bridge' ? 'bridge' : 'direct'; }
+    public static function route(string $store): string { return App::directPayments() ? 'direct' : ((self::cfg()['route_' . $store] ?? 'direct') === 'bridge' ? 'bridge' : 'direct'); }
 
     public static function ready(): bool { return self::validUrl(self::url()) && Settings::secret('bridge_key') !== ''; }
 

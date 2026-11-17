@@ -12,6 +12,16 @@ class SettingsScreen(host: MainActivity, private var tab: Int = TAB_GENERAL) : S
     private var shalamTab = 0
 
     override fun build(): View = scaffold(title = "تنظیمات", subtitle = "همهٔ تغییرات خودکار ذخیره می‌شوند") {
+        if (tab == TAB_GENERAL) addView(kit.panel(PanelStyle.RAISED, 14, 24f).apply {
+            addView(kit.horizontal().apply {
+                addView(kit.iconChip(RoyalIcon.SLIDERS, 48))
+                addView(kit.hgap(12))
+                addView(kit.weight(kit.vertical().apply {
+                    addView(kit.text("دیوان، به سلیقهٔ شما", TextStyle.TITLE, Royal.title))
+                    addView(kit.text("ظاهر، صدا و تنظیمات بازی‌ها", TextStyle.CAPTION, Royal.muted))
+                }))
+            })
+        }, kit.spaced(12))
         addView(kit.chipRail(listOf("عمومی", "شلم", "منفی", "هزارتایی", "دو لو گشنیز", "لیگ", "راوی مافیا", "پانتومیم", "جاسوس").mapIndexed { i, label ->
             kit.chip(label, tab == i, ButtonKind.CHIP_GOLD) { tab = i; host.refresh() }.apply { setPadding(kit.dp(14), kit.dp(4), kit.dp(14), kit.dp(6)) }
         }, tab), kit.spaced(8))
@@ -148,7 +158,11 @@ class SettingsScreen(host: MainActivity, private var tab: Int = TAB_GENERAL) : S
             if (v) { Notices.requestPermission(host); Notices.schedule(host) }
         })
         parent.addView(kit.section("ظاهر برنامه", RoyalIcon.STAR))
-        parent.addView(themeGrid(this), kit.spaced(8))
+        parent.addView(kit.listGroup(listOf(kit.listRow(
+            ThemePreviewView(host, ThemeEngine.spec).apply { layoutParams = LinearLayout.LayoutParams(kit.dp(62), kit.dp(82)) },
+            "سبک «${ThemeEngine.spec.title}»", "شش ظاهر متفاوت؛ انتخاب و پیش‌نمایش",
+            onClick = { host.push(ThemeScreen(host)) }
+        ))), kit.spaced(8))
         parent.addView(kit.section("تجربهٔ برنامه", RoyalIcon.SETTINGS))
         parent.addView(kit.switchRow("بازخورد لمسی", "لرزش کوتاه هنگام لمس دکمه‌ها", g.haptic) { v -> host.updateSettings { it.copy(general = it.general.copy(haptic = v)) } })
         parent.addView(kit.switchRow("انیمیشن‌های روان", "جابه‌جایی نرم صفحه‌ها، پنجره‌ها و دکمه‌ها", g.animations) { v -> host.updateSettings { it.copy(general = it.general.copy(animations = v)) } })

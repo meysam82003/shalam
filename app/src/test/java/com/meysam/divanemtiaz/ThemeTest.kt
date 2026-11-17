@@ -49,17 +49,34 @@ class ThemeTest {
         assertTrue(Themes.all.map { it.button }.toSet().size >= 4)
         assertTrue(Themes.all.map { it.frame }.toSet().size >= 3)
         assertEquals(6, Themes.all.map { it.pattern }.toSet().size)
-        assertEquals(3, Themes.all.count { it.light })
+        assertEquals(2, Themes.all.count { it.light })
+    }
+
+    @Test fun redesignedLayoutsKeepAllSixSavedStyleIds() {
+        assertEquals(setOf("cobalt", "copper", "iranic", "emerald", "ivory", "neon"), Themes.all.map { it.id }.toSet())
+        assertEquals(ThemeLayout.values().toSet(), Themes.all.map { it.layout }.toSet())
+        Themes.all.forEach { theme ->
+            val saved = AppSettings(general = GeneralSettings(theme = theme.id))
+            val restored = GameCodec.decodeSettings(GameCodec.encodeSettings(saved))
+            assertEquals(theme, Themes.byId(restored.general.theme))
+        }
+    }
+
+    @Test fun layoutGeometryKeepsPaperAngularAndPalmSoft() {
+        assertTrue(DivanDesign.radius(Themes.IRANIC, 24f) <= 3f)
+        assertTrue(DivanDesign.radius(Themes.COPPER, 24f) <= 2f)
+        assertTrue(DivanDesign.radius(Themes.EMERALD, 24f) > 30f)
+        assertTrue(DivanDesign.radius(Themes.NEON, 24f) > DivanDesign.radius(Themes.COBALT, 24f))
     }
 
     @Test fun textIsReadableOnCardsInEveryStyle() {
         Themes.all.forEach { t ->
             val card = over(t.surface, t.bg[1])
             assertTrue("${t.id} text", contrast(t.text, card) >= 7.0)
-            assertTrue("${t.id} muted", contrast(t.muted, card) >= 3.6)
+            assertTrue("${t.id} muted", contrast(t.muted, card) >= 4.5)
             assertTrue("${t.id} heading", contrast(t.accentText, card) >= 4.5)
             assertTrue("${t.id} title", contrast(t.titleColor, over(0, t.bg[0]) or (0xFF shl 24)) >= 7.0)
-            assertTrue("${t.id} primary button", contrast(t.primaryText, t.primary[1]) >= 2.4)
+            t.primary.forEach { stop -> assertTrue("${t.id} primary button", contrast(t.primaryText, stop) >= 4.5) }
         }
     }
 

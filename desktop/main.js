@@ -7,7 +7,7 @@ const { pathToFileURL } = require('url');
 
 const ROOT = path.join(__dirname, 'play');
 const ORIGIN = 'app://divan';
-const API_HOSTS = ['https://httpuser87890.ir/*', 'https://www.httpuser87890.ir/*'];
+const API_HOSTS = ['https://divan-emtiaz.ir/*', 'https://www.divan-emtiaz.ir/*'];
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } }]);
 

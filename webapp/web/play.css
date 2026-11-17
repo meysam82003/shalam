@@ -52,3 +52,15 @@ textarea.field { white-space: pre-wrap; overflow-y: auto; }
 #crash b { display: block; color: #F5868C; font-size: 18px; margin-bottom: 6px; }
 #crash .msg { color: #7487AE; font-size: 12px; direction: ltr; word-break: break-word; }
 #crash button { margin-top: 14px; padding: 12px 28px; border: 0; border-radius: 999px; font: 700 15px Vazir, Tahoma, sans-serif; color: #1A1206; background: linear-gradient(100deg, #FBE3A6, #E6BE6A 45%, #B1832F); cursor: pointer; }
+
+/* Divan 5.7 entrance: compact mark, matching the native app. */
+:root{--lb1:#091827;--lb2:#091827;--lb3:#091827;--ltitle:#F2F7FC;--lgold:#72DDF1;--lmuted:#A4BACB;--ldim:#A4BACB}
+.splash .divan-mark{width:132px;height:132px;margin-bottom:24px;color:var(--lgold);animation:none}
+
+@media (min-width:640px) and (min-height:560px){html:not(.app-window) #app{border-radius:24px;box-shadow:0 0 0 1px color-mix(in srgb,var(--lgold) 20%,transparent),0 24px 80px #0005}}
+#loading{background:linear-gradient(180deg,var(--lb1),var(--lb2),var(--lb3))}
+.toast{background:var(--lb1);color:var(--ltitle);box-shadow:0 0 0 1px var(--lgold),0 12px 30px #0003}
+#loading .divan-mark{aspect-ratio:1 / 1}
+
+/* Cinematic native entrance palette. */
+:root{--lb1:#020F10;--lb2:#020F10;--lb3:#020F10;--ltitle:#FFF5DD;--lgold:#F2CA79;--lmuted:#B2C8BF;--ldim:#B2C8BF}

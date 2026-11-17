@@ -34,6 +34,7 @@ private val Screen.spySounds: GameSounds get() = spySoundsHolder ?: GameSounds {
 
 /** «جاسوس» home: players, spies and time, the words, and the start. */
 class SpyHomeScreen(host: MainActivity) : Screen(host) {
+    override val visualScene: CinemaScene get() = CinemaScene.SPY
     override val adZone: String? get() = "hub"
     override val featureKey: String get() = "spy"
     /** People chosen as players (optional; otherwise «بازیکن ۱»، «بازیکن ۲»…). */
@@ -114,6 +115,7 @@ class SpyHomeScreen(host: MainActivity) : Screen(host) {
 
 /** Hidden cards passed around: each player touches his card, sees his role, and covers it again. */
 class SpyRevealScreen(host: MainActivity, private val gameId: Long) : Screen(host) {
+    override val visualScene: CinemaScene get() = CinemaScene.SPY
     override val compactHeader: Boolean get() = true
 
     override fun build(): View {
@@ -130,7 +132,8 @@ class SpyRevealScreen(host: MainActivity, private val gameId: Long) : Screen(hos
                 addView(kit.hgap(10))
                 addView(kit.text(g.players[i], TextStyle.TITLE, Royal.goldLight))
             })
-            addView(card(g, i), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(360)))
+            addView(kit.progress(i.toFloat() / g.players.size.coerceAtLeast(1), SpyLook.TINT, 4), kit.spaced(12).apply { height = kit.dp(4) })
+            addView(secretDeck(card(g, i)), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(360)))
             addView(kit.text(if (g.revealed) "بعد از دیدن، کارت را بپوشانید تا نفر بعد نقش شما را نبیند." else "دستگاه را به ${g.players[i]} بدهید.", TextStyle.LABEL, Royal.muted, Gravity.CENTER), kit.spaced(10))
         }
     }
@@ -151,8 +154,8 @@ class SpyRevealScreen(host: MainActivity, private val gameId: Long) : Screen(hos
             addView(RoleSealView(host, SpyLook.glyph, 0xFFA62B35.toInt()), LinearLayout.LayoutParams(kit.dp(120), kit.dp(120)))
             addView(kit.gap(12))
             addView(kit.text("نقش شما: جاسوس", TextStyle.DISPLAY, 0xFFFFD0D4.toInt(), Gravity.CENTER).apply { setTextSize(TypedValue.COMPLEX_UNIT_PX, kit.dpf(36f)) })
-            if (g.spyHint) addView(kit.text("دستهٔ کلمه: ${g.category.title}", TextStyle.HEADING, Royal.goldLight, Gravity.CENTER))
-            addView(kit.text("کلمه را نمی‌دانید؛ از سؤال‌ها حدسش بزنید و لو نروید.", TextStyle.LABEL, Royal.ivory, Gravity.CENTER))
+            if (g.spyHint) addView(kit.text("دستهٔ کلمه: ${g.category.title}", TextStyle.HEADING, 0xFFFFDF98.toInt(), Gravity.CENTER))
+            addView(kit.text("کلمه را نمی‌دانید؛ از سؤال‌ها حدسش بزنید و لو نروید.", TextStyle.LABEL, 0xFFFFE3E8.toInt(), Gravity.CENTER))
         } else {
             background = PanelDrawable(kit.density, PanelStyle.SELECTED, 26f)
             addView(kit.text("کلمهٔ مخفی", TextStyle.HEADING, Royal.turquoiseLight, Gravity.CENTER))
@@ -165,6 +168,7 @@ class SpyRevealScreen(host: MainActivity, private val gameId: Long) : Screen(hos
 
 /** Countdown of the questioning, the bell at the end, and how the game ended. */
 class SpyTimerScreen(host: MainActivity, private val gameId: Long) : Screen(host) {
+    override val visualScene: CinemaScene get() = CinemaScene.SPY
     override val compactHeader: Boolean get() = true
 
     private var timer: Countdown? = null
@@ -313,6 +317,7 @@ class SpyTimerScreen(host: MainActivity, private val gameId: Long) : Screen(host
 
 /** Who the spies were, the word, and the winning side. */
 class SpyResultScreen(host: MainActivity, private val gameId: Long) : Screen(host) {
+    override val visualScene: CinemaScene get() = CinemaScene.SPY
     override fun build(): View {
         val g = host.spy.game(gameId) ?: return scaffold("جاسوس") {}
         val spiesWin = g.spiesWin == true
@@ -342,6 +347,7 @@ class SpyResultScreen(host: MainActivity, private val gameId: Long) : Screen(hos
 
 /** Word lists by category: select / deselect, search, and the players' own words. */
 class SpyWordsScreen(host: MainActivity) : Screen(host) {
+    override val visualScene: CinemaScene get() = CinemaScene.SPY
     override val featureKey: String get() = "spy_words"
     private var cat = SpyCategory.PLACE
     private var query = ""
@@ -430,6 +436,7 @@ class SpyWordsScreen(host: MainActivity) : Screen(host) {
 }
 
 class SpyRulesScreen(host: MainActivity) : Screen(host) {
+    override val visualScene: CinemaScene get() = CinemaScene.SPY
     override fun build(): View = scaffold("قوانین جاسوس", "روش بازی") {
         SpyEngine.rules.forEach { addView(kit.panel(PanelStyle.FLAT, 12).apply { layoutParams = kit.spaced(6); addView(kit.text(it, TextStyle.BODY, Royal.ivory)) }) }
     }

@@ -80,13 +80,13 @@ class RingTimerView(context: Context) : View(context) {
             canvas.drawCircle(cx, cy, size / 2f, paint)
             paint.shader = null
             // Face of the dial.
-            paint.shader = RadialGradient(cx, cy - r * 0.3f, r * 1.2f, intArrayOf(Royal.alpha(t.raised, 0.95f), Royal.alpha(t.raisedLow, 0.95f)), null, Shader.TileMode.CLAMP)
+            paint.shader = RadialGradient(cx, cy - r * 0.3f, r * 1.2f, intArrayOf(Royal.alpha(CinemaLook.surface(t), 0.95f), Royal.alpha(t.bg[0], 0.95f)), null, Shader.TileMode.CLAMP)
             canvas.drawCircle(cx, cy, r - stroke * 0.9f, paint)
             paint.shader = null
             // Minute marks.
             paint.style = Paint.Style.STROKE
             paint.strokeCap = Paint.Cap.ROUND
-            for (i in 0 until 60) {
+            for (i in 0 until 0) {
                 val a = Math.PI * 2 * i / 60 - Math.PI / 2
                 val major = i % 5 == 0
                 val r1 = r + stroke * 0.95f
@@ -138,7 +138,7 @@ class RingTimerView(context: Context) : View(context) {
         paint.typeface = RoyalFonts.get(context, true)
         val text = if (compact) PersianText.digits(seconds) else clockText(ms)
         val pulse = if (alert && isRunning()) 1f + 0.05f * sin(SystemClock.uptimeMillis() / 160.0).toFloat() else 1f
-        paint.textSize = size * (if (compact) 0.34f else 0.235f) * pulse
+        paint.textSize = size * (if (compact) 0.34f else 0.25f) * pulse
         paint.color = if (alert) Royal.alert else Royal.title
         val fm = paint.fontMetrics
         val textY = if (compact || label.isBlank()) cy - (fm.ascent + fm.descent) / 2f else cy - (fm.ascent + fm.descent) / 2f - size * 0.04f
