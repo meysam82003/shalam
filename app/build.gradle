@@ -7,7 +7,7 @@ def releaseKeystore = System.getenv('DIVAN_KEYSTORE_FILE')
 
 // Values for the Pro subscription; none of them is secret (public keys and addresses).
 def setting = { String name, String env -> ((project.findProperty(name) ?: System.getenv(env) ?: '') as String).trim() }
-def divanApi = setting('divan.api', 'DIVAN_API') ?: 'https://httpuser87890.ir/divan/api/index.php'
+def divanApi = setting('divan.api', 'DIVAN_API') ?: 'https://divan-emtiaz.ir/divan/api/index.php'
 // Public key of the subscription server's certificates (from /v1/keys of the live server, kid 1ce0e85fcdca4bfb), pinned so
 // a key swapped in the phone's storage can never sign a forged Pro certificate. A property or variable overrides it.
 def divanLicenseKey = setting('divan.licenseKey', 'DIVAN_LICENSE_KEY') ?: 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAw7JEk5pLY5jqNXNBaOf5iDrcZVgl0II2znwXp3COiBI2CophSEM2dM3lui9DZ8PALWoBVhcsJ3i5ckGMmeiXEm7t9qKeNFPNRV+1eSBDV7M0uqlLNl89tN/iC84abqkeKhR+2GDcGHSxrrNWHW565nZ0aOVNF4p2+9h7ro1jiCt+SzEFpRWSZKmfoROFqApirTVROf26A7Uisn7LZjMDUZ8oH7pB+xZYMWLN3rYCW7ov3lNZt81Tjl1jkYnT08lV+z87f0bmKpCWckplVGdKIDdko1e/HLdqnE8JtC3UTpcf4KScGYoUFLuQSKCl5m9zXfwp6QjjFDbWVmF/2Fx45wIDAQAB'
@@ -33,8 +33,8 @@ android {
         applicationId 'com.meysam.divanemtiaz'
         minSdk 21
         targetSdk 35
-        versionCode 24
-        versionName '5.5.1'
+        versionCode 25
+        versionName '5.6.0'
         manifestPlaceholders = basePlaceholders
 
         testInstrumentationRunner 'android.test.InstrumentationTestRunner'

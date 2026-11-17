@@ -25,7 +25,7 @@ class AboutScreen(host: MainActivity) : Screen(host) {
 
 از اینکه «دیوان امتیاز» را برای دورهمی‌هایتان برگزیده‌اید صمیمانه سپاسگزاریم. این برنامه با عشق به بازی‌های اصیل ایرانی و برای آسوده‌تر شدن داوری و ثبت امتیاز ساخته شده تا شما فارغ از حساب و کتاب، از کنار هم بودن لذت ببرید.
 
-همهٔ بازی‌های دیوان امتیاز بدون اینترنت و بدون حساب کاربری کار می‌کنند و امتیازها، بازیکنان و تاریخچه فقط روی گوشی خودتان می‌مانند. حساب کاربری اختیاری است و فقط برای نگهداری اشتراک Pro به کار می‌رود؛ شماره تلفن نمی‌خواهیم. اگر تبلیغی نمایش داده شود، فقط برای کاربران رایگان، با برچسب «تبلیغات» و هرگز وسط بازی است. اگر در جایی کم‌وکاستی دیدید، پیشاپیش پوزش می‌خواهیم و قول می‌دهیم با کمک نظرات ارزشمند شما هر روز بهترش کنیم.
+بازی‌های امتیازی دیوان امتیاز بدون اینترنت و بدون حساب کاربری کار می‌کنند؛ مافیا به Pro نیاز دارد و با ثبت‌نام ۱۰ دقیقه تست دارد و امتیازها، بازیکنان و تاریخچه فقط روی گوشی خودتان می‌مانند. حساب کاربری اختیاری است و فقط برای نگهداری اشتراک Pro به کار می‌رود؛ شماره تلفن نمی‌خواهیم. اگر تبلیغی نمایش داده شود، فقط برای کاربران رایگان، با برچسب «تبلیغات» و هرگز وسط بازی است. اگر در جایی کم‌وکاستی دیدید، پیشاپیش پوزش می‌خواهیم و قول می‌دهیم با کمک نظرات ارزشمند شما هر روز بهترش کنیم.
 
 بزم‌هایتان گرم، دست‌هایتان پربرگ و دلتان شاد باد.""", TextStyle.BODY, Royal.ivory))
         }, kit.spaced(12))
@@ -41,18 +41,21 @@ class AboutScreen(host: MainActivity) : Screen(host) {
             )).forEach { addView(kit.text("•  $it", TextStyle.LABEL, Royal.ivory), kit.spaced(4)) }
         }, kit.spaced(12))
 
+        addView(kit.button("ثبت تبلیغ و اسپانسری", ButtonKind.PRIMARY, RoyalIcon.STAR) {
+            host.push(SponsorshipScreen(host))
+        }, kit.spaced(12))
         addView(kit.section("انتقاد و پیشنهاد", RoyalIcon.EDIT))
         addView(kit.panel(PanelStyle.RAISED).apply {
             addView(kit.text("هر انتقاد، پیشنهاد، گزارش اشکال یا ایده‌ای برای بازی تازه دارید، با کمال میل پذیرای آن هستیم:", TextStyle.BODY, Royal.ivory))
             addView(kit.gap(10))
-            addView(kit.text(EMAIL, TextStyle.HEADING, Royal.goldLight, Gravity.CENTER).apply {
+            addView(kit.text(contact(), TextStyle.HEADING, Royal.goldLight, Gravity.CENTER).apply {
                 layoutDirection = View.LAYOUT_DIRECTION_LTR
                 textDirection = View.TEXT_DIRECTION_LTR
                 setTextIsSelectable(true)
             })
             addView(kit.gap(10))
             addView(kit.horizontal().apply {
-                addView(kit.weight(kit.button("ارسال ایمیل", ButtonKind.PRIMARY, RoyalIcon.SHARE, 46) { sendMail() }))
+                addView(kit.weight(kit.button("ارتباط با ما", ButtonKind.PRIMARY, RoyalIcon.SHARE, 46) { sendMail() }))
                 addView(kit.hgap(8))
                 addView(kit.weight(kit.button("کپی نشانی", ButtonKind.SECONDARY, RoyalIcon.CARDS, 46) { copyMail() }))
             })
@@ -61,19 +64,16 @@ class AboutScreen(host: MainActivity) : Screen(host) {
         addView(kit.text("با سپاس از همراهی شما  •  $APP_VERSION_LABEL", TextStyle.CAPTION, Royal.dim, Gravity.CENTER), kit.spaced(16))
     }
 
+    private fun contact(): String = ProState.config.optString("contact_address", "@Meysam_pardaz").ifBlank { "@Meysam_pardaz" }
+
     private fun sendMail() {
-        val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:$EMAIL")).apply {
-            putExtra(Intent.EXTRA_EMAIL, arrayOf(EMAIL))
-            putExtra(Intent.EXTRA_SUBJECT, "دیوان امتیاز — انتقاد و پیشنهاد ($APP_VERSION_LABEL)")
-        }
-        runCatching { host.startActivity(Intent.createChooser(intent, "ارسال ایمیل")) }
-            .onFailure { copyMail() }
+        openContact(contact())
     }
 
     private fun copyMail() {
         val cm = host.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-        cm?.setPrimaryClip(ClipData.newPlainText("email", EMAIL))
-        kit.toast("نشانی ایمیل کپی شد")
+        cm?.setPrimaryClip(ClipData.newPlainText("contact", contact()))
+        kit.toast("راه ارتباطی کپی شد")
     }
 
     companion object {

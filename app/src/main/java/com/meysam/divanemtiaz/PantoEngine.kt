@@ -158,6 +158,7 @@ class PantoTurn(
     var index: Int = 0,
     var faults: Int = 0,
     var wordChanged: Boolean = false,
+    var previousWord: PantoWord? = null,
     val seconds: Int,
     var remainingMs: Long,
     /** Battle mode: position of the team acting now among the teams still in. */
@@ -380,6 +381,7 @@ object PantoEngine {
         if (t.wordChanged || m.mode != PantoMode.NORMAL) return false
         val c = t.choice ?: return false
         val w = if (c.golden) goldenWord(bank, used, rng) else draw(pool(bank, userWords, c), used, rng) ?: return false
+        t.previousWord = t.word
         t.words[t.index] = w
         t.wordChanged = true
         return true
@@ -590,6 +592,7 @@ object PantoCodec {
             put("turn", JSONObject().apply {
                 put("team", t.team); t.choice?.let { put("cat", it.cat); put("lvl", it.level) }
                 put("words", JSONArray(t.words.map { word(it) }))
+                t.previousWord?.let { put("previousWord", word(it)) }
                 put("answers", JSONArray(t.answers.map { if (it == null) 0 else if (it) 1 else -1 }))
                 put("index", t.index); put("faults", t.faults); put("changed", t.wordChanged); put("sec", t.seconds)
                 put("rem", t.remainingMs); put("jpos", t.jangiPos)
@@ -618,6 +621,7 @@ object PantoCodec {
             turn = PantoTurn(t.optInt("team"), choice, seconds = t.optInt("sec"), remainingMs = t.optLong("rem")).apply {
                 t.optJSONArray("words")?.let { a -> for (i in 0 until a.length()) a.optJSONObject(i)?.let { words += word(it) } }
                 t.optJSONArray("answers")?.let { a -> for (i in 0 until a.length()) answers += when (a.optInt(i)) { 1 -> true; -1 -> false; else -> null } }
+                previousWord = t.optJSONObject("previousWord")?.let { word(it) }
                 index = t.optInt("index"); faults = t.optInt("faults"); wordChanged = t.optBoolean("changed"); jangiPos = t.optInt("jpos")
             }
         }

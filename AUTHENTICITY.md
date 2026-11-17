@@ -4,11 +4,11 @@
 
 | مسیر | نشانی |
 |---|---|
-| سایت رسمی | https://httpuser87890.ir/ (بخش «دریافت») |
+| سایت رسمی | https://divan-emtiaz.ir/ (بخش «دریافت») |
 | کافه‌بازار | https://cafebazaar.ir/app/com.meysam.divanemtiaz |
 | مایکت | https://myket.ir/app/com.meysam.divanemtiaz |
 | صفحهٔ انتشار گیت‌هاب | https://github.com/meysam82003/shalam/releases |
-| نسخهٔ وب | https://httpuser87890.ir/play/ |
+| نسخهٔ وب | https://divan-emtiaz.ir/play/ |
 
 ## اندروید
 | نسخه | شناسهٔ بسته (Package) |

@@ -7,8 +7,8 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 
-const val APP_VERSION_NAME = "5.5.1"
-const val APP_VERSION_LABEL = "نسخهٔ ۵.۵.۱"
+const val APP_VERSION_NAME = "5.6.0"
+const val APP_VERSION_LABEL = "نسخهٔ ۵.۶.۰"
 
 class SplashScreen(host: MainActivity) : Screen(host) {
     /**
@@ -160,6 +160,7 @@ class HomeScreen(host: MainActivity) : Screen(host) {
         }, kit.spaced(12))
         AdEngine.slot(this, "home_corner")?.let { column.addView(it) }
         AdEngine.slot(this, "home_bottom")?.let { column.addView(it) }
+        column.addView(kit.button("ثبت تبلیغ و اسپانسری", ButtonKind.GHOST, RoyalIcon.STAR, 44) { host.push(SponsorshipScreen(host)) }, kit.spaced(8))
         column.addView(kit.text("$APP_VERSION_LABEL  •  آفلاین" + if (ProState.isPro) "  •  Pro" else "", TextStyle.CAPTION, Royal.dim, Gravity.CENTER))
         return kit.vertical().apply {
             addView(ScrollView(host).apply {
@@ -178,6 +179,7 @@ class HomeScreen(host: MainActivity) : Screen(host) {
             addView(kit.text(greeting(), TextStyle.LABEL, Royal.muted, maxLines = 1))
             addView(kit.text("دیوان امتیاز", TextStyle.TITLE, Royal.title, maxLines = 1))
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        addView(giftButton())
         addView(kit.wordButton("Pro", "دیوان Pro", if (ProState.isPro) ButtonKind.SUCCESS else ButtonKind.PRIMARY, 42) {
             host.push(if (ProState.loggedIn) SubscriptionScreen(host) else ProScreen(host))
         })

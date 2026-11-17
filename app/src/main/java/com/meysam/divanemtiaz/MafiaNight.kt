@@ -245,9 +245,10 @@ object MafiaNight {
             MafiaRole.BOMBER -> "بمب گذار جلوی یک نفر بمب بگذارد و کد خنثی سازی (۱ تا ۴) را اعلام کند"
             MafiaRole.VOODOO -> "افسونگر یک کلمهٔ چهار حرفی یا بیشتر را روی یک نفر افسون کند"
             MafiaRole.INTERROGATOR -> "بازپرس دو نفر را برای بازپرسی فردا انتخاب کند"
-            else -> null
+            MafiaRole.JACK_SPARROW -> "برای طلسم کردن یک نفر را انتخاب کنید."
+            else -> MafiaRoleText.explain(r)
         }
-        return if (what != null) "$wake\n$what" else wake
+        return listOf(wake, what, MafiaRoleText.explain(r)).filter { !it.isNullOrBlank() }.distinct().joinToString("\n")
     }
 
     // ------------------------------------------------------------------ who may be chosen
@@ -268,6 +269,7 @@ object MafiaNight {
 
     private fun selfAllowed(g: MafiaGame, job: NightJob, p: MafiaPlayer): Boolean {
         if (p.id !in job.holders) return true
+        if (job.key == MAFIA_GROUP) return settingsSelfKill(g)
         return when (job.role) {
             MafiaRole.DOCTOR, MafiaRole.DOCTOR_LECTOR -> p.counter("تعداد نجات خود") > 0
             MafiaRole.GUNMAN, MafiaRole.CHARLATAN, MafiaRole.NATASHA, MafiaRole.JIGSAW -> true

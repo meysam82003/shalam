@@ -130,7 +130,7 @@ check(req($verify('valid-token-0003'), ['cfg' => $noTok])['json']['kind'] === 'n
 
 // ---------------------------------------------------------------- ZarinPal (site version)
 $M = '11111111-2222-3333-4444-555555555555';
-$zr = fn(array $over = []) => ['action' => 'zarinpal.request', 'params' => $over + ['merchant_id' => $M, 'amount' => 190000, 'callback_url' => 'https://httpuser87890.ir/divan/pay/return.php?o=abcdefghij0123456789', 'description' => 'x', 'metadata' => ['order_id' => 'abcdefghij0123456789']]];
+$zr = fn(array $over = []) => ['action' => 'zarinpal.request', 'params' => $over + ['merchant_id' => $M, 'amount' => 190000, 'callback_url' => 'https://divan-emtiaz.ir/divan/pay/return.php?o=abcdefghij0123456789', 'description' => 'x', 'metadata' => ['order_id' => 'abcdefghij0123456789']]];
 $n0 = count($calls);
 $r = req($zr());
 $c = end($calls);
@@ -139,7 +139,7 @@ $r = req($zr(['sandbox' => true]));
 check(end($calls)[1] === 'https://sandbox.zarinpal.com/pg/v4/payment/request.json', 'sandbox address when asked');
 $n1 = count($calls);
 check(req($zr(['callback_url' => 'https://evil.example/steal']))['status'] === 400, 'buyer can only be returned to the Divan site');
-check(req($zr(['callback_url' => 'http://httpuser87890.ir/x']))['status'] === 400, 'plain http return refused');
+check(req($zr(['callback_url' => 'http://divan-emtiaz.ir/x']))['status'] === 400, 'plain http return refused');
 check(req($zr(['amount' => '190000']))['status'] === 400 && req($zr(['amount' => 5]))['status'] === 400, 'amount must be a whole number of rials in range');
 check(req($zr(['merchant_id' => '../../x']))['status'] === 400, 'bad merchant id refused');
 $only = $cfg; $only['zarinpal_merchants'] = ['99999999-2222-3333-4444-555555555555'];
@@ -152,7 +152,7 @@ check(req(['action' => 'zarinpal.verify', 'params' => ['merchant_id' => $M, 'amo
 // ---------------------------------------------------------------- Aban Gateway (site version)
 $AT = 'ag_test_' . str_repeat('Ab1', 16);
 $ab = fn(array $over = []) => ['action' => 'aban.call', 'params' => $over + ['base' => 'https://api.abangateway.ir/api/v1', 'api_token' => $AT, 'op' => 'create', 'path' => '/invoices',
-    'body' => ['amount_rial' => 1900000, 'order_id' => 'abcdefghij0123456789', 'callback_url' => 'https://httpuser87890.ir/divan/pay/webhook.php?m=aban', 'return_url' => 'https://httpuser87890.ir/divan/pay/return.php?o=abcdefghij0123456789', 'description' => '<b>x</b>', 'expiry_minutes' => 60, 'shop_ref' => 'divan']]];
+    'body' => ['amount_rial' => 1900000, 'order_id' => 'abcdefghij0123456789', 'callback_url' => 'https://divan-emtiaz.ir/divan/pay/webhook.php?m=aban', 'return_url' => 'https://divan-emtiaz.ir/divan/pay/return.php?o=abcdefghij0123456789', 'description' => '<b>x</b>', 'expiry_minutes' => 60, 'shop_ref' => 'divan']]];
 $r = req($ab());
 $c = end($calls);
 $sent = json_decode((string)$c[3], true);

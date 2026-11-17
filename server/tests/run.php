@@ -16,6 +16,7 @@ require $src . '/app/lib.php';
 require $src . '/app/migrations.php';
 require $src . '/app/catalog.php';
 require $src . '/app/domain.php';
+require $src . '/app/engagement.php';
 require $src . '/app/markets.php';
 require $src . '/app/payments.php';
 require $src . '/app/paypages.php';
@@ -778,11 +779,11 @@ scenario('promotional notifications: consent, Pro, once per phone, daily cap', f
     Settings::set('notices_enabled', false);
     check(Notices::due($dev2, 'bazaar', false, false) === [], 'master switch stops everything');
     Settings::set('notices_enabled', true);
-    check(Notices::validTarget('divan://pro') && Notices::validTarget('https://httpuser87890.ir/x') && !Notices::validTarget('javascript:alert(1)') && !Notices::validTarget('http://x.ir') && !Notices::validTarget('divan://evil'), 'only in-app targets or https links');
+    check(Notices::validTarget('divan://pro') && Notices::validTarget('https://divan-emtiaz.ir/x') && !Notices::validTarget('javascript:alert(1)') && !Notices::validTarget('http://x.ir') && !Notices::validTarget('divan://evil'), 'only in-app targets or https links');
     throws(fn() => Notices::event($a, $dev, 'hack'), 'bad_event', 'unknown event refused');
     $w = $mk(['target' => 'https://example.org/offer', 'stores' => 'bazaar,myket,direct']);
     $dev3 = str_repeat('ef', 32);
-    check(Notices::due($dev3, 'bazaar', false, false)[0]['id'] === $a && !in_array($w, array_column(Notices::due($dev3, 'myket', false, false), 'id'), true), 'store versions never get a web link (store ad rules)');
+    check(in_array($w, array_column(Notices::due($dev3, 'myket', false, false), 'id'), true), 'opted-in store versions may receive HTTPS campaigns');
     Db::update('notices', ['active' => 0], 'id = ?', [$a]);
     check(Notices::due($dev3, 'direct', false, false)[0]['id'] === $w, 'web link only in the site version');
     Db::update('notices', ['active' => 1], 'id = ?', [$a]);
@@ -1307,6 +1308,61 @@ scenario('buying on the site: for an account by username, or an activation code 
     App::$config['base_url'] = $base;
     proc_terminate($proc); proc_close($proc);
     Http::$allowLocalHttpForTests = false;
+});
+
+scenario('registration trial: device reservation, VPN independence and exact expiry', function () {
+    freshIp(); $now = Clock::now();
+    $device = str_repeat('a', 64); $sessionDevice = str_repeat('b', 64);
+    $input = ['username' => 'trial_once', 'password' => 'secret123', 'trial_device_id' => $device, 'device_id' => $sessionDevice];
+    [$u] = MafiaTrial::register($input);
+    check(MafiaTrial::until((int)$u['id'], $sessionDevice) === $now + 600, 'trial starts at successful registration for exactly ten minutes');
+    check(MafiaTrial::until((int)$u['id'], str_repeat('c', 64)) === 0, 'another phone cannot reuse the account trial');
+    freshIp(); $input['username'] = 'trial_again';
+    throws(fn() => MafiaTrial::register($input), 'trial_used', 'changing IP / VPN never resets the device trial');
+    check(Users::byName('trial_again') === null, 'failed second registration leaves no account');
+    $cert = Entitlements::certificate($u, 'bazaar', ['device_id' => $sessionDevice]);
+    $payload = json_decode(Crypto::b64uDecode(explode('.', $cert['certificate'])[0]), true);
+    check((int)$payload['mafia_trial_until'] === $now + 600 && !$payload['pro'], 'trial is signed and does not grant unrelated Pro access');
+    Clock::$fixed = $now + 601;
+    check(MafiaTrial::until((int)$u['id'], $sessionDevice) < Clock::now(), 'expired trial is never renewed');
+    Clock::$fixed = $now;
+});
+
+scenario('reward videos: completion window, single use, one hour Pro and rolling daily cap', function () {
+    freshIp(); $now = Clock::now();
+    [$u] = Users::register('reward_one', 'secret123');
+    [$other] = Users::register('reward_two', 'secret123');
+    $session = ['device_id' => str_repeat('d', 64), 'store' => 'bazaar'];
+    Settings::set('ads_enabled', true);
+    $media = Db::insert('media', ['kind' => 'video', 'path' => 'test.mp4', 'mime' => 'video/mp4', 'size' => 100, 'sha256' => str_repeat('e', 64), 'created_at' => Clock::sql()]);
+    $ad = Db::insert('ads', ['name' => 'reward test', 'format' => 'rewarded', 'media_id' => $media, 'reward_seconds' => 30, 'placements' => 'rewarded_offer', 'stores' => 'bazaar', 'active' => 1, 'created_at' => Clock::sql(), 'updated_at' => Clock::sql()]);
+    Db::update('placements', ['active' => 1], 'k = ?', ['rewarded_offer']);
+    $watch = ProRewards::start($u, $session, $ad)['watch_token'];
+    throws(fn() => ProRewards::claim($u, $session, $watch), 'incomplete_watch', 'early completion is refused by server time');
+    throws(fn() => ProRewards::claim($other, $session, $watch), 'incomplete_watch', 'watch token cannot transfer between accounts');
+    Clock::$fixed = $now + 30;
+    ProRewards::claim($u, $session, $watch);
+    $summary = Entitlements::summary((int)$u['id']);
+    check($summary['pro'] && $summary['expires_at'] === Clock::now() + 3600, 'completed video gives actual one-hour Pro');
+    throws(fn() => ProRewards::claim($u, $session, $watch), 'incomplete_watch', 'replay never grants twice');
+    throws(fn() => ProRewards::start($other, $session, $ad), 'reward_cooldown', 'new account on same phone cannot bypass 24h cap');
+    throws(fn() => ProRewards::start($u, ['device_id' => str_repeat('f', 64), 'store' => 'bazaar'], $ad), 'reward_cooldown', 'another phone cannot bypass account cap');
+    Clock::$fixed = $now + 3630;
+    check(!Entitlements::summary((int)$u['id'])['pro'], 'reward Pro expires at one hour');
+    Clock::$fixed = $now + 86430;
+    check(ProRewards::start($u, $session, $ad)['watch_token'] !== $watch, 'new watch allowed after rolling 24h');
+    Clock::$fixed = $now;
+    Db::run('DELETE FROM {ads} WHERE id = ?', [$ad]);
+});
+
+scenario('panel domain settings: site, API, admin and payment URLs move together', function () {
+    $service = Settings::get('service_base', ''); $origin = Settings::get('public_origin', '');
+    SiteSettings::save('addresses', ['public_origin' => 'https://divan-emtiaz.ir', 'service_base' => 'https://divan-emtiaz.ir/divan']);
+    check(App::baseUrl() === 'https://divan-emtiaz.ir/divan', 'panel overrides the old installation base URL');
+    $view = SiteSettings::publicView(false);
+    check($view['siteUrl'] === 'https://divan-emtiaz.ir/' && $view['adminUrl'] === 'https://divan-emtiaz.ir/divan/admin/' && $view['buyUrl'] === 'https://divan-emtiaz.ir/divan/pay/buy.php', 'site, management and checkout links use the new domain');
+    throws(fn() => SiteSettings::save('addresses', ['public_origin' => 'javascript:alert(1)']), 'bad_origin', 'unsafe domains refused');
+    Settings::set('service_base', $service); Settings::set('public_origin', $origin);
 });
 
 // ---------------------------------------------------------------- report

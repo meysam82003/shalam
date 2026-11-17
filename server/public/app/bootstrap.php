@@ -9,6 +9,7 @@ require_once __DIR__ . '/lib.php';
 require_once __DIR__ . '/migrations.php';
 require_once __DIR__ . '/catalog.php';
 require_once __DIR__ . '/domain.php';
+require_once __DIR__ . '/engagement.php';
 require_once __DIR__ . '/markets.php';
 require_once __DIR__ . '/payments.php';
 require_once __DIR__ . '/paypages.php';

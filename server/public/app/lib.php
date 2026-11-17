@@ -46,7 +46,8 @@ final class App
 
     public static function baseUrl(): string
     {
-        $u = (string)self::cfg('base_url', '');
+        try { $managed = (string)Settings::get('service_base', ''); } catch (Throwable $e) { $managed = ''; }
+        $u = $managed !== '' ? $managed : (string)self::cfg('base_url', '');
         if ($u !== '') return rtrim($u, '/');
         $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
         $host = $_SERVER['HTTP_HOST'] ?? 'localhost';

@@ -156,6 +156,26 @@ object LeagueEngine {
         }
     }
 
+    /** Adds teams/reconfigures fixtures without deleting or altering saved games. Team indices stay stable. */
+    fun reconfigure(league: League, teams: List<Side>, config: LeagueSettings) {
+        require(teams.size >= league.teams.size && teams.size >= 2)
+        require(teams.map { it.name }.distinct().size == teams.size)
+        val old = league.matches.toList()
+        val keepTable = league.format == LeagueFormat.ROUND_ROBIN && config.format == LeagueFormat.ROUND_ROBIN
+        league.teams.clear(); league.teams.addAll(teams)
+        league.format = config.format; league.config = config; league.finished = false
+        start(league, teams.indices.toList())
+        val unmatched = old.toMutableList()
+        if (keepTable) league.matches.indices.forEach { i ->
+            val m = league.matches[i]
+            val previous = unmatched.firstOrNull { !it.isFinal && !m.isFinal && it.teamA == m.teamA && it.teamB == m.teamB }
+            if (previous != null) { league.matches[i] = m.copy(games = previous.games); unmatched.remove(previous) }
+        }
+        val active = league.matches.flatMap { it.games }.toSet()
+        league.pastGames.addAll(unmatched.flatMap { it.games }.filter { it !in active && it !in league.pastGames })
+        league.updatedAt = System.currentTimeMillis()
+    }
+
     /** Opens the next stage when the current one is decided. Returns true when anything changed. */
     fun advance(league: League, lookup: (Long) -> GameSession?, random: Random = Random.Default): Boolean {
         if (league.matches.isEmpty()) return false

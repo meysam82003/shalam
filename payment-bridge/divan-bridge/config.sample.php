@@ -32,7 +32,7 @@ return [
     'bazaar_refresh_token' => '',
 
     // ZarinPal (site version only): the buyer may only be returned to these hosts; optional merchant id allowlist.
-    'callback_hosts' => ['httpuser87890.ir'],
+    'callback_hosts' => ['divan-emtiaz.ir'],
     'zarinpal_merchants' => [],
 
     // Aban Gateway (site version only): its API address comes from the Divan panel. To pin it, list the

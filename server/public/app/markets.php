@@ -77,7 +77,7 @@ final class Stores
  */
 final class PaymentBridge
 {
-    public const DEFAULT_URL = 'https://pay.httpuser87890.ir/';
+    public const DEFAULT_URL = 'https://pay.divan-emtiaz.ir/';
     private const TAG = 'DIVAN-BRIDGE-V1';
 
     public static function cfg(): array

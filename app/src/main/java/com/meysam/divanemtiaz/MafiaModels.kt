@@ -256,19 +256,10 @@ object MafiaCues {
     fun sleep(role: MafiaRole) = "sleep_${role.name}"
     fun done(role: MafiaRole) = "done_${role.name}"
 
-    fun defaults(): Map<String, SoundChoice> {
-        val m = HashMap<String, SoundChoice>()
-        m[NIGHT_START] = SoundChoice(SoundSource.BUILTIN, "mafia_night_sound")
-        m[DAY_START] = SoundChoice(SoundSource.BUILTIN, "mafia_morning_sound")
-        m[TIMER_TICK] = SoundChoice(SoundSource.BUILTIN, "mafia_timer_one_tik")
-        m[TIMER_END] = SoundChoice(SoundSource.BUILTIN, "mafia_end_timer")
-        m[DEAD_REPORT] = SoundChoice(SoundSource.BUILTIN, "mafia_heart_sound")
-        m[LAST_CARD] = SoundChoice(SoundSource.BUILTIN, "mafia_typing_sound")
-        m[MAFIA_DONE] = SoundChoice(SoundSource.BUILTIN, "mafia_shot_sound")
-        MafiaRole.values().forEach { r -> if (r.nightSound.isNotBlank()) m[done(r)] = SoundChoice(SoundSource.BUILTIN, r.nightSound) }
-        m[done(MafiaRole.JOKER)] = SoundChoice(SoundSource.BUILTIN, "mafia_joker_laugh")
-        return m
-    }
+    fun defaults(): Map<String, SoundChoice> = mapOf(
+        TIMER_TICK to SoundChoice(SoundSource.BUILTIN, "mafia_timer_one_tik"),
+        TIMER_END to SoundChoice(SoundSource.BUILTIN, "mafia_end_timer")
+    )
 
     fun title(key: String): String {
         general.firstOrNull { it.first == key }?.let { return it.second }

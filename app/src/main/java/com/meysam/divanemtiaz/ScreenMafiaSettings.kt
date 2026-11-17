@@ -12,6 +12,7 @@ import android.widget.LinearLayout
  * phone or the narrator's own recorded voice) and the narrator's own picture for each role.
  */
 class MafiaSettingsScreen(host: MainActivity, private var tab: Int = 0) : Screen(host) {
+    override val mafiaArea: Boolean get() = true
     private var side = MafiaSide.CITY
 
     private fun update(change: (MafiaSettings) -> MafiaSettings, refresh: Boolean = false) {

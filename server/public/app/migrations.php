@@ -461,6 +461,12 @@ final class Migrations
             11 => [
                 "ALTER TABLE {sessions} ADD COLUMN revoke_reason VARCHAR(20) NULL",
             ],
+            12 => [
+                "CREATE TABLE IF NOT EXISTS {mafia_trials} (device CHAR(64) PRIMARY KEY, user_id BIGINT UNSIGNED NOT NULL UNIQUE, session_device CHAR(64) NULL, starts_at DATETIME NOT NULL, ends_at DATETIME NOT NULL) $e",
+                "CREATE TABLE IF NOT EXISTS {reward_devices} (device CHAR(64) PRIMARY KEY, user_id BIGINT UNSIGNED NOT NULL, claimed_at BIGINT NOT NULL DEFAULT 0, KEY k_user (user_id)) $e",
+                "CREATE TABLE IF NOT EXISTS {reward_watches} (token_hash CHAR(64) PRIMARY KEY, user_id BIGINT UNSIGNED NOT NULL, device CHAR(64) NOT NULL, ad_id INT NOT NULL, started_at BIGINT NOT NULL, min_seconds INT NOT NULL, claimed_at BIGINT NULL, KEY k_user (user_id)) $e",
+                "ALTER TABLE {ads} ADD COLUMN close_delay_seconds INT NOT NULL DEFAULT 5, ADD COLUMN reward_seconds INT NOT NULL DEFAULT 30",
+            ],
         ];
     }
 
