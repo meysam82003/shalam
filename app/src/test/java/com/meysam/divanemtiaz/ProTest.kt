@@ -44,6 +44,8 @@ class ProTest {
         val lic=License.parse(cert(payload(now,exp=end,offline=end+86400).put("plan","gift").put("grace",end+3*86400).put("reward_until",end)),der,7)
         assertTrue(lic.proAt(end-1));assertFalse(lic.proAt(end));assertFalse(lic.proAt(end+1))
         assertEquals(end,lic.rewardEndsAt())
+        assertEquals("00:59:59",ProCountdown.format(ProCountdown.displaySeconds(lic,now)))
+        assertEquals("00:59:58",ProCountdown.format(ProCountdown.displaySeconds(lic,now+1)))
         assertEquals("00:59:58",ProCountdown.format(lic.remainingSeconds(now+2)!!))
         assertEquals("00:00:01",ProCountdown.format(lic.remainingSeconds(end-1)!!))
         assertEquals("00:00:00",ProCountdown.format(lic.remainingSeconds(end)!!))

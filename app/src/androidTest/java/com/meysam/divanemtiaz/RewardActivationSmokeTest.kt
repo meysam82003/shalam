@@ -81,8 +81,11 @@ class RewardActivationSmokeTest {
         val first=timerText()
         screenshot("verified-pro-countdown")
         assertTrue("Actual native subscription UI shows the ticking verified entitlement: $first",first.isNotBlank())
-        SystemClock.sleep(1500)
-        assertNotEquals("The displayed seconds actually decrease",first,timerText())
+        val tickDeadline=SystemClock.uptimeMillis()+4000
+        var next=first
+        while(next==first&&SystemClock.uptimeMillis()<tickDeadline){SystemClock.sleep(100);next=timerText()}
+        assertTrue("The timer remains present",next.isNotBlank())
+        assertNotEquals("The displayed seconds actually decrease",first,next)
         onMain{
             assertTrue(ProState.isPro);assertTrue(ProState.license.remainingSeconds(ProState.now())!! in 1..3599)
             // Simulate one hour passing using the same monotonic anchor as a server sync; never sleep an hour.

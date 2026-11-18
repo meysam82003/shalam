@@ -8,6 +8,12 @@ import android.widget.TextView
 import java.util.Locale
 
 object ProCountdown {
+    /** Whole seconds visible to the user; a newly granted hour begins at 00:59:59. */
+    fun displaySeconds(license:License,now:Long):Long {
+        val left=license.remainingSeconds(now)?:0
+        val hourGift=license.plan=="gift"&&license.expiresAt==license.rewardEndsAt()&&left<=3600
+        return if(hourGift)(left-1).coerceAtLeast(0)else left
+    }
     fun format(seconds:Long):String {
         val left=seconds.coerceAtLeast(0)
         return String.format(Locale.US,"%02d:%02d:%02d",left/3600,left%3600/60,left%60)
@@ -27,8 +33,7 @@ fun Screen.proTimeView():View = object:TextView(host) {
     }
     private fun updateText(){
         val license=ProState.license
-        val remaining=license.remainingSeconds(ProState.now())?:0
-        val shown=if(license.plan=="gift"&&license.expiresAt==license.rewardEndsAt()&&remaining<=3600)remaining.coerceAtMost(3599)else remaining
+        val shown=ProCountdown.displaySeconds(license,ProState.now())
         text=when {
             !ProState.isPro->"Pro فعال نیست"
             license.lifetime->"Pro مادام‌العمر فعال است"
