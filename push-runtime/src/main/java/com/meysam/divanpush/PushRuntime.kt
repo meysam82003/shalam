@@ -19,6 +19,7 @@ interface PushHooks {
     fun receive(context: Context)
 }
 object PushRuntime {
+    private var application:Context?=null
     private val io = Executors.newSingleThreadExecutor()
     @Volatile private var checked = 0L
     private fun prefs(c:Context) = c.getSharedPreferences("divan_push_public",Context.MODE_PRIVATE)
@@ -28,6 +29,7 @@ object PushRuntime {
         Class.forName(name).getField("INSTANCE").get(null) as PushHooks
     }.getOrNull()
     @Synchronized fun restore(c:Context):Boolean = runCatching {
+        application=c.applicationContext
         val cfg=JSONObject(prefs(c).getString("config","{}")!!)
         if(!cfg.optBoolean("enabled"))return false
         val options=FirebaseOptions.Builder().setApplicationId(cfg.getString("app_id")).setApiKey(cfg.getString("api_key")).setProjectId(cfg.getString("project_id")).setGcmSenderId(cfg.getString("sender_id")).build()
@@ -60,6 +62,7 @@ object PushRuntime {
         val u=URL(base+"?r="+route)
         require(u.protocol=="https" && u.userInfo==null)
         val conn=u.openConnection() as HttpURLConnection
+        application?.let{NativeTls.apply(it,conn)}
         conn.instanceFollowRedirects=false;conn.connectTimeout=5000;conn.readTimeout=5000;conn.requestMethod=method
         if(!bearer.isNullOrBlank())conn.setRequestProperty("Authorization","Bearer $bearer")
         try {

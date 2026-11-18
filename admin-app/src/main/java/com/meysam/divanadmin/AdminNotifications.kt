@@ -41,7 +41,7 @@ object AdminNotifications {
         val base=prefs(c).getString("url","https://divan-emtiaz.ir/divan/api/index.php")!!
         val initial=!prefs(c).contains("inbox_cursor");var cursor=prefs(c).getLong("inbox_cursor",0)
         val url=URL(base+"?r=admin/mobile/inbox&after=$cursor");require(url.protocol=="https")
-        val connection=url.openConnection()as HttpURLConnection;connection.instanceFollowRedirects=false;connection.connectTimeout=12000;connection.readTimeout=20000;connection.setRequestProperty("Authorization","Bearer $token")
+        val connection=url.openConnection()as HttpURLConnection;com.meysam.divanpush.NativeTls.apply(c,connection);connection.instanceFollowRedirects=false;connection.connectTimeout=12000;connection.readTimeout=20000;connection.setRequestProperty("Authorization","Bearer $token")
         try{
             if(connection.responseCode!=200)return
             val response=JSONObject(connection.inputStream.bufferedReader().use{it.readText()});if(!response.optBoolean("ok"))return;val data=response.getJSONObject("data")

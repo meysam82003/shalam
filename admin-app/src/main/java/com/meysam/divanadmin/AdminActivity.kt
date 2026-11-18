@@ -47,7 +47,7 @@ class AdminActivity:Activity(){
     private fun api(method:String,route:String,data:JSONObject?=null,files:List<Triple<String,android.net.Uri,String>> = emptyList(),done:(JSONObject)->Unit){
         val gen=generation;io.execute{
             var result:JSONObject?=null;var error:String?=null;var unauthorized=false
-            try{val u=URL(base()+"?r="+URLEncoder.encode(route,"UTF-8"));val c=u.openConnection() as HttpURLConnection
+            try{val u=URL(base()+"?r="+URLEncoder.encode(route,"UTF-8"));val c=u.openConnection() as HttpURLConnection;com.meysam.divanpush.NativeTls.apply(applicationContext,c)
                 try{c.requestMethod=method;c.instanceFollowRedirects=false;c.connectTimeout=12000;c.readTimeout=25000;c.setRequestProperty("Accept","application/json");token?.let{c.setRequestProperty("Authorization","Bearer $it")};if(method!="GET"){
                     c.doOutput=true
                     if(files.isEmpty()){c.setRequestProperty("Content-Type","application/json; charset=utf-8");c.outputStream.use{it.write((data?:JSONObject()).toString().toByteArray(Charsets.UTF_8))}}
@@ -114,7 +114,7 @@ class AdminActivity:Activity(){
                 }else{
                     val own=URL(base());val u=URL(URL(own,"../admin/"),src)
                     require(u.protocol=="https"&&u.host==own.host&&u.userInfo==null)
-                    val conn=u.openConnection() as HttpURLConnection;conn.instanceFollowRedirects=false;conn.connectTimeout=8000;conn.readTimeout=10000
+                    val conn=u.openConnection() as HttpURLConnection;com.meysam.divanpush.NativeTls.apply(applicationContext,conn);conn.instanceFollowRedirects=false;conn.connectTimeout=8000;conn.readTimeout=10000
                     try {require(conn.responseCode==200);conn.inputStream.use { input ->
                         val out=java.io.ByteArrayOutputStream();val buffer=ByteArray(8192);var total=0
                         while(true){val n=input.read(buffer);if(n<0)break;total+=n;require(total<=3_000_000);out.write(buffer,0,n)};out.toByteArray()
@@ -168,7 +168,7 @@ class AdminActivity:Activity(){
     }
     @Deprecated("Activity result compatibility") override fun onActivityResult(requestCode:Int,resultCode:Int,data:android.content.Intent?){super.onActivityResult(requestCode,resultCode,data);if(resultCode!=RESULT_OK)return;val uri=data?.data?:return
         if(requestCode==71){var name="upload";contentResolver.query(uri,arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),null,null,null)?.use{if(it.moveToFirst())name=it.getString(0)};chooseFile?.invoke(uri,name);chooseFile=null}
-        if(requestCode==72){val file=saveFile?:return;saveFile=null;io.execute{try{contentResolver.openOutputStream(uri)!!.use{out->if(file.has("data"))out.write(Base64.decode(file.getString("data"),Base64.DEFAULT))else{val url=URL(file.getString("url"));require(url.protocol=="https"&&url.host==URL(base()).host);val c=url.openConnection()as HttpURLConnection;c.instanceFollowRedirects=false;c.setRequestProperty("Authorization","Bearer $token");c.connectTimeout=12000;c.readTimeout=60000;try{require(c.responseCode==200);c.inputStream.use{it.copyTo(out,65536)}}finally{c.disconnect()}}};runOnUiThread{message("فایل ذخیره شد.")}}catch(e:Exception){runOnUiThread{message("دریافت فایل انجام نشد؛ دوباره تلاش کنید.")}}}}
+        if(requestCode==72){val file=saveFile?:return;saveFile=null;io.execute{try{contentResolver.openOutputStream(uri)!!.use{out->if(file.has("data"))out.write(Base64.decode(file.getString("data"),Base64.DEFAULT))else{val url=URL(file.getString("url"));require(url.protocol=="https"&&url.host==URL(base()).host);val c=url.openConnection()as HttpURLConnection;com.meysam.divanpush.NativeTls.apply(applicationContext,c);c.instanceFollowRedirects=false;c.setRequestProperty("Authorization","Bearer $token");c.connectTimeout=12000;c.readTimeout=60000;try{require(c.responseCode==200);c.inputStream.use{it.copyTo(out,65536)}}finally{c.disconnect()}}};runOnUiThread{message("فایل ذخیره شد.")}}catch(e:Exception){runOnUiThread{message("دریافت فایل انجام نشد؛ دوباره تلاش کنید.")}}}}
     }
     private fun inbox(){current="inbox";page("رویدادهای مدیریت");api("GET","admin/mobile/inbox"){d->val entries=d.optJSONArray("items")?:JSONArray();if(entries.length()==0)body.addView(text("رویدادی ثبت نشده است.",15f,muted));for(i in 0 until entries.length()){val v=entries.getJSONObject(i);body.addView(text(v.optString("title"),18f,gold));body.addView(text(v.optString("body"),14f,muted))};api("POST","admin/mobile/inbox",JSONObject().put("read_through",d.optLong("latest_id"))){} }}
     private fun put(root:JSONObject,path:String,value:Any){val parts=path.split('.');var cursor=root;for(k in parts.dropLast(1)){var child=cursor.optJSONObject(k);if(child==null){child=JSONObject();cursor.put(k,child)};cursor=child};cursor.put(parts.last(),value)}
