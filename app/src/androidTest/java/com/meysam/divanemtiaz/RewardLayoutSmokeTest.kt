@@ -57,7 +57,17 @@ class RewardLayoutSmokeTest {
         val done=CountDownLatch(1);val completed=AtomicBoolean(false)
         showVideo{completed.set(it);done.countDown()}
         SystemClock.sleep(500)
-        val button=find("باز کردن سایت");assertNotNull("CTA remains accessible beside long video content",button)
+        screenshot("reward-video-before-check")
+        var button=find("باز کردن سایت")
+        val until=SystemClock.uptimeMillis()+2500
+        while(button==null&&SystemClock.uptimeMillis()<until){SystemClock.sleep(100);button=find("باز کردن سایت")}
+        fun tree(node:AccessibilityNodeInfo?,depth:Int=0):String {
+            if(node==null||depth>12)return ""
+            val rect=Rect();node.getBoundsInScreen(rect)
+            return "${node.className} text=${node.text} desc=${node.contentDescription} bounds=$rect\n"+(0 until node.childCount).joinToString(""){tree(node.getChild(it),depth+1)}
+        }
+        assertNotNull("CTA remains accessible; callback=${done.count} completed=${completed.get()} tree="+tree(instrumentation.uiAutomation.rootInActiveWindow),button)
+        while(button?.isClickable==false&&button?.parent!=null)button=button?.parent
         val bounds=Rect();button!!.getBoundsInScreen(bounds)
         val window=Rect();instrumentation.uiAutomation.rootInActiveWindow.getBoundsInScreen(window)
         assertTrue("CTA is entirely inside the dialog viewport",window.contains(bounds))

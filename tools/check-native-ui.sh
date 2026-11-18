@@ -3,7 +3,7 @@
 set +e
 gradle --no-daemon -Pdivan.api=https://example.test/divan/api/index.php connectedBazaarDebugAndroidTest 2>&1 | tee native-ui-tests.log
 result=${PIPESTATUS[0]}
-adb logcat -d -s AndroidRuntime:E > native-ui-crashes.log
+adb logcat -d > native-ui-crashes.log
 adb pull /sdcard/Download/divan-ui-smoke ui-screenshots
 python3 - <<'PY'
 import glob, xml.etree.ElementTree as ET
