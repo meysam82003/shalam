@@ -156,7 +156,7 @@ object AdsManager {
                     event(name,"banner",zone,kind)
                     // Loading must reveal the SDK view before it can observe visibility and report an impression.
                     if (kind == "loaded" || kind == "impression") { visible=true;wrap.visibility = View.VISIBLE }
-                    if (kind == "error") { failed = true;runCatching{impl.destroyBanner(box)};box.removeAllViews();attempt(index+1) }
+                    if (kind == "error") { failed = true;runCatching{impl.destroyBanner(box)};banners.removeAll{it.first===impl&&it.second===box};box.removeAllViews();attempt(index+1) }
                 }
             }
             runCatching { impl.banner(activity,zone,box,::callback) }.onFailure {callback("error")}

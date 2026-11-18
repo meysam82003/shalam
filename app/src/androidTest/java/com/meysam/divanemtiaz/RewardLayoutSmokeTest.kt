@@ -34,7 +34,7 @@ class RewardLayoutSmokeTest {
         }
         instrumentation.waitForIdleSync()
     }
-    @After fun close(){activity.close();Api.transport=null}
+    @After fun close(){activity.onActivity{AdsManager.javaClass.getDeclaredField("cached").apply{isAccessible=true}.set(AdsManager,null)};activity.close();Api.transport=null}
     private fun screenshot(name:String){
         for(command in listOf("mkdir -p /sdcard/Download/divan-ui-smoke", "screencap -p /sdcard/Download/divan-ui-smoke/$name.png")) {
             val output=instrumentation.uiAutomation.executeShellCommand(command)
@@ -82,5 +82,33 @@ class RewardLayoutSmokeTest {
         assertNotNull(find("پیش‌فرض برنامه"));assertNotNull(find("جایگاه خالی"))
         screenshot("menfi-presets")
         instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+    }
+    @Test fun failedPrimaryFallsBackAndLoadedBannerBecomesVisibleBeforeImpression(){
+        class FixtureAdapter(private val fail:Boolean):IranianAdAdapter {
+            var requests=0;var destroyed=0
+            override fun configure(activity:android.app.Activity,appId:String,test:Boolean)=true
+            override fun ready(format:String,zone:String)=false
+            override fun load(activity:android.app.Activity,format:String,zone:String,done:(Boolean)->Unit){done(false)}
+            override fun show(activity:android.app.Activity,format:String,zone:String,event:(String)->Unit){event("error")}
+            override fun banner(activity:android.app.Activity,zone:String,box:android.widget.FrameLayout,event:(String)->Unit){requests++;if(fail)throw IllegalStateException("local test: primary unavailable");box.addView(android.view.View(activity));event("loaded")}
+            override fun destroyBanner(box:android.widget.FrameLayout){destroyed++;box.removeAllViews()}
+            override fun release(){}
+        }
+        activity.onActivity { host ->
+            AdsManager.release()
+            val cfg=JSONObject().put("enabled",true).put("primary","tapsell").put("fallback","adivery")
+                .put("banner",JSONObject().put("enabled",true).put("pages",org.json.JSONArray().put("home")).put("placements",JSONObject().put("sticky_bottom",true)))
+                .put("networks",JSONObject().apply{for(n in listOf("tapsell","adivery"))put(n,JSONObject().put("enabled",true).put("test",true).put("app_id","local_fixture").put("zones",JSONObject().put("banner","fixture_banner")))})
+            AdsManager.javaClass.getDeclaredField("cached").apply{isAccessible=true}.set(AdsManager,cfg)
+            @Suppress("UNCHECKED_CAST")
+            val adapters=AdsManager.javaClass.getDeclaredField("adapters").apply{isAccessible=true}.get(AdsManager) as MutableMap<String,IranianAdAdapter>
+            val primary=FixtureAdapter(true);val fallback=FixtureAdapter(false);adapters["tapsell"]=primary;adapters["adivery"]=fallback
+            val banner=AdsManager.banner(host.current!!,"sticky_bottom")
+            assertNotNull(banner);assertEquals(android.view.View.VISIBLE,banner!!.visibility)
+            assertEquals(1,primary.requests);assertEquals(1,fallback.requests)
+            AdsManager.releaseBanners()
+            assertEquals("failed primary must be detached, not retain the fallback view",1,primary.destroyed)
+            assertEquals(1,fallback.destroyed)
+        }
     }
 }
