@@ -42,16 +42,17 @@ final class PushDelivery
     /** A cron runs this every minute. Queuing and delivery never block registration or payment verification. */
     public static function enqueue(int $limit=200):int {
         if(!self::settings()['enabled'])return 0;$count=0;
-        foreach(Db::all('SELECT * FROM {push_devices} WHERE offers=1 AND seen_at>? ORDER BY last_scan,token_hash LIMIT '.max(1,min(1000,$limit)),[Clock::now()-2592000]) as $d){
+        foreach(Db::all('SELECT * FROM {push_devices} WHERE (offers=1 OR pro_optin=1) AND seen_at>? ORDER BY last_scan,token_hash LIMIT '.max(1,min(1000,$limit)),[Clock::now()-2592000]) as $d){
             Db::update('push_devices',['last_scan'=>Clock::now()],'token_hash=?',[$d['token_hash']]);
             if(!self::publicConfig($d['client'])['enabled'])continue;
             $sources=[];
             if($d['kind']==='admin'){
-                if(!self::adminValid($d))continue;
+                if(!$d['offers']||!self::adminValid($d))continue;
                 $after=(int)(Db::value('SELECT created_at FROM {admin_mobile_sessions} WHERE token_hash=?',[$d['session_hash']])??Clock::now());
                 foreach(Db::all("SELECT i.id FROM {admin_inbox} i WHERE i.created_at>=? AND NOT EXISTS (SELECT 1 FROM {push_deliveries} q WHERE q.device_hash=? AND q.source_key=CONCAT('inbox:',i.id)) ORDER BY i.id LIMIT 100",[Clock::sql($after),$d['token_hash']]) as $e)$sources[]='inbox:'.$e['id'];
             }else{
                 $pro=$d['user_id']!==null&&Entitlements::summary((int)$d['user_id'],$d['client'])['pro'];
+                if($pro?!$d['pro_optin']:!$d['offers'])continue;
                 foreach(Notices::due($d['device'],$d['client'],$pro,(bool)$d['pro_optin']) as $n)$sources[]='notices:'.$n['id'];
             }
             foreach($sources as $source){$q=Db::run('INSERT IGNORE INTO {push_deliveries} (device_hash,source_key,next_at,expires_at) VALUES (?,?,?,?)',[$d['token_hash'],$source,Clock::now(),Clock::now()+3600]);$count+=$q->rowCount();}
@@ -79,10 +80,10 @@ final class PushDelivery
             // Lease serializes multiple cron workers; external sends cannot be exactly once, client notification IDs dedupe.
             $q=Db::run('UPDATE {push_deliveries} SET next_at=?,attempts=attempts+1 WHERE id=? AND next_at<=? AND sent_at IS NULL',[Clock::now()+120,$row['id'],Clock::now()]);if(!$q->rowCount())continue;
             $r=Db::one('SELECT q.*,d.* FROM {push_deliveries} q JOIN {push_devices} d ON d.token_hash=q.device_hash WHERE q.id=?',[$row['id']]);
-            if($r===null||!$r['offers']||($r['kind']==='admin'&&!self::adminValid($r))){Db::run('UPDATE {push_deliveries} SET sent_at=?,last_error=? WHERE id=?',[Clock::now(),'canceled',$row['id']]);continue;}
+            if($r===null||($r['kind']==='admin'&&(!$r['offers']||!self::adminValid($r)))){Db::run('DELETE FROM {push_deliveries} WHERE id=?',[$row['id']]);continue;}
             if($r['kind']==='player'){
-                $pro=$r['user_id']!==null&&Entitlements::summary((int)$r['user_id'],$r['client'])['pro'];$due=Notices::due($r['device'],$r['client'],$pro,(bool)$r['pro_optin']);
-                if(!$due||'notices:'.$due[0]['id']!==$r['source_key']){Db::run('UPDATE {push_deliveries} SET sent_at=?,last_error=? WHERE id=?',[Clock::now(),'canceled',$row['id']]);continue;}
+                $pro=$r['user_id']!==null&&Entitlements::summary((int)$r['user_id'],$r['client'])['pro'];$due=($pro?(bool)$r['pro_optin']:(bool)$r['offers'])?Notices::due($r['device'],$r['client'],$pro,(bool)$r['pro_optin']):[];
+                if(!$due||'notices:'.$due[0]['id']!==$r['source_key']){Db::run('DELETE FROM {push_deliveries} WHERE id=?',[$row['id']]);continue;}
             }
             try{
                 $token=Crypto::decrypt($r['token_enc']);if($token===null)throw new RuntimeException('push_token');
@@ -97,5 +98,5 @@ final class PushDelivery
             }catch(Throwable $e){$errors++;$code=preg_match('/^push_[a-z0-9_]+$/',$e->getMessage())?$e->getMessage():'push_transport';Db::update('push_deliveries',['last_error'=>$code,'next_at'=>Clock::now()+min(1800,30*(2**min(6,(int)$r['attempts'])))],'id=?',[$row['id']]);}
         }return compact('sent','errors');
     }
-    public static function stats():array {return ['devices'=>(int)Db::value('SELECT COUNT(*) FROM {push_devices} WHERE offers=1'),'sent'=>(int)Db::value('SELECT COUNT(*) FROM {push_deliveries} WHERE sent_at IS NOT NULL AND last_error IS NULL'),'pending'=>(int)Db::value('SELECT COUNT(*) FROM {push_deliveries} WHERE sent_at IS NULL AND expires_at>?',[Clock::now()]),'errors'=>Db::all('SELECT last_error,COUNT(*) AS total FROM {push_deliveries} WHERE last_error IS NOT NULL GROUP BY last_error')];}
+    public static function stats():array {return ['devices'=>(int)Db::value('SELECT COUNT(*) FROM {push_devices} WHERE (offers=1 OR pro_optin=1)'),'sent'=>(int)Db::value('SELECT COUNT(*) FROM {push_deliveries} WHERE sent_at IS NOT NULL AND last_error IS NULL'),'pending'=>(int)Db::value('SELECT COUNT(*) FROM {push_deliveries} WHERE sent_at IS NULL AND expires_at>?',[Clock::now()]),'errors'=>Db::all('SELECT last_error,COUNT(*) AS total FROM {push_deliveries} WHERE last_error IS NOT NULL GROUP BY last_error')];}
 }

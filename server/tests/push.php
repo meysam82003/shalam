@@ -32,6 +32,17 @@ scenario('Push: encrypted credentials, real HTTP v1 payload, retries and consent
     check(PushDelivery::flush()['errors']===0,'retry backoff respected');
     Clock::$fixed+=121;$fail=false;$r=PushDelivery::flush();check($r['sent']===1,'next cron retries without app launch');
     $count=count($calls);PushDelivery::flush();check(count($calls)===$count,'successful delivery not resent');
+    [$premium]=Users::register('push_pro_consent','VeryStrong_password_908');
+    Db::insert('user_grants',['user_id'=>$premium['id'],'feature_k'=>'pro','expires_at'=>Clock::sql(Clock::now()+3600),'reason'=>'test consent fixture','created_at'=>Clock::sql()]);
+    $proDevice=hash('sha256','pro-push-phone');$proToken='pro_push_token_'.str_repeat('p',40);
+    $proInput=['token'=>$proToken,'device'=>$proDevice,'store'=>'bazaar','offers'=>false,'pro_optin'=>true];
+    PushDelivery::register($proInput,$premium,['device_id'=>$proDevice,'store'=>'bazaar']);PushDelivery::enqueue();
+    check((int)Db::value('SELECT COUNT(*) FROM {push_deliveries} WHERE device_hash=?',[Crypto::hash($proToken)])===1,'Pro-only consent receives push even when ordinary free-user offers were never enabled');
+    $proInput['pro_optin']=false;PushDelivery::register($proInput,$premium,['device_id'=>$proDevice,'store'=>'bazaar']);
+    $beforeCancel=count($calls);PushDelivery::flush();check(count($calls)===$beforeCancel,'revoking Pro consent cancels unsent notification without contacting provider');
+    check((int)Db::value('SELECT COUNT(*) FROM {push_deliveries} WHERE device_hash=?',[Crypto::hash($proToken)])===0,'canceled unsent queue record does not permanently suppress future opt-in');
+    $proInput['pro_optin']=true;PushDelivery::register($proInput,$premium,['device_id'=>$proDevice,'store'=>'bazaar']);PushDelivery::enqueue();
+    check((int)Db::value('SELECT COUNT(*) FROM {push_deliveries} WHERE device_hash=?',[Crypto::hash($proToken)])===1,'re-enabling Pro consent can enqueue an eligible unseen campaign again');
     $input['offers']=false;PushDelivery::register($input,null,null);check((int)Db::value('SELECT offers FROM {push_devices} WHERE token_hash=?',[Crypto::hash($token)])===0,'revoked consent persisted');
     $bad=$input;$bad['device']=hash('sha256','other-phone');throws(fn()=>PushDelivery::register($bad,['id'=>1],['device_id'=>$device,'store'=>'bazaar']),'push_device','signed-in token binding must match authenticated device');
     PushDelivery::$testTransport=null;Settings::set('push_fcm',$old);Settings::setSecret('push_service_account',$oldSecret);Settings::setSecret('push_access_token',$oldAccess);Settings::set('notices_enabled',$enabled);
