@@ -53,6 +53,23 @@ class ProTest {
         assertEquals(0L,License.parse(cert(payload(now).put("reward_until",0)),der,7).rewardEndsAt())
     }
 
+    @Test fun anOverlappingPaidSubscriptionDoesNotReceiveAStaleRewardExpiryNotice() {
+        val pin=StoreInfo.javaClass.getDeclaredField("pinnedKey").apply{isAccessible=true}
+        val old=StoreInfo.pinnedKey
+        try {
+            pin.set(StoreInfo,B64.encode(der));ProState.logout();ProState.token="unit-fixture";ProState.userId=7
+            val now=ProState.now();val giftEnd=now-1
+            ProState.putL("reward_notified_7",0)
+            ProState.applyAccount(JSONObject().put("certificate",cert(payload(now).put("reward_until",giftEnd))))
+            assertTrue(ProState.isPro)
+            assertFalse("A paid subscription keeps working when its overlapping ad gift ends",ProState.consumeExpiredReward())
+            assertEquals(giftEnd,ProState.getL("reward_notified_7"))
+            ProState.applyAccount(JSONObject().put("certificate",cert(payload(now,pro=false,exp=now-1).put("reward_until",0))))
+            assertFalse(ProState.isPro)
+            assertFalse("The old ad gift must not produce a misleading notice when paid access ends later",ProState.consumeExpiredReward())
+        } finally { ProState.logout();ProState.putL("reward_observed_7",0);ProState.putL("reward_notified_7",0);pin.set(StoreInfo,old) }
+    }
+
     @Test fun webPaymentPagesOnlyOnDomainsTheServerListed() {
         val hosts = setOf("blupal.top", "abangateway.ir")
         assertTrue(ProSync.isPayUrl("https://blupal.top/payment/abc", hosts))

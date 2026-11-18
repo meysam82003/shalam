@@ -521,8 +521,10 @@ object ProState {
     /** Only controls the expiry notice, never grants access. Licence validation remains authoritative. */
     fun consumeExpiredReward():Boolean {
         val end=getL("reward_observed_$userId")
-        if(!loggedIn||isPro||end<=0||now()<end||getL("reward_notified_$userId")==end)return false
-        putL("reward_notified_$userId",end);return true
+        if(!loggedIn||end<=0||now()<end||getL("reward_notified_$userId")==end)return false
+        // Consume the ad window even if paid/lifetime access still continues, so a later paid expiry
+        // cannot be mistaken for the old reward ending. This marker never controls entitlement.
+        putL("reward_notified_$userId",end);return !isPro
     }
 
     fun logout() {

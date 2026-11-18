@@ -39,9 +39,22 @@ const server=http.createServer((req,res)=>{
   assert.equal(cfg.versionName,'5.6.2');assert.equal(pemRequests,0,'no request for protected Android certificate');
   // Persist representative existing game data through the actual host storage, reload it, then boot offline.
   await page.evaluate(()=>{DH.saveFile('/data/data/com.meysam.divanemtiaz.site/files/existing-game.json',new Int8Array([7,11,33,99]),12345);DH.savePrefs('existing-user-settings',JSON.stringify({score11:33,preset:4}));});
-  await page.waitForFunction(()=>new Promise(resolve=>{const q=indexedDB.open('divan-emtiaz',1);q.onsuccess=()=>{const d=q.result;const t=d.transaction('prefs');const g=t.objectStore('prefs').get('existing-user-settings');g.onsuccess=()=>{resolve(!!g.result);d.close()};}}));
+  let stored=false;
+  for(let attempt=0;attempt<50&&!stored;attempt++){
+   stored=await page.evaluate(()=>new Promise(resolve=>{
+    const q=indexedDB.open('divan-emtiaz',1);
+    q.onsuccess=()=>{const d=q.result,t=d.transaction(['files','prefs']);let file=false,prefs=false;
+     const f=t.objectStore('files').get('/data/data/com.meysam.divanemtiaz.site/files/existing-game.json');f.onsuccess=()=>file=!!f.result;
+     const p=t.objectStore('prefs').get('existing-user-settings');p.onsuccess=()=>prefs=!!p.result;
+     t.oncomplete=()=>{d.close();resolve(file&&prefs)};
+    };
+   }));
+   if(!stored)await new Promise(resolve=>setTimeout(resolve,100));
+  }
+  assert.equal(stored,true,'both file and preference transactions committed before navigation');
   await page.reload();await ready();
-  assert.deepEqual(await page.evaluate(()=>Array.from(DH.boot.files.find(x=>x[0].endsWith('existing-game.json'))[1])),[7,11,33,99]);
+  const savedFile=await page.evaluate(()=>{const f=DH.boot.files.find(x=>x[0].endsWith('existing-game.json'));return f?Array.from(f[1]):null});
+  assert.deepEqual(savedFile,[7,11,33,99],'committed existing game bytes are restored at next application boot');
   assert.equal(await page.evaluate(()=>DH.boot.prefs['existing-user-settings']),'{"score11":33,"preset":4}');
   await page.waitForFunction(()=>navigator.serviceWorker.controller!==null,{},{timeout:30000});
   await context.setOffline(true);await page.reload();await ready();
@@ -49,6 +62,6 @@ const server=http.createServer((req,res)=>{
   await page.screenshot({path:path.join(out,'web-boot-offline.png')});
   fs.writeFileSync(path.join(out,'results.json'),JSON.stringify({version:cfg.versionName,checks:['actual TeaVM application boot','stale config ignores protected PEM','canvas rendered','stored game survives reload','stored preferences survive reload','service worker offline boot','no JavaScript runtime errors'],pemRequests},null,2));
   console.log('PASS: real PWA boot, protected PEM, existing game/settings retained, offline reload.');
- }catch(e){await page.screenshot({path:path.join(out,'failure.png')}).catch(()=>{});fs.writeFileSync(path.join(out,'failure.txt'),String(e)+'\n'+errors.join('\n'));throw e;}
+ }catch(e){await page.screenshot({path:path.join(out,'failure.png')}).catch(()=>{});fs.writeFileSync(path.join(out,'failure.txt'),String(e)+'\n'+errors.join('\n'));fs.writeFileSync(path.join(out,'storage-state.json'),JSON.stringify(await page.evaluate(()=>({url:location.href,files:(DH.boot&&DH.boot.files||[]).map(x=>x[0]),prefs:Object.keys(DH.boot&&DH.boot.prefs||{})})).catch(()=>({})),null,2));throw e;}
  finally {await browser.close();server.close();}
 })().catch(e=>{console.error(e);server.close();process.exitCode=1;});

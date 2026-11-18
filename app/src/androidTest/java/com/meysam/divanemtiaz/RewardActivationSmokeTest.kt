@@ -20,6 +20,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 @RunWith(AndroidJUnit4::class)
 class RewardActivationSmokeTest {
     private lateinit var scenario:ActivityScenario<MainActivity>
+    private lateinit var host:MainActivity
     private val keys=KeyPairGenerator.getInstance("RSA").apply{initialize(2048)}.generateKeyPair()
     private lateinit var oldPin:String
     private var clockMax=0L;private var clockElapsed=0L
@@ -27,7 +28,8 @@ class RewardActivationSmokeTest {
     @Before fun start(){
         Api.transport={_,_,_,_->JSONObject().put("ok",true).put("data",JSONObject()).put("server_time",System.currentTimeMillis()/1000)}
         scenario=ActivityScenario.launch(MainActivity::class.java)
-        scenario.onActivity{host->
+        scenario.onActivity{activity->
+            host=activity
             oldPin=StoreInfo.pinnedKey;pin(B64.encode(keys.public.encoded));ProState.logout()
             clockMax=ProState.getL("clock_max");clockElapsed=ProState.getL("clock_elapsed")
             Notices.markAsked(host);host.updateSettings{it.copy(general=it.general.copy(animations=false))}
@@ -35,7 +37,7 @@ class RewardActivationSmokeTest {
             host.resetTo(HomeScreen(host))
         }
     }
-    @After fun finish(){scenario.onActivity{ProState.logout();pin(oldPin);ProState.putL("clock_max",clockMax);ProState.putL("clock_elapsed",clockElapsed);ProState.putL("reward_observed_987654",0);ProState.putL("reward_notified_987654",0)};scenario.close();Api.transport=null}
+    @After fun finish(){onMain{ProState.logout();pin(oldPin);ProState.putL("clock_max",clockMax);ProState.putL("clock_elapsed",clockElapsed);ProState.putL("reward_observed_987654",0);ProState.putL("reward_notified_987654",0)};scenario.close();Api.transport=null}
     private fun response(end:Long,forged:Boolean=false):JSONObject {
         val now=ProState.now()
         val payload=JSONObject().put("uid",987654).put("user","reward_ui_fixture").put("device",ProState.deviceId)
@@ -45,13 +47,18 @@ class RewardActivationSmokeTest {
         val sig=Signature.getInstance("SHA256withRSA").run{initSign(signer);update(body.toByteArray(Charsets.US_ASCII));sign()}
         return JSONObject().put("user",JSONObject().put("id",987654).put("username","reward_ui_fixture")).put("certificate",body+"."+B64.encode(sig,url=true))
     }
+    private fun onMain(action:(MainActivity)->Unit){
+        var failure:Throwable?=null
+        InstrumentationRegistry.getInstrumentation().runOnMainSync{try{action(host)}catch(t:Throwable){failure=t}}
+        failure?.let{throw it}
+    }
     private fun timerText():String {
         var found=""
         fun visit(v:android.view.View){
             if(v is android.widget.TextView&&v.text.toString().startsWith("زمان باقی‌ماندهٔ Pro"))found=v.text.toString()
             if(v is android.view.ViewGroup)for(i in 0 until v.childCount)visit(v.getChildAt(i))
         }
-        scenario.onActivity{visit(it.window.decorView)}
+        onMain{visit(it.window.decorView)}
         return found
     }
     private fun screenshot(name:String){
@@ -60,9 +67,9 @@ class RewardActivationSmokeTest {
             android.os.ParcelFileDescriptor.AutoCloseInputStream(ui.executeShellCommand(cmd)).use{it.readBytes()}
         }
     }
-    @Test fun verifiedRewardUnlocksMafiaAndExpiresWithCountdownAndSavedData(){
+    @Test(timeout=90000) fun verifiedRewardUnlocksMafiaAndExpiresWithCountdownAndSavedData(){
         var end=0L;var savedId=0L
-        scenario.onActivity{host->
+        onMain{host->
             end=ProState.now()+3600
             savedId=host.repo.newSessionId()
             host.repo.save(GameSession(savedId,GameType.MENFI,listOf(Side("الف",1),Side("ب",2)),rules=GameRules(),label="reward_expiry_fixture"))
@@ -76,14 +83,14 @@ class RewardActivationSmokeTest {
         assertTrue("Actual native subscription UI shows the ticking verified entitlement: $first",first.isNotBlank())
         SystemClock.sleep(1500)
         assertNotEquals("The displayed seconds actually decrease",first,timerText())
-        scenario.onActivity{
+        onMain{
             assertTrue(ProState.isPro);assertTrue(ProState.license.remainingSeconds(ProState.now())!! in 1..3599)
             // Simulate one hour passing using the same monotonic anchor as a server sync; never sleep an hour.
             ProState.anchorClock(end+1)
         }
         assertTrue("Respectful expiry returns to Home automatically",awaitExpiry())
         screenshot("verified-pro-expired")
-        scenario.onActivity{host->
+        onMain{host->
             assertFalse(ProState.isPro);assertFalse(ProState.mafiaAllowed)
             assertTrue(host.current is HomeScreen)
             assertEquals("reward_expiry_fixture",host.repo.session(savedId)?.label)
@@ -95,15 +102,15 @@ class RewardActivationSmokeTest {
         val until=SystemClock.uptimeMillis()+20000
         while(SystemClock.uptimeMillis()<until){
             var expired=false
-            scenario.onActivity{expired=!ProState.isPro&&it.current is HomeScreen}
+            onMain{expired=!ProState.isPro&&it.current is HomeScreen}
             if(expired)return true
             SystemClock.sleep(100)
         }
         return false
     }
-    @Test fun claimNeverReportsSuccessForAnUnverifiedCertificate(){
+    @Test(timeout=90000) fun claimNeverReportsSuccessForAnUnverifiedCertificate(){
         val done=CountDownLatch(1);val accepted=AtomicBoolean(true)
-        scenario.onActivity{host->
+        onMain{host->
             val data=response(ProState.now()+3600,forged=true)
             Api.transport={_,_,_,_->JSONObject().put("ok",true).put("data",data).put("server_time",ProState.now())}
             AdsManager.completeDirect(host,JSONObject().put("watch_token","invalid_fixture_"+System.nanoTime()).put("claim_after",0).put("expires_at",ProState.now()+3600)){ok,message->
@@ -111,11 +118,11 @@ class RewardActivationSmokeTest {
             }
         }
         assertTrue(done.await(5,TimeUnit.SECONDS));assertFalse(accepted.get())
-        scenario.onActivity{assertFalse(ProState.isPro)}
+        onMain{assertFalse(ProState.isPro)}
     }
-    @Test fun verifiedClaimAcknowledgesActualOneHourAccess(){
+    @Test(timeout=90000) fun verifiedClaimAcknowledgesActualOneHourAccess(){
         val done=CountDownLatch(1);val accepted=AtomicBoolean(false)
-        scenario.onActivity{host->
+        onMain{host->
             val data=response(ProState.now()+3600)
             Api.transport={_,_,_,_->JSONObject().put("ok",true).put("data",data).put("server_time",ProState.now())}
             AdsManager.completeDirect(host,JSONObject().put("watch_token","valid_fixture_"+System.nanoTime()).put("claim_after",0).put("expires_at",ProState.now()+3600)){ok,message->
@@ -123,6 +130,6 @@ class RewardActivationSmokeTest {
             }
         }
         assertTrue(done.await(5,TimeUnit.SECONDS));assertTrue(accepted.get())
-        scenario.onActivity{assertTrue(ProState.isPro);assertTrue(ProState.mafiaAllowed);assertTrue(ProState.license.remainingSeconds(ProState.now())!! in 3595..3600)}
+        onMain{assertTrue(ProState.isPro);assertTrue(ProState.mafiaAllowed);assertTrue(ProState.license.remainingSeconds(ProState.now())!! in 3595..3600)}
     }
 }
