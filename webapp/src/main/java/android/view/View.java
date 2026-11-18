@@ -857,6 +857,7 @@ public class View implements Drawable.Callback {
     protected void onAttachedToWindow() {}
 
     protected void onDetachedFromWindow() {}
+    public int getWindowVisibility() { return mAttachInfo == null ? GONE : VISIBLE; }
     protected void onWindowVisibilityChanged(int visibility) {}
 
     public void addOnAttachStateChangeListener(OnAttachStateChangeListener listener) {

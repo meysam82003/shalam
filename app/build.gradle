@@ -8,9 +8,9 @@ def releaseKeystore = System.getenv('DIVAN_KEYSTORE_FILE')
 // Values for the Pro subscription; none of them is secret (public keys and addresses).
 def setting = { String name, String env -> ((project.findProperty(name) ?: System.getenv(env) ?: '') as String).trim() }
 def divanApi = setting('divan.api', 'DIVAN_API') ?: 'https://divan-emtiaz.ir/divan/api/index.php'
-// Public key of the subscription server's certificates (from /v1/keys of the live server, kid 1ce0e85fcdca4bfb), pinned so
+// Public key of the subscription server's certificates (from /v1/keys of the live server, kid 1fe9c4f5920ba9fc), pinned so
 // a key swapped in the phone's storage can never sign a forged Pro certificate. A property or variable overrides it.
-def divanLicenseKey = setting('divan.licenseKey', 'DIVAN_LICENSE_KEY') ?: 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAw7JEk5pLY5jqNXNBaOf5iDrcZVgl0II2znwXp3COiBI2CophSEM2dM3lui9DZ8PALWoBVhcsJ3i5ckGMmeiXEm7t9qKeNFPNRV+1eSBDV7M0uqlLNl89tN/iC84abqkeKhR+2GDcGHSxrrNWHW565nZ0aOVNF4p2+9h7ro1jiCt+SzEFpRWSZKmfoROFqApirTVROf26A7Uisn7LZjMDUZ8oH7pB+xZYMWLN3rYCW7ov3lNZt81Tjl1jkYnT08lV+z87f0bmKpCWckplVGdKIDdko1e/HLdqnE8JtC3UTpcf4KScGYoUFLuQSKCl5m9zXfwp6QjjFDbWVmF/2Fx45wIDAQAB'
+def divanLicenseKey = setting('divan.licenseKey', 'DIVAN_LICENSE_KEY') ?: 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArgEml89iQ8gpp0+xB3OaAG3F4CdVW3Uu0bKh/RS459jiXH3/owA0AZ5WVsqbI1AUoNje7WoqBpd6vNurcy4n4vZxLz21U7PUBncgCEP++rvGCHwGB/pQcCbrpMYQK1jsJRa6OS9MVmQGiKN8B6DaO/MjsWwOL+j+817rWNpD0bS/CZxiRcTltUWPBGcGSbxUHbRlupN1oi7VDQPXKLN3YtfjlyA4pCDmkMfjQebo0pW3NSw6k9qKInomizEmE/uA7WX59QaSmpY0nhQeyrxNnXdc27JJzX0ipOnXbkfKl8g+yzujiw47hsjtzUcwOOwXDSdQvJt0wk/pQtHsoXbjpQIDAQAB'
 // Cafe Bazaar's public RSA key of this app (safe to commit): Poolakey checks every purchase's signature with it too.
 def divanBazaarKey = setting('divan.bazaarKey', 'DIVAN_BAZAAR_RSA_KEY') ?: 'MIHNMA0GCSqGSIb3DQEBAQUAA4G7ADCBtwKBrwCbivNO6KdM5zzuOw4Z3AKHzSETm5dTZhlPV3dNARx/Ae+ny+AMGuO6DXyW5FSMwOBhs4k0wNwseEBkU1V1II7IRmna/2S/95Gqz+DcUA5ilxkxLlIpLAwi+D429RWYEMfx05ndBv4z0vjmDGb+2J9U21RCLLWXZL01ZkiopXS0zULVMPKTJU4dvIqtjV3rTvkoE+NPd42wsJ5fD6k4RCiHK0dba8ILe4lc75CGbx0CAwEAAQ=='
 // Myket's public RSA key (safe to commit); per-build property or environment variable takes precedence.
@@ -33,8 +33,8 @@ android {
         applicationId 'com.meysam.divanemtiaz'
         minSdk 21
         targetSdk 35
-        versionCode 28
-        versionName '5.6.1'
+        versionCode 29
+        versionName '5.6.2'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
         manifestPlaceholders = basePlaceholders
 

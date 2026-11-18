@@ -134,10 +134,9 @@ class SettingsScreen(host: MainActivity, private var tab: Int = TAB_GENERAL) : S
             kit.listRow(kit.iconChip(RoyalIcon.CROWN), "دیوان Pro", if (ProState.isPro) "فعال؛ بدون تبلیغ" else "بدون تبلیغ و با همهٔ قابلیت‌ها") { host.push(ProScreen(host)) },
             kit.listRow(kit.iconChip(RoyalIcon.USER), "اشتراک من", if (ProState.loggedIn) "حساب ${ProState.username}" else "ورود یا ساخت حساب (اختیاری)") { host.push(SubscriptionScreen(host)) }
         )
-        if (!ProState.isPro && AdEngine.rewardedAvailable()) rows += kit.listRow(kit.iconChip(RoyalIcon.PLAY), "یک ساعت بدون تبلیغ", "با تماشای یک ویدئوی کوتاه (اختیاری)") {
-            AdEngine.showRewarded(this) { ok -> kit.toast(if (ok) "تا یک ساعت تبلیغی نمایش داده نمی‌شود" else "ویدئو کامل نشد") ; host.refresh() }
-        }
+        if (!ProState.isPro && (AdEngine.rewardedAvailable()||AdsManager.proRewardAvailable())) rows += kit.listRow(kit.iconChip(RoyalIcon.PLAY), "یک ساعت Pro با ویدئو", "پاداش اختیاری پس از تماشای کامل") { host.push(RewardScreen(host)) }
         parent.addView(kit.listGroup(rows))
+        if(ProState.isPro&&!ProState.license.lifetime)parent.addView(proTimeView(),kit.spaced(10))
         parent.addView(kit.section("اعلان‌ها", RoyalIcon.STAR))
         parent.addView(kit.switchRow("پیشنهادها و تخفیف‌ها", if (ProState.isPro) "با وجود Pro هم پیشنهادها در نوار اعلان بیاید (پیش‌فرض خاموش)" else "حداکثر یکی در روز در نوار اعلان گوشی",
             if (ProState.isPro) Notices.offersPro(host) else Notices.offers(host)) { v ->

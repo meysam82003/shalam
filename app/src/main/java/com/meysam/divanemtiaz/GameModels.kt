@@ -311,7 +311,9 @@ data class GeneralSettings(
     val defaultTeam2: String = "اونا",
     val uiScale: Int = UiScale.NORMAL,
     /** Visual style ([Themes]); empty until the user picks one on the first launch. */
-    val theme: String = ""
+    val theme: String = "",
+    /** Original decorations are retained while only palette colours change. */
+    val paletteGeometry: String = ""
 )
 
 /** Display size of the whole interface, in percent. */

@@ -432,7 +432,7 @@ final class Entitlements
         // a pass that was bought once ends exactly at its end date.
         $renewing = false;
         if ($sum['expires_at'] !== null) {
-            $last = Db::one("SELECT p.auto_renewing FROM {entitlements} e JOIN {purchases} p ON p.id = e.purchase_id WHERE e.user_id = ? AND e.status = 'active' AND e.expires_at IS NOT NULL ORDER BY e.expires_at DESC LIMIT 1", [$user['id']]);
+            $last = Db::one("SELECT p.auto_renewing FROM {entitlements} e JOIN {purchases} p ON p.id = e.purchase_id WHERE e.user_id = ? AND e.status = 'active' AND e.expires_at IS NOT NULL AND e.expires_at = ? ORDER BY e.expires_at DESC LIMIT 1", [$user['id'], Clock::sql($sum['expires_at'])]);
             $renewing = $last !== null && (int)$last['auto_renewing'] === 1;
         }
         $grace = $sum['expires_at'] === null ? null : $sum['expires_at'] + ($renewing ? $graceDays * 86400 : 0);
@@ -461,6 +461,7 @@ final class Entitlements
             'policy' => 1,
             'device' => $device,
             'device_conflict' => $conflict,
+            'reward_until' => $conflict === null ? (Clock::ts(Db::value("SELECT MAX(expires_at) FROM {user_grants} WHERE user_id=? AND feature_k='pro' AND reason='ویدئوی جایزه‌ای: یک ساعت Pro' AND revoked_at IS NULL AND expires_at>?", [$user['id'],Clock::sql()])) ?? 0) : 0,
             'mafia_trial_until' => MafiaTrial::until((int)$user['id'], $device),
         ];
         $body = Crypto::b64u(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));

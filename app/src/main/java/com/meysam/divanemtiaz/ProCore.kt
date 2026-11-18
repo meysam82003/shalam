@@ -159,21 +159,26 @@ data class License(
     val kid: String = "",
     val mafiaTrialUntil: Long = 0,
     /** Phone the subscription is active on, when it is not this one. */
-    val elsewhere: String? = null
+    val elsewhere: String? = null,
+    /** Signed end of an ad-granted Pro window; null for older server certificates. */
+    val rewardUntil: Long? = null
 ) {
     /**
      * Pro right now. Lifetime: signed for this phone, nothing else (no end, no check-in needed).
      * Timed: before the paid end (plus grace only for self-renewing store subscriptions) and within the offline window.
      */
-    fun proAt(now: Long): Boolean = valid && pro && (lifetime || (now < offlineUntil && (grace ?: expiresAt ?: 0L) > now))
+    fun accessEndsAt():Long = if(lifetime)Long.MAX_VALUE else if(plan=="gift")expiresAt?:0L else grace?:expiresAt?:0L
+    fun proAt(now: Long): Boolean = valid && pro && (lifetime || (now < offlineUntil && accessEndsAt() > now))
+    fun remainingSeconds(now:Long):Long?=if(lifetime)null else (accessEndsAt()-now).coerceAtLeast(0)
+    fun rewardEndsAt():Long = rewardUntil ?: if(plan=="gift"&&expiresAt!=null&&issuedAt>0&&expiresAt-issuedAt in 1..3600)expiresAt else 0L
 
     fun daysLeft(now: Long): Int? = if (lifetime || expiresAt == null) null else maxOf(0, ((expiresAt - now + 86399) / 86400).toInt())
 
     /** Offline window ran out: the app must reach the server once to continue Pro. */
-    fun needsSync(now: Long): Boolean = valid && pro && !lifetime && now >= offlineUntil && (grace ?: expiresAt ?: 0L) > now
+    fun needsSync(now: Long): Boolean = valid && pro && !lifetime && now >= offlineUntil && accessEndsAt() > now
 
     /** The offline window ends before the paid end: worth telling the player when to connect. */
-    fun offlineLimitShown(): Boolean = !lifetime && expiresAt != null && offlineUntil < (grace ?: expiresAt)
+    fun offlineLimitShown(): Boolean = !lifetime && expiresAt != null && offlineUntil < accessEndsAt()
 
     companion object {
         val NONE = License(false, "none")
@@ -199,6 +204,7 @@ data class License(
             val samePhone = device == null || expectedDevice == null || device == expectedDevice
             val conflict = j.optJSONObject("device_conflict")
             return License(
+                rewardUntil = optLongOrNull("reward_until"),
                 mafiaTrialUntil = if (samePhone) j.optLong("mafia_trial_until") else 0,
                 valid = true, reason = if (samePhone) "ok" else "device", uid = uid, user = j.optString("user"), pro = j.optBoolean("pro") && samePhone,
                 lifetime = j.optBoolean("lifetime"), plan = if (j.isNull("plan")) null else j.optString("plan"),
@@ -446,9 +452,9 @@ object ProState {
     val license: License
         get() {
             val c = certificate ?: return License.NONE
-            cached?.takeIf { it.first == c }?.let { return it.second }
-            val key = (StoreInfo.pinnedKey.ifBlank { publicKey.orEmpty() }).takeIf { it.isNotBlank() }?.let { runCatching { B64.pemToDer(it) }.getOrNull() }
-            return License.parse(c, key, userId.takeIf { it > 0 }, deviceId).also { cached = c to it }
+            val identity="$c|$userId|$deviceId|${StoreInfo.pinnedKey}|$publicKey"
+            cached?.takeIf { it.first == identity }?.let { return it.second }
+            return LicenseTrust.parse(c,StoreInfo.pinnedKey,publicKey,userId.takeIf{it>0},deviceId).also { cached=identity to it }
         }
 
     val isPro: Boolean get() = loggedIn && StoreInfo.integrityOk && license.proAt(now())
@@ -508,7 +514,17 @@ object ProState {
         data.optString("certificate").takeIf { it.isNotBlank() }?.let { certificate = it }
         accountJson = data.toString()
         putL("synced_at", now())
+        val current=license
+        if(isPro&&current.rewardEndsAt()>0)putL("reward_observed_$userId",current.rewardEndsAt())
         notifyChanged()
+    }
+    /** Only controls the expiry notice, never grants access. Licence validation remains authoritative. */
+    fun consumeExpiredReward():Boolean {
+        val end=getL("reward_observed_$userId")
+        if(!loggedIn||end<=0||now()<end||getL("reward_notified_$userId")==end)return false
+        // Consume the ad window even if paid/lifetime access still continues, so a later paid expiry
+        // cannot be mistaken for the old reward ending. This marker never controls entitlement.
+        putL("reward_notified_$userId",end);return !isPro
     }
 
     fun logout() {

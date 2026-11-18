@@ -594,7 +594,7 @@
     var assets = {};
     Promise.all([
       openDb().then(function (d) { db = d; return Promise.all([readAll('files'), readAll('prefs')]); }),
-      Promise.all((cfg.assets || []).map(function (p) { return fetchBytes('assets/' + p).then(function (b) { assets[p] = b; }); })),
+      Promise.all((cfg.assets || []).filter(function (p) { return !/^certs\//.test(p); }).map(function (p) { return fetchBytes('assets/' + p).then(function (b) { assets[p] = b; }); })),
       loadFonts()
     ]).then(function (r) {
       DH.boot = {
@@ -610,6 +610,6 @@
       document.body.appendChild(s);
     }, function (e) { DH.crash('آماده‌سازی برنامه ممکن نشد: ' + e); });
   }
-  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(function () {});
+  if ('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('sw.js').catch(function () {});
   boot();
 })();

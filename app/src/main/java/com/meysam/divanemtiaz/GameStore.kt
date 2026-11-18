@@ -550,6 +550,7 @@ object GameCodec {
             put("defaultTeam2", s.general.defaultTeam2)
             put("uiScale", s.general.uiScale)
             put("theme", s.general.theme)
+            put("paletteGeometry", s.general.paletteGeometry)
         })
         put("shalam", JSONObject().apply {
             put("dealType", s.shalam.dealType)
@@ -704,7 +705,8 @@ object GameCodec {
                 defaultTeam1 = g.optString("defaultTeam1", d.general.defaultTeam1),
                 defaultTeam2 = g.optString("defaultTeam2", d.general.defaultTeam2),
                 uiScale = g.optInt("uiScale", d.general.uiScale),
-                theme = g.optString("theme", d.general.theme)
+                theme = g.optString("theme", d.general.theme),
+                paletteGeometry = g.optString("paletteGeometry", d.general.paletteGeometry)
             ),
             shalam = ShalamSettings(
                 dealType = s.optInt("dealType", d.shalam.dealType),
