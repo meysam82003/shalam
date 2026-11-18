@@ -113,6 +113,7 @@ class HomeScreen(host: MainActivity) : Screen(host) {
     override fun onShow() {
         super.onShow()
         askAboutOffers()
+        AdsManager.prepareReward(host)
         RewardInvitation.offer(this)
     }
 

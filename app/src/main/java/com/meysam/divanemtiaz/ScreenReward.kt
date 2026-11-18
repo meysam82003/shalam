@@ -69,8 +69,8 @@ class RewardScreen(host: MainActivity) : Screen(host) {
 object RewardInvitation {
     private var shownThisRun=false
     fun offer(screen:HomeScreen) {
-        if(shownThisRun || ProState.isPro || ProState.rewardNextAt>ProState.now() || AdsManager.proRewardPending())return
-        if(!AdEngine.rewardedAvailable() && !AdsManager.proRewardAvailable())return
+        if(!ProState.loggedIn || shownThisRun || ProState.isPro || ProState.rewardNextAt>ProState.now() || AdsManager.proRewardPending())return
+        if(!AdEngine.rewardedAvailable(realOnly=true) && !AdsManager.proRewardAvailable(realOnly=true))return
         val prefs=screen.host.getSharedPreferences("divan_reward_invitation",android.content.Context.MODE_PRIVATE)
         val window=ProState.rewardNextAt
         if(prefs.getLong("window",Long.MIN_VALUE)==window && ProState.now()-prefs.getLong("shown_at",0)<86400)return

@@ -38,7 +38,6 @@ android {
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
         manifestPlaceholders = basePlaceholders
 
-        testInstrumentationRunner 'android.test.InstrumentationTestRunner'
     }
 
     signingConfigs {

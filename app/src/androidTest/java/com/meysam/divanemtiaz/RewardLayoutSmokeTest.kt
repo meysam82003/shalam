@@ -36,9 +36,10 @@ class RewardLayoutSmokeTest {
     }
     @After fun close(){activity.close();Api.transport=null}
     private fun screenshot(name:String){
-        val ctx=instrumentation.targetContext
-        val dir=File(ctx.getExternalFilesDir(null),"ui-smoke").apply{mkdirs()}
-        instrumentation.uiAutomation.takeScreenshot()?.let{image->File(dir,"$name.png").outputStream().use{image.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)};image.recycle()}
+        for(command in listOf("mkdir -p /sdcard/Download/divan-ui-smoke", "screencap -p /sdcard/Download/divan-ui-smoke/$name.png")) {
+            val output=instrumentation.uiAutomation.executeShellCommand(command)
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(output).use{it.readBytes()}
+        }
     }
     private fun find(text:String):AccessibilityNodeInfo?=instrumentation.uiAutomation.rootInActiveWindow?.findAccessibilityNodeInfosByText(text)?.firstOrNull()
     private fun showVideo(callback:(Boolean)->Unit){

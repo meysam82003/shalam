@@ -47,7 +47,28 @@ object AdsManager {
         return c.takeIf { it.optBoolean("enabled") && (fetchedAt == 0L || ProState.now() - fetchedAt <= 600) }
     }
     fun active() = config() != null
-    fun proRewardAvailable() = chain("rewarded").isNotEmpty()
+    fun proRewardAvailable(realOnly:Boolean=false) = chain("rewarded").any{(name,cfg)->
+        (!realOnly||!cfg.optBoolean("test")) && runCatching{adapters[name]?.ready("rewarded",cfg.getJSONObject("zones").getString("rewarded"))==true}.getOrDefault(false)
+    }
+    private var preparingReward=false
+    fun prepareReward(host:MainActivity){
+        if(preparingReward||fullScreen||rewardBusy||!ProState.loggedIn||ProState.isPro||ProState.rewardNextAt>ProState.now()||proRewardPending())return
+        val sources=chain("rewarded");if(sources.isEmpty())return
+        preparingReward=true
+        fun attempt(index:Int){
+            if(index>=sources.size||host.isFinishing||host.current !is HomeScreen){preparingReward=false;return}
+            val(name,cfg)=sources[index];val impl=adapter(host,name,cfg)
+            if(impl==null){attempt(index+1);return}
+            val zone=cfg.getJSONObject("zones").getString("rewarded")
+            if(runCatching{impl.ready("rewarded",zone)}.getOrDefault(false)){preparingReward=false;return}
+            event(name,"rewarded",zone,"request")
+            sdkLoad(impl,host,"rewarded",zone){ok->
+                event(name,"rewarded",zone,if(ok)"loaded" else "error")
+                if(ok){preparingReward=false;(host.current as? HomeScreen)?.let{RewardInvitation.offer(it)}}else attempt(index+1)
+            }
+        }
+        attempt(0)
+    }
     fun proRewardPending():Boolean { val q=pending(ProState.userId);return (0 until q.length()).any {q.getJSONObject(it).optString("purpose")=="pro"} }
     fun refresh(host: MainActivity) {
         init(host)
@@ -103,7 +124,7 @@ object AdsManager {
         Api.call("POST", "ads/events", JSONObject().put("events", JSONArray().put(e)), ProState.token) { data, _ -> done?.invoke(data != null) }
     }
     fun releaseBanners() { bannerEpoch++; AdEngine.invalidateNetworkSticky(); banners.forEach { runCatching { it.first.destroyBanner(it.second) } }; banners.clear() }
-    fun release() { releaseBanners(); adapters.values.forEach { runCatching { it.release() } }; adapters.clear(); initialized.clear(); fullScreen=false; rewardBusy=false }
+    fun release() { releaseBanners(); adapters.values.forEach { runCatching { it.release() } }; adapters.clear(); initialized.clear(); fullScreen=false; rewardBusy=false; preparingReward=false }
     fun banner(screen: Screen, placement: String, fallback: (() -> View?)? = null): View? {
         init(screen.host)
         val c = config() ?: return null

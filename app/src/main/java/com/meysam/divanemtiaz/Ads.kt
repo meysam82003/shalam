@@ -493,11 +493,11 @@ object AdEngine {
     }
 
     /** Optional video the player chooses to watch for an ad-free hour. */
-    fun rewardedAvailable(): Boolean {
+    fun rewardedAvailable(realOnly: Boolean = false): Boolean {
         val c = cfg() ?: return false
         val direct = slotFormats(c, "rewarded_offer", false)?.let { pick(c, "rewarded_offer", it) }
         val zone = c.optJSONObject("network")?.takeIf { it.optBoolean("enabled") }?.optJSONObject("zones")?.optString("rewarded").orEmpty()
-        return direct != null || (zone.isNotBlank() && network != null)
+        return direct != null || (zone.isNotBlank() && network != null && (!realOnly || !c.optJSONObject("network")!!.optBoolean("test")))
     }
 
     private var rewardBusy = false
