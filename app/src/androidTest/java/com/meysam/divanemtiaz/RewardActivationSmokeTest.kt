@@ -38,10 +38,10 @@ class RewardActivationSmokeTest {
         }
     }
     @After fun finish(){onMain{ProState.logout();pin(oldPin);ProState.putL("clock_max",clockMax);ProState.putL("clock_elapsed",clockElapsed);ProState.putL("reward_observed_987654",0);ProState.putL("reward_notified_987654",0)};scenario.close();Api.transport=null}
-    private fun response(end:Long,forged:Boolean=false):JSONObject {
+    private fun response(end:Long,forged:Boolean=false,pro:Boolean=true,plan:String="gift",rewardUntil:Long=end):JSONObject {
         val now=ProState.now()
         val payload=JSONObject().put("uid",987654).put("user","reward_ui_fixture").put("device",ProState.deviceId)
-            .put("pro",true).put("plan","gift").put("exp",end).put("grace",end+3*86400).put("iat",now).put("offline_until",end).put("reward_until",end)
+            .put("pro",pro).put("plan",plan).put("exp",end).put("grace",end+3*86400).put("iat",now).put("offline_until",end).put("reward_until",rewardUntil)
         val body=B64.encode(payload.toString().toByteArray(Charsets.UTF_8),url=true)
         val signer=if(forged)KeyPairGenerator.getInstance("RSA").apply{initialize(2048)}.generateKeyPair().private else keys.private
         val sig=Signature.getInstance("SHA256withRSA").run{initSign(signer);update(body.toByteArray(Charsets.US_ASCII));sign()}
@@ -107,6 +107,19 @@ class RewardActivationSmokeTest {
             SystemClock.sleep(100)
         }
         return false
+    }
+    @Test(timeout=90000) fun aPaidSubscriptionSurvivesRewardExpiryWithoutAStaleNotice(){
+        onMain{
+            val now=ProState.now();val giftEnd=now-1
+            ProState.putL("reward_notified_987654",0)
+            ProState.applyAccount(response(now+30*86400,plan="m1",rewardUntil=giftEnd))
+            assertTrue(ProState.isPro)
+            assertFalse("Paid access continues after its overlapping gift ends",ProState.consumeExpiredReward())
+            assertEquals(giftEnd,ProState.getL("reward_notified_987654"))
+            ProState.applyAccount(response(now-1,pro=false,plan="m1",rewardUntil=0))
+            assertFalse(ProState.isPro)
+            assertFalse("A later paid expiry cannot be mistaken for the old gift",ProState.consumeExpiredReward())
+        }
     }
     @Test(timeout=90000) fun claimNeverReportsSuccessForAnUnverifiedCertificate(){
         val done=CountDownLatch(1);val accepted=AtomicBoolean(true)
