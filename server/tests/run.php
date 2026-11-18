@@ -1331,8 +1331,10 @@ scenario('registration trial: device reservation, VPN independence and exact exp
     check(MafiaTrial::until((int)$u['id'], $sessionDevice) === $now + 600, 'trial starts at successful registration for exactly ten minutes');
     check(MafiaTrial::until((int)$u['id'], str_repeat('c', 64)) === 0, 'another phone cannot reuse the account trial');
     freshIp(); $input['username'] = 'trial_again';
-    throws(fn() => MafiaTrial::register($input), 'trial_used', 'changing IP / VPN never resets the device trial');
-    check(Users::byName('trial_again') === null, 'failed second registration leaves no account');
+    [$again,$recovery] = MafiaTrial::register($input);
+    check(Users::byName('trial_again') !== null && $again['id'] !== $u['id'] && $recovery !== '', 'a forgotten account never prevents a new registration on the same phone');
+    check(MafiaTrial::until((int)$again['id'],$sessionDevice) === 0,'new account and VPN do not reset the one-time Mafia trial');
+    check(MafiaTrial::until((int)$u['id'],$sessionDevice) === $now+600,'first account and original trial are preserved unchanged');
     $cert = Entitlements::certificate($u, 'bazaar', ['device_id' => $sessionDevice]);
     $payload = json_decode(Crypto::b64uDecode(explode('.', $cert['certificate'])[0]), true);
     check((int)$payload['mafia_trial_until'] === $now + 600 && !$payload['pro'], 'trial is signed and does not grant unrelated Pro access');
@@ -1366,6 +1368,12 @@ scenario('reward videos: completion window, single use, one hour Pro and rolling
     ProRewards::claim($u, $session, $watch);
     check((int)Db::value("SELECT COUNT(*) FROM {user_grants} WHERE user_id=? AND reason='ویدئوی جایزه‌ای: یک ساعت Pro'",[$u['id']])===1,'retry after a lost claim response returns success and never grants twice');
     throws(fn() => ProRewards::start($other, $session, $ad), 'reward_cooldown', 'new account on same phone cannot bypass 24h cap');
+    freshIp();
+    [$newAccount] = MafiaTrial::register(['username'=>'reward_reinstalled','password'=>'secret123','trial_device_id'=>str_repeat('a',64),'device_id'=>$session['device_id']]);
+    check($newAccount['id'] !== $u['id'],'reinstalled app can register a fresh account despite existing device history');
+    check(ProRewards::status((int)$newAccount['id'],$session['device_id'])['next_at'] === Clock::now()+86400,'fresh account receives the exact original remaining device cooldown');
+    throws(fn()=>ProRewards::start($newAccount,$session,$ad),'reward_cooldown','new registration does not reset the device reward timer');
+    check(!Entitlements::summary((int)$newAccount['id'])['pro'],'new account does not inherit or duplicate the old reward');
     throws(fn() => ProRewards::start($u, ['device_id' => str_repeat('f', 64), 'store' => 'bazaar'], $ad), 'reward_cooldown', 'another phone cannot bypass account cap');
     Clock::$fixed = $now + 3630;
     check(!Entitlements::summary((int)$u['id'])['pro'], 'reward Pro expires at one hour');

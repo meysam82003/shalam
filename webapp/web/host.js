@@ -610,6 +610,6 @@
       document.body.appendChild(s);
     }, function (e) { DH.crash('آماده‌سازی برنامه ممکن نشد: ' + e); });
   }
-  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(function () {});
+  if ('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('sw.js').catch(function () {});
   boot();
 })();

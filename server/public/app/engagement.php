@@ -10,17 +10,13 @@ final class MafiaTrial
         return Db::tx(function () use ($in) {
             $device = Devices::clean($in['trial_device_id'] ?? null);
             if ($device !== null && Devices::clean($in['device_id'] ?? null) === null) throw new ApiError('no_device', 'شناسهٔ دستگاه دریافت نشد.');
-            // Older clients may still register, but cannot start a trial without the stable identifier.
-            if ($device !== null && Db::one('SELECT device FROM {mafia_trials} WHERE device = ?', [$device]) !== null)
-                throw new ApiError('trial_used', 'یک بار با این گوشی قابلیت مافیا را تست کرده‌اید؛ وارد حساب قبلی شوید و اشتراک Pro بخرید.');
+            // Registration is always available; only the one-time trial is reserved per phone.
             [$u, $key] = Users::register((string)($in['username'] ?? ''), (string)($in['password'] ?? ''), isset($in['email']) ? (string)$in['email'] : null);
             if ($device !== null) {
-                try {
-                    Db::insert('mafia_trials', ['device' => $device, 'user_id' => $u['id'], 'session_device' => Devices::clean($in['device_id'] ?? null), 'starts_at' => Clock::sql(), 'ends_at' => Clock::sql(Clock::now() + 600)]);
-                } catch (PDOException $e) {
-                    if ($e->getCode() !== '23000') throw $e;
-                    throw new ApiError('trial_used', 'یک بار با این گوشی قابلیت مافیا را تست کرده‌اید؛ اشتراک Pro بخرید.');
-                }
+                // Concurrent registrations serialize on the device PK. Keep the first account/window untouched;
+                // a second account is created normally and gets no fresh trial. Reward cooldown is separate.
+                Db::run('INSERT INTO {mafia_trials} (device,user_id,session_device,starts_at,ends_at) VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE device=device',
+                    [$device,$u['id'],Devices::clean($in['device_id'] ?? null),Clock::sql(),Clock::sql(Clock::now()+600)]);
             }
             return [$u, $key];
         });

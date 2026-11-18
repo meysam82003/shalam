@@ -101,7 +101,7 @@ class ProScreen(host: MainActivity, private val reason: String? = null, private 
             addView(kit.panel(PanelStyle.SUCCESS).apply {
                 addView(kit.text(if (lic.lifetime) "اشتراک Pro مادام‌العمر — فعال" else "Pro شما تا ${date(lic.expiresAt)} فعال است", TextStyle.BODY_BOLD, Royal.ivory))
                 if(!lic.lifetime)addView(proTimeView(),kit.spaced(6))
-                if (!lic.lifetime) addView(kit.text("${kit.n(lic.daysLeft(now) ?: 0)} روز باقی‌مانده؛ خرید تازه به انتهای همین دوره اضافه می‌شود.", TextStyle.LABEL, Royal.muted))
+                if (!lic.lifetime) addView(kit.text(if(lic.plan=="gift"&&lic.expiresAt==lic.rewardEndsAt()) "هدیهٔ یک‌ساعتهٔ تماشای ویدئو؛ زمان باقی‌مانده در بالا نمایش داده می‌شود." else "${kit.n(lic.daysLeft(now) ?: 0)} روز باقی‌مانده؛ خرید تازه به انتهای همین دوره اضافه می‌شود.", TextStyle.LABEL, Royal.muted))
                 addView(kit.gap(8))
                 addView(kit.button("اشتراک من", ButtonKind.SECONDARY, RoyalIcon.CROWN, 44) { host.push(SubscriptionScreen(host)) })
             }, kit.spaced(12))
@@ -366,7 +366,7 @@ class AccountScreen(host: MainActivity, private val then: (() -> Unit)? = null) 
     private var mode = 1 // 0 login, 1 register, 2 recover
 
     override fun build(): View = scaffold("حساب کاربری", "خرید Pro و تست ۱۰ دقیقه‌ای مافیا") {
-        addView(kit.text("بازی‌های امتیازی بدون حساب در دسترس‌اند. مافیا به Pro نیاز دارد؛ با ثبت‌نام، تست ۱۰ دقیقه‌ای فوراً آغاز می‌شود و برای هر گوشی فقط یک بار است. ایمیل اختیاری است.", TextStyle.LABEL, Royal.muted), kit.spaced(10))
+        addView(kit.text("بازی‌های امتیازی بدون حساب در دسترس‌اند. ساخت حساب تازه روی همین گوشی مجاز است. تست ۱۰ دقیقه‌ای مافیا فقط یک بار برای هر گوشی است؛ حساب تازه محدودیت زمانی جایزه را از نو شروع نمی‌کند. ایمیل اختیاری است.", TextStyle.LABEL, Royal.muted), kit.spaced(10))
         val chips = listOf("ورود", "ساخت حساب", "بازیابی").mapIndexed { i, l -> kit.chip(l, i == mode) { mode = i; host.refresh() } }
         addView(kit.chipRail(chips, mode), kit.spaced(10))
         val err = errorLine()
@@ -493,10 +493,12 @@ class SubscriptionScreen(host: MainActivity) : Screen(host) {
             })
             if(pro&&!lic.lifetime)addView(proTimeView(),kit.spaced(6))
             if (pro && !lic.lifetime) {
-                addView(kit.text("تا ${date(lic.expiresAt)} — ${kit.n(lic.daysLeft(now) ?: 0)} روز باقی‌مانده", TextStyle.BODY, Royal.ivory))
+                val hourGift=lic.plan=="gift"&&lic.expiresAt==lic.rewardEndsAt()
+                addView(kit.text(if(hourGift) "هدیهٔ تماشای ویدئو — یک ساعت دسترسی کامل Pro" else "تا ${date(lic.expiresAt)} — ${kit.n(lic.daysLeft(now) ?: 0)} روز باقی‌مانده", TextStyle.BODY, Royal.ivory))
                 val total = 30.0.coerceAtLeast(((lic.expiresAt ?: now) - now) / 86400.0)
                 addView(kit.gap(6))
-                addView(kit.progress(((lic.daysLeft(now) ?: 0) / total).toFloat().coerceIn(0.03f, 1f), Royal.turquoise))
+                val fraction=if(hourGift)(lic.remainingSeconds(now)?:0)/3600.0 else (lic.daysLeft(now) ?: 0)/total
+                addView(kit.progress(fraction.toFloat().coerceIn(0.03f, 1f), Royal.turquoise))
             }
             if (lic.needsSync(now)) addView(kit.text("برای ادامهٔ Pro یک بار به اینترنت وصل شوید.", TextStyle.LABEL, Royal.alert))
             else if (pro && lic.offlineLimitShown()) addView(kit.text("بدون اینترنت تا ${date(lic.offlineUntil)} معتبر است؛ پیش از آن یک بار به اینترنت وصل شوید.", TextStyle.CAPTION, Royal.muted))
