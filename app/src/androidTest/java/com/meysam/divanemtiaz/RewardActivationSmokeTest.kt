@@ -22,18 +22,20 @@ class RewardActivationSmokeTest {
     private lateinit var scenario:ActivityScenario<MainActivity>
     private val keys=KeyPairGenerator.getInstance("RSA").apply{initialize(2048)}.generateKeyPair()
     private lateinit var oldPin:String
+    private var clockMax=0L;private var clockElapsed=0L
     private fun pin(value:String){StoreInfo.javaClass.getDeclaredField("pinnedKey").apply{isAccessible=true}.set(StoreInfo,value)}
     @Before fun start(){
         Api.transport={_,_,_,_->JSONObject().put("ok",true).put("data",JSONObject()).put("server_time",System.currentTimeMillis()/1000)}
         scenario=ActivityScenario.launch(MainActivity::class.java)
         scenario.onActivity{host->
             oldPin=StoreInfo.pinnedKey;pin(B64.encode(keys.public.encoded));ProState.logout()
+            clockMax=ProState.getL("clock_max");clockElapsed=ProState.getL("clock_elapsed")
             Notices.markAsked(host);host.updateSettings{it.copy(general=it.general.copy(animations=false))}
             ProState.userId=987654;ProState.username="reward_ui_fixture";ProState.token="fixture-session"
             host.resetTo(HomeScreen(host))
         }
     }
-    @After fun finish(){scenario.onActivity{ProState.logout();pin(oldPin)};scenario.close();Api.transport=null}
+    @After fun finish(){scenario.onActivity{ProState.logout();pin(oldPin);ProState.putL("clock_max",clockMax);ProState.putL("clock_elapsed",clockElapsed);ProState.putL("reward_observed_987654",0);ProState.putL("reward_notified_987654",0)};scenario.close();Api.transport=null}
     private fun response(end:Long,forged:Boolean=false):JSONObject {
         val now=ProState.now()
         val payload=JSONObject().put("uid",987654).put("user","reward_ui_fixture").put("device",ProState.deviceId)
@@ -61,7 +63,7 @@ class RewardActivationSmokeTest {
     @Test fun verifiedRewardUnlocksMafiaAndExpiresWithCountdownAndSavedData(){
         var end=0L;var savedId=0L
         scenario.onActivity{host->
-            end=ProState.now()+12
+            end=ProState.now()+3600
             savedId=host.repo.newSessionId()
             host.repo.save(GameSession(savedId,GameType.MENFI,listOf(Side("الف",1),Side("ب",2)),rules=GameRules(),label="reward_expiry_fixture"))
             ProState.applyAccount(response(end))
@@ -74,7 +76,11 @@ class RewardActivationSmokeTest {
         assertTrue("Actual native subscription UI shows the ticking verified entitlement: $first",first.isNotBlank())
         SystemClock.sleep(1500)
         assertNotEquals("The displayed seconds actually decrease",first,timerText())
-        scenario.onActivity{assertTrue(ProState.isPro);assertTrue(ProState.license.remainingSeconds(ProState.now())!! in 1..11)}
+        scenario.onActivity{
+            assertTrue(ProState.isPro);assertTrue(ProState.license.remainingSeconds(ProState.now())!! in 1..3599)
+            // Simulate one hour passing using the same monotonic anchor as a server sync; never sleep an hour.
+            ProState.anchorClock(end+1)
+        }
         assertTrue("Respectful expiry returns to Home automatically",awaitExpiry())
         screenshot("verified-pro-expired")
         scenario.onActivity{host->

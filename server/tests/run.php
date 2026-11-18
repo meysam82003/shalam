@@ -1369,8 +1369,10 @@ scenario('reward videos: completion window, single use, one hour Pro and rolling
     check((int)Db::value("SELECT COUNT(*) FROM {user_grants} WHERE user_id=? AND reason='ویدئوی جایزه‌ای: یک ساعت Pro'",[$u['id']])===1,'retry after a lost claim response returns success and never grants twice');
     throws(fn() => ProRewards::start($other, $session, $ad), 'reward_cooldown', 'new account on same phone cannot bypass 24h cap');
     freshIp();
-    [$newAccount] = MafiaTrial::register(['username'=>'reward_reinstalled','password'=>'secret123','trial_device_id'=>str_repeat('a',64),'device_id'=>$session['device_id']]);
-    check($newAccount['id'] !== $u['id'],'reinstalled app can register a fresh account despite existing device history');
+    $registered = apiPost('v1/auth/register',['username'=>'reward_reinstalled','password'=>'secret123','trial_device_id'=>str_repeat('a',64),'device_id'=>$session['device_id'],'store'=>'bazaar']);
+    $newAccount = Users::byId((int)$registered['user']['id']);
+    check($newAccount['id'] !== $u['id'] && isset($registered['token'],$registered['recovery_key']),'reinstalled app can register a fresh account despite existing device history');
+    check($registered['rewards']['next_at']===Clock::now()+86400,'registration API immediately returns the existing phone cooldown to the new account UI');
     check(ProRewards::status((int)$newAccount['id'],$session['device_id'])['next_at'] === Clock::now()+86400,'fresh account receives the exact original remaining device cooldown');
     throws(fn()=>ProRewards::start($newAccount,$session,$ad),'reward_cooldown','new registration does not reset the device reward timer');
     check(!Entitlements::summary((int)$newAccount['id'])['pro'],'new account does not inherit or duplicate the old reward');
