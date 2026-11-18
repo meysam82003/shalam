@@ -469,7 +469,9 @@ final class PayRegistry
     public static function cfg(string $id): array
     {
         $d = ['enabled' => in_array($id, ['bazaar', 'myket'], true), 'sort' => 0, 'min' => null, 'max' => null, 'sandbox' => false, 'route' => 'bridge', 'kill' => false, 'api_base' => '', 'hosts' => '', 'paths' => [], 'extra' => ''];
-        return (array)Settings::get('pay_' . $id, []) + $d;
+        $cfg = (array)Settings::get('pay_' . $id, []) + $d;
+        if (App::directPayments()) $cfg['route'] = 'direct';
+        return $cfg;
     }
 
     /**

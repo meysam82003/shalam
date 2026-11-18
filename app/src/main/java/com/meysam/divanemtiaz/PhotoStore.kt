@@ -22,7 +22,7 @@ object PhotoStore {
     const val BASE = 1_000_000
     private const val SIZE = 384
     private var dir: File? = null
-    private val cache = android.util.LruCache<Int, Bitmap>(24)
+    private val cache by lazy { android.util.LruCache<Int, Bitmap>(24) }
 
     fun init(context: Context) {
         if (dir == null) dir = File(context.applicationContext.filesDir, "photos").apply { mkdirs() }

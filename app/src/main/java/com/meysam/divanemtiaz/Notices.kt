@@ -38,7 +38,7 @@ object Notices {
     const val EXTRA_TARGET = "divan_notice_target"
     const val EXTRA_ID = "divan_notice_id"
     private const val JOB_ID = 4242
-    private const val PERIOD_MS = 6 * 3600 * 1000L
+    private const val PERIOD_MS = 15 * 60 * 1000L
 
     private fun prefs(c: Context): SharedPreferences = c.applicationContext.getSharedPreferences("divan_notices", Context.MODE_PRIVATE)
 
@@ -46,7 +46,13 @@ object Notices {
     fun offers(c: Context) = prefs(c).getBoolean("offers", false)
     fun offersPro(c: Context) = prefs(c).getBoolean("offers_pro", false)
     fun reminders(c: Context) = prefs(c).getBoolean("reminders", true)
-    fun setOffers(c: Context, on: Boolean) = prefs(c).edit().putBoolean(if (ProState.isPro) "offers_pro" else "offers", on).putBoolean("asked", true).apply()
+    fun setOffers(c: Context, on: Boolean) {
+        prefs(c).edit().putBoolean(if (ProState.isPro) "offers_pro" else "offers", on).putBoolean("asked", true).apply()
+        updatePushConsent(c)
+    }
+    fun updatePushConsent(c:Context) {
+        runCatching {Class.forName("com.meysam.divanpush.PushRuntime").getField("INSTANCE").get(null).let{runtime->runtime.javaClass.getMethod("updateRegistration",Context::class.java).invoke(runtime,c)}}
+    }
     fun setReminders(c: Context, on: Boolean) = prefs(c).edit().putBoolean("reminders", on).apply()
     fun markAsked(c: Context) = prefs(c).edit().putBoolean("asked", true).apply()
 
@@ -71,23 +77,30 @@ object Notices {
         val nm = c.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.createNotificationChannel(NotificationChannel(CH_ACCOUNT, "حساب و پرداخت", NotificationManager.IMPORTANCE_DEFAULT).apply { description = "تأیید خرید و موارد ضروری حساب" })
         nm.createNotificationChannel(NotificationChannel(CH_SUBSCRIPTION, "اشتراک و تمدید", NotificationManager.IMPORTANCE_DEFAULT).apply { description = "یادآوری پیش از پایان اشتراک Pro" })
-        nm.createNotificationChannel(NotificationChannel(CH_OFFERS, "پیشنهادها و تخفیف‌ها", NotificationManager.IMPORTANCE_LOW).apply { description = "فقط اگر خودتان پذیرفته باشید؛ از تنظیمات برنامه خاموش می‌شود" })
+        nm.createNotificationChannel(NotificationChannel(CH_OFFERS, "پیشنهادها و تخفیف‌ها", NotificationManager.IMPORTANCE_DEFAULT).apply { description = "فقط اگر خودتان پذیرفته باشید؛ از تنظیمات برنامه خاموش می‌شود" })
     }
 
     /** The few-times-a-day check; kept across restarts, runs only with internet. */
     fun schedule(c: Context) {
         val js = c.getSystemService(Context.JOB_SCHEDULER_SERVICE) as? JobScheduler ?: return
-        if (js.allPendingJobs.any { it.id == JOB_ID }) return
+        if (prefs(c).getInt("schedule_version", 0) == 2 && js.allPendingJobs.any { it.id == JOB_ID }) return
         val info = JobInfo.Builder(JOB_ID, ComponentName(c, NoticeJob::class.java))
             .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
             .setPeriodic(PERIOD_MS)
             .setPersisted(true)
             .build()
-        runCatching { js.schedule(info) }
+        runCatching { js.schedule(info) }.onSuccess { prefs(c).edit().putInt("schedule_version", 2).apply() }
+    }
+
+    @Volatile private var checking = false
+    fun check(c: Context) {
+        if (checking) return
+        checking = true
+        Thread { try { runCatching { sync(c) } } finally { checking = false } }.start()
     }
 
     /** One check (background thread): a subscription reminder, then at most one offer. */
-    fun sync(c: Context) {
+    @Synchronized fun sync(c: Context) {
         val ctx = c.applicationContext
         ProState.init(ctx)
         channels(ctx)
@@ -127,7 +140,7 @@ object Notices {
     fun targetAllowed(t: String): Boolean = when {
         t.isBlank() -> true
         t.startsWith("divan://") -> t.matches(Regex("^divan://[a-z0-9_/]{1,60}$"))
-        t.startsWith("https://") -> StoreInfo.storeId == "direct"
+        t.startsWith("https://") -> runCatching { java.net.URI(t).let { it.host != null && it.rawUserInfo == null } }.getOrDefault(false)
         else -> false
     }
 

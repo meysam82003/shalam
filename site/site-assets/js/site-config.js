@@ -41,9 +41,9 @@ window.DIVAN_SITE = {
    * Fill url, version, size and sha256 after each approved release (the release notes list them).
    */
   // نشانی صفحهٔ خرید اشتراک از سایت (روی سرور دیوان)
-  buyUrl: '/divan/pay/buy.php',
+  buyUrl: 'https://divan-emtiaz.ir/divan/pay/buy.php',
   // Settings from the panel («مدیریت سایت»): notice bar, discount banner, ads, sections, texts and details.
-  liveUrl: '/divan/site.php',
+  liveUrl: 'https://divan-emtiaz.ir/divan/site.php',
   downloads: {
     version: '5.5.0',
     date: '',

@@ -94,6 +94,14 @@ final class SiteSettings
     {
         $c = self::get();
         switch ($part) {
+            case 'addresses':
+                $origin = rtrim(trim((string)($in['public_origin'] ?? '')), '/');
+                $service = rtrim(trim((string)($in['service_base'] ?? '')), '/');
+                if ($origin !== '' && (!PayEndpoint::validBase($origin) || (string)parse_url($origin, PHP_URL_PATH) !== '')) throw new ApiError('bad_origin', 'دامنهٔ سایت باید https:// و بدون مسیر باشد.');
+                if ($service !== '' && !PayEndpoint::validBase($service)) throw new ApiError('bad_service', 'نشانی سرور باید https:// و بدون ?، # یا IP باشد.');
+                Settings::set('public_origin', $origin);
+                Settings::set('service_base', $service);
+                return;
             case 'announce':
                 $c['announce'] = ['on' => !empty($in['on']), 'text' => self::text($in['text'] ?? '', 300), 'link' => self::link($in['link'] ?? ''),
                     'link_text' => self::text($in['link_text'] ?? '', 40), 'tone' => array_key_exists($in['tone'] ?? '', self::TONES) ? $in['tone'] : 'gold', 'home_only' => !empty($in['home_only'])];
@@ -172,6 +180,8 @@ final class SiteSettings
             elseif ($v !== '') $dl[$k] = $v;
         }
         $out['downloads'] = $dl;
+        $out['siteUrl'] = PayPages::siteHome();
+        $out['adminUrl'] = App::baseUrl() . '/admin/';
         $out['buyUrl'] = App::baseUrl() . '/pay/buy.php';
         if ($c['enamad']['id'] !== '' && $c['enamad']['code'] !== '') $out['enamad'] = $c['enamad'];
         if ($c['ads']['on']) {
@@ -179,6 +189,15 @@ final class SiteSettings
             foreach (self::AD_SLOTS as $slot) { $a = Ads::pick($slot, $countAds); if ($a !== null) $ads[$slot] = $a; }
             if ($ads) $out['ads'] = $ads;
         }
-        return $out;
+        return self::deploymentLinks($out);
+    }
+
+    private static function deploymentLinks(array $values): array
+    {
+        foreach ($values as $key => $value) {
+            if (is_array($value)) $values[$key] = self::deploymentLinks($value);
+            elseif (is_string($value)) $values[$key] = App::deploymentUrl($value);
+        }
+        return $values;
     }
 }

@@ -180,6 +180,7 @@ class GameRepository(private val kv: KeyValueStore, private val legacy: () -> Le
             put("app", app)
             put("exportedAt", System.currentTimeMillis())
             put("settings", GameCodec.encodeSettings(settings()))
+            put("rule_presets", RulePresetBook(kv).export())
             put("roster", GameCodec.encodeRoster(roster()))
             put("sessions", JSONArray().apply { sessions().forEach { put(GameCodec.encodeSession(it)) } })
             put("leagues", JSONArray().apply { leagues().forEach { put(GameCodec.encodeLeague(it)) } })
@@ -256,6 +257,7 @@ class GameRepository(private val kv: KeyValueStore, private val legacy: () -> Le
         if (replace) o.optJSONObject("settings")?.let { st ->
             runCatching { GameCodec.decodeSettings(st) }.getOrNull()?.let { changes[KEY_SETTINGS] = GameCodec.encodeSettings(it).toString() }
         }
+        o.optJSONObject("rule_presets")?.let { incoming -> changes[RulePresetBook.KEY] = RulePresetBook.merge(RulePresetBook(kv).export(), incoming, replace).toString() }
         kv.write(changes)
         o.optJSONObject("photos")?.let { p ->
             PhotoStore.import(p.keys().asSequence().mapNotNull { k -> k.toIntOrNull()?.let { it to p.optString(k) } }.toMap())
@@ -628,6 +630,7 @@ object GameCodec {
         put("updatedAt", l.updatedAt)
         put("finished", l.finished)
         put("avatar", l.avatar)
+        put("pastGames", JSONArray(l.pastGames))
         put("config", encodeLeagueConfig(l.config))
         put("rules", encodeRules(l.rules))
         put("teams", JSONArray().apply { l.teams.forEach { put(encodeSide(it)) } })
@@ -680,7 +683,8 @@ object GameCodec {
             },
             updatedAt = o.optLong("updatedAt", id),
             finished = o.optBoolean("finished", false),
-            avatar = o.optInt("avatar", -1)
+            avatar = o.optInt("avatar", -1),
+            pastGames = o.optJSONArray("pastGames")?.let { a -> List(a.length()) { a.optLong(it) } }.orEmpty()
         )
     }
 

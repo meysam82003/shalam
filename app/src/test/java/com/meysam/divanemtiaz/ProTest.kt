@@ -207,9 +207,9 @@ class ProTest {
         // Every scenario is Pro when the section is Pro and no single scenario is ticked.
         assertTrue(Gate.itemLocked("mafia_scenarios", "classic"))
         assertTrue(Gate.itemLocked("mafia_scenarios", "godfather"))
-        // Ticked items only: the rest stays free and the section stays open.
+        // All mafia capabilities now require Pro or the signed registration trial.
         assertTrue(Gate.itemLocked("mafia_last_cards", "SILENCE"))
-        assertFalse(Gate.itemLocked("mafia_last_cards", "BEAUTIFUL_MIND"))
+        assertTrue(Gate.itemLocked("mafia_last_cards", "BEAUTIFUL_MIND"))
         assertTrue(ProState.feature("themes").second)
         assertTrue(Gate.itemLocked("themes", "neon"))
         assertFalse(Gate.itemLocked("themes", "cobalt"))

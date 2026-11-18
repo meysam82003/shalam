@@ -434,6 +434,8 @@ final class ConfigPages
                 'name' => mb_substr(self::post('name'), 0, 80) ?: 'تبلیغ', 'title' => mb_substr(self::post('title'), 0, 80) ?: null,
                 'body' => mb_substr(self::post('body'), 0, 300) ?: null, 'format' => $format, 'media_id' => $mediaId,
                 'target_url' => $url ?: null, 'cta_text' => mb_substr(self::post('cta_text'), 0, 30) ?: null,
+                'close_delay_seconds' => max(0, min(60, (int)self::post('close_delay_seconds', '5'))),
+                'reward_seconds' => max(1, min(3600, (int)self::post('reward_seconds', '30'))),
                 'style_json' => $style ? json_encode($style) : null, 'closable' => isset($_POST['closable']) || $format === 'interstitial' ? 1 : 0,
                 'starts_at' => $starts, 'ends_at' => $ends, 'total_cap' => self::intOrNull('total_cap'), 'daily_cap' => self::intOrNull('daily_cap'),
                 'min_interval_sec' => max(0, (int)self::post('min_interval_sec', '0')), 'priority' => (int)self::post('priority', '0'),
@@ -495,6 +497,8 @@ final class ConfigPages
                 <div class="row">
                   <label class="check"><input type="checkbox" name="stores[]" value="bazaar" <?= strpos($a['stores'], 'bazaar') !== false ? 'checked' : '' ?>> نسخهٔ بازار</label>
                   <label class="check"><input type="checkbox" name="stores[]" value="myket" <?= strpos($a['stores'], 'myket') !== false ? 'checked' : '' ?>> نسخهٔ مایکت</label>
+                  <label>نمایش ضربدر پس از چند ثانیه (تبلیغ تمام‌صفحه)</label><input type="number" name="close_delay_seconds" min="0" max="60" value="<?= (int)($a['close_delay_seconds'] ?? 5) ?>">
+                  <label>حداقل مدت تماشای ویدئوی جایزه‌ای (ثانیه؛ برابر طول ویدئو تنظیم کنید)</label><input type="number" name="reward_seconds" min="1" max="3600" value="<?= (int)($a['reward_seconds'] ?? 30) ?>">
                   <label class="check"><input type="checkbox" name="closable" <?= $a['closable'] ? 'checked' : '' ?>> قابل بستن</label>
                   <label class="check"><input type="checkbox" name="active" <?= $a['active'] ? 'checked' : '' ?>> فعال</label>
                 </div>
@@ -551,7 +555,7 @@ final class ConfigPages
                 <div class="phone light"><div class="screen"><div class="blk">تاریخچه</div><div class="blk">امروز — ۳ بازی</div><?= $slot('history_inline', 'میان فهرست') ?><div class="blk">دیروز</div><div class="blk">رنک‌بندی</div><?= $slot('ranking_inline', 'پایین رنک‌بندی') ?><div class="nav"></div></div></div>
                 <div class="phone"><div class="screen"><div class="blk">نتیجهٔ بازی (پایان‌یافته)</div><div class="blk">برنده: تیم الف</div><?= $slot('result_bottom', 'پایین نتیجه') ?><div class="blk">مافیا / پانتومیم / جاسوس</div><?= $slot('hub_inline', 'صفحهٔ بازی‌ها') ?><?= $slot('settings_bottom', 'پایین تنظیمات') ?><div class="nav"></div></div></div>
                 <div class="phone"><div class="screen"><?= $slot('sticky_top', 'نوار ثابت بالا') ?><div class="blk">هر صفحهٔ مجاز</div><div class="blk">محتوای صفحه بالا و پایین می‌رود؛ نوار ثابت می‌ماند و چیزی را نمی‌پوشاند</div><div class="blk">…</div><div style="margin-top:auto"></div><?= $slot('sticky_bottom', 'نوار ثابت پایین') ?><div class="nav" style="margin-top:6px"></div></div></div>
-                <div class="phone light"><div class="screen" style="justify-content:center"><?= $slot('between_games', 'تمام‌صفحه بین دو فعالیت — حداکثر هر ۱۰ دقیقه، قابل بستن') ?><?= $slot('rewarded_offer', 'ویدئوی جایزه‌ای — فقط با انتخاب کاربر، یک ساعت بدون تبلیغ') ?></div></div>
+                <div class="phone light"><div class="screen" style="justify-content:center"><?= $slot('between_games', 'تمام‌صفحه بین دو فعالیت — حداکثر هر ۱۰ دقیقه، قابل بستن') ?><?= $slot('rewarded_offer', 'ویدئوی جایزه‌ای — فقط با انتخاب کاربر، یک ساعت Pro، هر ۲۴ ساعت یک بار') ?></div></div>
               </div>
             </div>
             <form method="post"><?= Admin::csrfField() ?>
@@ -644,10 +648,11 @@ final class ConfigPages
               <p class="hint">کاربران Pro هرگز تبلیغ نمی‌بینند و کتابخانهٔ تبلیغاتی برایشان اصلاً راه‌اندازی نمی‌شود.</p>
               <label>ترتیب منبع تبلیغ</label>
               <select name="ads_priority"><?php foreach (['direct_first' => 'اول تبلیغ مستقیم، اگر نبود شبکه', 'network_first' => 'اول شبکه، اگر پر نشد مستقیم', 'direct_only' => 'فقط تبلیغ مستقیم', 'network_only' => 'فقط شبکه'] as $k => $l) echo '<option value="' . $k . '"' . (Settings::get('ads_priority', 'direct_first') === $k ? ' selected' : '') . '>' . $l . '</option>'; ?></select>
+              <p class="hint">نسخهٔ ۵.۶ برای تماشای کامل، دقیقاً یک ساعت Pro می‌دهد؛ هر حساب و گوشی فقط یک بار در ۲۴ ساعت.</p>
               <div class="row">
                 <div><label>فاصلهٔ کمینهٔ تمام‌صفحه (دقیقه)</label><input type="number" name="ads_interstitial_min_minutes" value="<?= (int)Settings::get('ads_interstitial_min_minutes', 10) ?>" min="3"></div>
                 <div><label>سقف تمام‌صفحه در روز</label><input type="number" name="ads_daily_interstitial_cap" value="<?= (int)Settings::get('ads_daily_interstitial_cap', 3) ?>" min="0" max="20"></div>
-                <div><label>دقیقهٔ بدون تبلیغ پس از ویدئوی جایزه‌ای</label><input type="number" name="rewarded_ad_free_minutes" value="<?= (int)Settings::get('rewarded_ad_free_minutes', 60) ?>" min="0"></div>
+                <div><label>سازگاری نسخه‌های قدیمی: دقیقهٔ بدون تبلیغ پس از ویدئو</label><input type="number" name="rewarded_ad_free_minutes" value="<?= (int)Settings::get('rewarded_ad_free_minutes', 60) ?>" min="0"></div>
               </div>
             </div>
             <div class="card"><h3>تپسل (Tapsell Mediation)</h3>
@@ -702,6 +707,8 @@ final class ConfigPages
             Settings::set('device_moves_limit', max(0, min(50, (int)self::post('device_moves_limit', '3'))));
             Settings::set('pro_devices_limit', max(0, min(50, (int)self::post('pro_devices_limit', '1'))));
             Settings::set('device_offline_days', max(1, min(90, (int)self::post('device_offline_days', '7'))));
+            Settings::set('contact_address', mb_substr(self::post('contact_address', '@Meysam_pardaz'), 0, 300));
+            Settings::set('sponsor_contact', mb_substr(self::post('sponsor_contact', '@Meysam_pardaz'), 0, 300));
             Settings::set('support_text', mb_substr(self::post('support_text'), 0, 500));
             Admin::audit('store_settings', 'settings', 'stores', $reason, $before, ['bazaar' => Settings::get('bazaar'), 'myket' => Settings::get('myket'), 'cross_store' => Settings::get('cross_store'), 'offline_days' => Settings::get('offline_days'), 'secrets_changed' => array_values(array_filter(['bazaar_api_secret', 'bazaar_client_secret', 'bazaar_refresh_token', 'bazaar_discount_key', 'myket_access_token'], fn($s) => self::post($s) !== ''))]);
             Admin::flash('تنظیمات فروشگاه‌ها ذخیره شد.');
@@ -758,6 +765,8 @@ final class ConfigPages
               <p class="hint">کاربر با یک حساب روی هر نسخه‌ای (بازار، مایکت، APK سایت، وب، ویندوز و آیفون) وارد می‌شود و Pro همراه حساب است؛ خرید و تمدید در هر نسخه با روش پرداخت همان نسخه انجام می‌شود. با سقف ۱، ورود روی دستگاه تازه، دستگاه قبلی را خودکار از حساب خارج می‌کند: برنامهٔ آن دستگاه در اولین اتصال به اینترنت خارج می‌شود و پیام «حساب شما روی دستگاه دیگری باز شد» را می‌گیرد؛ اگر آفلاین بماند، حداکثر تا پایان «اعتبار آفلاین» Pro دارد. با سقف بیشتر، دستگاهی که مدت بیشتری استفاده نشده خارج می‌شود. اگر تیک بالا برداشته شود، تعداد دستگاه‌ها بی‌سقف است.</p>
               <p class="hint">اگر کاربر تا این مدت اینترنت نداشته باشد هم Pro او کار می‌کند؛ پس از اتصال، گواهی تازه می‌گیرد. اشتراک زمان‌دار هیچ‌وقت بعد از تاریخ پایانش آفلاین تمدید نمی‌شود و مهلت تمدید فقط برای اشتراک‌های «تمدید خودکار» بازار است.</p>
               <p class="hint"><b>مادام‌العمر:</b> بدون تاریخ پایان و بدون نیاز به اینترنت روی همان گوشی کار می‌کند. بازپرداخت یا انتقال آن در اولین اتصال گوشی به اینترنت اعمال می‌شود؛ گوشی‌ای که هرگز آنلاین نشود از ابطال خبردار نمی‌شود.</p>
+              <label>راه ارتباطی در اپ (ایمیل، آیدی تلگرام یا لینک)</label><input type="text" name="contact_address" value="<?= e(Settings::get('contact_address', '@Meysam_pardaz')) ?>">
+              <label>راه ارتباطی ثبت تبلیغ و اسپانسری</label><input type="text" name="sponsor_contact" value="<?= e(Settings::get('sponsor_contact', '@Meysam_pardaz')) ?>">
               <label>متن راهنمای پشتیبانی در اپ</label><input type="text" name="support_text" value="<?= e(Settings::get('support_text', '')) ?>">
             </div>
             <div class="row"><div style="flex:3"><input type="text" name="reason" placeholder="یادداشت (اختیاری)"></div><div style="flex:0"><button class="btn gold" name="action" value="save">ذخیره</button></div></div>
@@ -874,7 +883,11 @@ final class ConfigPages
                   <div class="row">
                     <label class="check" style="flex:0;white-space:nowrap"><input type="checkbox" name="sandbox" <?= $c['sandbox'] ? 'checked' : '' ?>> حالت آزمایشی (Sandbox)</label>
                     <?php if ($id === 'zarinpal' || $id === 'aban'): ?>
-                    <div><label>مسیر ارتباط</label><select name="route"><option value="bridge">از راه واسط ایران (پیشنهادی)</option><option value="direct"<?= $c['route'] === 'direct' ? ' selected' : '' ?>>مستقیم از هلند</option></select></div>
+                    <?php if (App::directPayments()): ?>
+                    <input type="hidden" name="route" value="direct"><div class="hint">اتصال مستقیم از همین هاست ایرانی؛ بدون واسط</div>
+                    <?php else: ?>
+                    <div><label>مسیر ارتباط</label><select name="route"><option value="bridge">از راه واسط ایران</option><option value="direct"<?= $c['route'] === 'direct' ? ' selected' : '' ?>>مستقیم</option></select></div>
+                    <?php endif; ?>
                     <?php endif; ?>
                   </div>
                   <?php if ($a instanceof PayEndpointAdapter): ?>
@@ -1018,6 +1031,15 @@ final class ConfigPages
             </div>
             <div class="grid g2 site-cards">
 
+            <div class="card pm-card" id="addresses"><h3>دامنه و نشانی‌های دیوان</h3>
+              <?= $form('addresses') ?>
+                <label>دامنهٔ سایت</label><input type="url" class="ltr" name="public_origin" value="<?= e(Settings::get('public_origin', '')) ?>" placeholder="https://divan-emtiaz.ir">
+                <label>نشانی پایهٔ سرور و مدیریت</label><input type="url" class="ltr" name="service_base" value="<?= e(Settings::get('service_base', '')) ?>" placeholder="https://divan-emtiaz.ir/divan">
+                <p class="hint">ابتدا دامنه، HTTPS و انتقال فایل‌ها و دیتابیس را روی هاست آماده کنید. این تنظیم لینک‌های سایت، پرداخت، API و مدیریت را تغییر می‌دهد. کلید امضای اشتراک و دیتابیس فعلی را حفظ کنید. دامنهٔ قبلی باید برای دریافت تنظیم تازه توسط اپ‌های نصب‌شده در دسترس بماند.</p>
+                <p class="ltr">API: <?= e(App::baseUrl()) ?>/api/index.php<br>Admin: <?= e(App::baseUrl()) ?>/admin/</p>
+                <?= $note() ?>
+              </form>
+            </div>
             <div class="card pm-card" id="announce"><h3>نوار اعلان بالای سایت</h3>
               <?= $form('announce') ?>
                 <label class="check"><input type="checkbox" name="on" <?= $c['announce']['on'] ? 'checked' : '' ?>> نمایش داده شود</label>
@@ -1162,7 +1184,7 @@ final class ConfigPages
             ];
             $nid = Db::insert('notices', $row + ['admin_id' => (int)Admin::$me['id'], 'created_at' => Clock::sql()]);
             Admin::audit('notice_create', 'notice', $nid, $reason, null, ['title' => $title]);
-            Admin::flash('اعلان ثبت شد. گوشی‌ها در نخستین همگام‌سازی (معمولاً ظرف چند ساعت) آن را نشان می‌دهند.');
+            Admin::flash('اعلان ثبت شد. گوشی‌ها در نخستین همگام‌سازی (با باز کردن اپ یا بررسی دوره‌ای Android) آن را نشان می‌دهند.');
             Admin::redirect('p=notices');
         }
         $rows = Db::all('SELECT * FROM {notices} ORDER BY id DESC LIMIT 100');
@@ -1172,7 +1194,7 @@ final class ConfigPages
             <div class="alert info">
               این اعلان‌ها در <b>نوار اعلان گوشی</b> نشان داده می‌شوند، فقط برای کسانی که هنگام نخستین اجرا یا از تنظیمات برنامه «اعلان پیشنهادها» را پذیرفته‌اند.
               کاربران Pro فقط وقتی اعلان می‌گیرند که خودشان آن را روشن کرده باشند.
-              <br><b>زمان رسیدن:</b> برنامه چند بار در روز (وقتی گوشی اینترنت دارد و Android اجازه می‌دهد) اعلان‌ها را می‌گیرد؛ ارسال لحظه‌ای (Push) نیست و ممکن است تا چند ساعت طول بکشد.
+              <br><b>زمان رسیدن:</b> هنگام باز شدن اپ و هر دقیقه در زمان استفاده بررسی می‌شود؛ در پس‌زمینه، بررسی ۱۵ دقیقه‌ای به اجازهٔ Android و محدودیت باتری وابسته است. ارسال لحظه‌ای (Push) نیست.
               هر گوشی هر اعلان را فقط یک بار می‌بیند و در هر ۲۴ ساعت حداکثر به تعداد سقف روزانه.
             </div>
             <div class="grid g2">
@@ -1183,7 +1205,7 @@ final class ConfigPages
                 <label>تصویر (اختیاری، از رسانه‌ها)</label><select name="media_id"><option value="0">بدون تصویر</option><?php foreach ($media as $m) echo '<option value="' . (int)$m['id'] . '">' . e($m['original_name']) . '</option>'; ?></select>
                 <div class="row">
                   <div><label>مقصد در برنامه</label><select name="target_app"><option value="">صفحهٔ اصلی</option><?php foreach (Ads::APP_TARGETS as $k => $l) echo '<option value="' . e($k) . '">' . e($l) . '</option>'; ?></select></div>
-                  <div><label>یا نشانی وب (https؛ فقط در نسخهٔ سایت)</label><input type="text" name="target_url" class="ltr" placeholder="https://..."></div>
+                  <div><label>یا نشانی وب (https)</label><input type="text" name="target_url" class="ltr" placeholder="https://..."></div>
                 </div>
                 <div class="row">
                   <div><label>مخاطب</label><select name="audience"><?php foreach (Notices::AUDIENCES as $k => $l) echo '<option value="' . $k . '">' . e($l) . '</option>'; ?></select></div>
@@ -1225,6 +1247,13 @@ final class ConfigPages
     // ================================================================ payment gateway in Iran
     public static function bridge(): void
     {
+        if (App::directPayments()) {
+            Admin::layout('اتصال مستقیم پرداخت', function () {
+                echo '<div class="alert ok">سایت و پنل روی هاست ایران اجرا می‌شوند. پرداخت و بررسی خرید بازار و مایکت مستقیم انجام می‌شود؛ واسط، دامنهٔ جداگانه یا کلید واسط لازم نیست.</div>';
+                echo '<a class="btn gold" href="index.php?p=paymethods">تنظیمات درگاه‌ها</a> <a class="btn ghost" href="index.php?p=stores">تنظیمات بازار و مایکت</a>';
+            }, 'bridge');
+            return;
+        }
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             self::managerOnly();
             $reason = Admin::requireReason();
@@ -1269,7 +1298,7 @@ final class ConfigPages
             // save: address and the route of each store
             $url = self::post('url', PaymentBridge::DEFAULT_URL);
             if (substr($url, -1) !== '/') $url .= '/';
-            if (!PaymentBridge::validUrl($url)) throw new ApiError('url', 'نشانی واسط باید با https:// شروع شود، مثل https://pay.httpuser87890.ir/');
+            if (!PaymentBridge::validUrl($url)) throw new ApiError('url', 'نشانی واسط باید با https:// شروع شود، مثل https://pay.divan-emtiaz.ir/');
             $new = ['url' => $url] + $cfg;
             $msgs = [];
             foreach (['myket', 'bazaar'] as $s) {
@@ -1306,7 +1335,7 @@ final class ConfigPages
                 <br>در config.php واسط ایران، داخل 'keys' این خط را اضافه کنید: <code class="ltr">'<?= e($newKey[0]) ?>' => '…همین کلید…',</code> سپس «فعال کردن کلید تازه» را بزنید. این کلید را در پیام‌رسان یا GitHub نگذارید.</div>
             <?php endif; ?>
             <div class="alert info">
-              مایکت از سرور هلند در دسترس نیست؛ با این بخش، سرور اصلی رسیدها را از راه سرور ایران (<span class="ltr">pay.httpuser87890.ir</span>) به مایکت و بازار می‌فرستد.
+              مایکت از سرور هلند در دسترس نیست؛ با این بخش، سرور اصلی رسیدها را از راه سرور ایران (<span class="ltr">pay.divan-emtiaz.ir</span>) به مایکت و بازار می‌فرستد.
               واسط فقط پاسخ فروشگاه را برمی‌گرداند؛ تصمیم دربارهٔ خرید، حساب‌ها و اشتراک‌ها همین‌جا گرفته می‌شود. ارتباط با کلید مشترک امضا می‌شود و هر درخواست فقط یک بار پذیرفته می‌شود.
             </div>
             <div class="grid g2">
@@ -1388,6 +1417,7 @@ final class ConfigPages
             $path = $b ? Backup::dir() . '/' . basename($b['file']) : '';
             if ($b === null || !is_file($path)) throw new ApiError('missing', 'فایل پشتیبان پیدا نشد.');
             Admin::audit('backup_download', 'backup', $b['id'], 'download');
+            if (Admin::$native) throw new NativePanelFile(['name'=>basename($b['file']),'mime'=>'application/octet-stream','url'=>App::baseUrl().'/api/index.php?r=admin/mobile/download&id='.(int)$b['id']]);
             header('Content-Type: application/octet-stream');
             header('Content-Disposition: attachment; filename="' . basename($b['file']) . '"');
             header('Content-Length: ' . filesize($path));

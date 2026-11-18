@@ -857,6 +857,7 @@ public class View implements Drawable.Callback {
     protected void onAttachedToWindow() {}
 
     protected void onDetachedFromWindow() {}
+    protected void onWindowVisibilityChanged(int visibility) {}
 
     public void addOnAttachStateChangeListener(OnAttachStateChangeListener listener) {
         if (mOnAttachStateChangeListeners == null) mOnAttachStateChangeListeners = new java.util.ArrayList<>();

@@ -22,12 +22,7 @@ fun Screen.pantoBank(): PantoBank = PantoBank.get { host.assets.open(PantoBank.A
 /** Starts loading the bank off the main thread so the first match opens instantly. */
 fun Screen.preloadPantoBank() { Thread { runCatching { pantoBank() } }.start() }
 
-private val Screen.pantoSounds: GameSounds get() = PantoSoundHolder.get(host)
-
-private object PantoSoundHolder {
-    private var sounds: GameSounds? = null
-    fun get(host: MainActivity): GameSounds = sounds ?: GameSounds { host.spy.sound() }.also { sounds = it }
-}
+private val Screen.pantoSounds: GameAudio.Effects get() = host.gameAudio.panto
 
 /** Big emblem card used at the top of the game pages. */
 fun Screen.gameHero(glyph: MafiaGlyph, tint: Int, title: String, caption: String, action: View? = null): View =
@@ -48,6 +43,7 @@ fun Screen.menuTile(icon: RoyalIcon, title: String, caption: String, onClick: ()
 
 /** «پانتومیم» home. */
 class PantoHomeScreen(host: MainActivity) : Screen(host) {
+    override val audioScope: String get() = "panto"
     override val adZone: String? get() = "hub"
     override val featureKey: String get() = "panto"
     override fun build(): View {
@@ -66,13 +62,14 @@ class PantoHomeScreen(host: MainActivity) : Screen(host) {
                 kit.listRow(kit.iconChip(RoyalIcon.HISTORY), "مسابقه‌های گذشته", "${kit.n(host.panto.index().size)} مسابقه") { host.push(PantoMatchesScreen(host)) },
                 kit.listRow(kit.iconChip(RoyalIcon.RULES), "قوانین", "قوانین مشترک و هر نوع مسابقه") { host.push(PantoRulesScreen(host)) }
             ), "ابزارها"))
-            addView(kit.switchRow("صدای بازی", "صدای پاسخ درست و نادرست، ثانیه‌های آخر و زنگ پایان", host.spy.sound()) { host.spy.setSound(it) })
+            addView(kit.button("صداها و موسیقی پس‌زمینه", ButtonKind.SECONDARY, RoyalIcon.PLAY) { host.push(GameAudioSettingsScreen(host, "panto")) })
         }
     }
 }
 
 /** «مسابقهٔ جدید»: match type, teams and their people, rounds, time and the referee. */
 class PantoSetupScreen(host: MainActivity) : Screen(host) {
+    override val audioScope: String get() = "panto"
     private var mode = PantoMode.NORMAL
     private val teams = ArrayList<PantoTeam>()
     private val defaults = host.panto.defaults()
@@ -92,6 +89,14 @@ class PantoSetupScreen(host: MainActivity) : Screen(host) {
 
     override fun build(): View = scaffold("مسابقهٔ جدید", "پانتومیم • ${mode.title}",
         bottom = kit.button("شروع مسابقه", ButtonKind.PRIMARY, RoyalIcon.PLAY, 54) { start() }) {
+        addView(rulePresetButton("panto", capture = {
+            org.json.JSONObject().put("rounds", rounds).put("manual", manual).put("seconds", seconds).put("mode", mode.name)
+        }, apply = { data ->
+            applyRulePreset("panto", data); val defaults = host.panto.defaults()
+            rounds = defaults.rounds; manual = defaults.manualTime; seconds = defaults.seconds
+            mode = runCatching { PantoMode.valueOf(data.optString("mode", "NORMAL")) }.getOrDefault(PantoMode.NORMAL)
+            host.refresh()
+        }), kit.spaced(10))
         addView(kit.section("نوع مسابقه", RoyalIcon.CARDS))
         addView(kit.grid(2, PantoMode.values().map { m ->
             kit.vertical().apply {
@@ -189,10 +194,9 @@ class PantoSetupScreen(host: MainActivity) : Screen(host) {
             if (!mode.individual) {
                 addView(kit.hgap(6))
                 addView(kit.iconButton(RoyalIcon.FLAG, "انتخاب از تیم‌های ثبت‌شده", ButtonKind.CHIP, 40) {
-                    rosterPicker(true) { e ->
-                        val taken = teams.filterIndexed { j, _ -> j != i }.flatMap { it.members }.toSet()
+                    rosterPicker(true, unavailable = teams.filterIndexed { j, _ -> j != i }.flatMap { it.members + it.name }.toSet()) { e ->
                         t.name = e.name; t.avatar = e.avatar
-                        t.members.clear(); t.members += e.members.filter { it !in taken }
+                        t.members.clear(); t.members += e.members
                         if (t.members.isNotEmpty()) t.size = maxOf(2, t.members.size)
                         host.refresh()
                     }
@@ -200,11 +204,8 @@ class PantoSetupScreen(host: MainActivity) : Screen(host) {
             }
             addView(kit.hgap(6))
             addView(kit.iconButton(RoyalIcon.PLAYERS, "اعضای ${t.name}", ButtonKind.CHIP_GOLD, 40) {
-                val taken = teams.filterIndexed { j, _ -> j != i }.flatMap { it.members }.toSet()
-                memberPicker(t.members, if (mode.individual) 1 else 999, if (mode.individual) "شرکت‌کننده" else "اعضای ${t.name}") { names ->
-                    val clash = names.filter { it in taken }
-                    if (clash.isNotEmpty()) kit.toast("${clash.joinToString("، ")} در تیم دیگری است")
-                    t.members.clear(); t.members += names.filter { it !in taken }
+                memberPicker(t.members, if (mode.individual) 1 else 999, if (mode.individual) "شرکت‌کننده" else "اعضای ${t.name}", unavailable = teams.filter { it !== t }.flatMap { it.members }.toSet()) { names ->
+                    t.members.clear(); t.members += names
                     if (t.members.isNotEmpty()) t.size = t.members.size
                     if (mode.individual && t.members.size == 1) {
                         t.name = t.members.first()
@@ -233,6 +234,7 @@ class PantoSetupScreen(host: MainActivity) : Screen(host) {
 
 /** Base of the match pages: loads and saves the match. */
 abstract class PantoScreen(host: MainActivity, protected val matchId: Long) : Screen(host) {
+    override val audioScope: String get() = "panto"
     override val compactHeader: Boolean get() = true
 
     protected lateinit var m: PantoMatch
@@ -538,6 +540,12 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
             addView(kit.text(word, TextStyle.DISPLAY, Royal.ivory, Gravity.CENTER).apply {
                 setTextSize(TypedValue.COMPLEX_UNIT_PX, kit.dpf(if (word.length > 28) 26f else if (word.length > 14) 32f else 40f))
             })
+            t.previousWord?.let { previous ->
+                addView(kit.panel(PanelStyle.FLAT, 12).apply {
+                    addView(kit.text("کلمهٔ اول (فقط نمایش)", TextStyle.CAPTION, Royal.muted, Gravity.CENTER))
+                    addView(kit.text(previous.shown, TextStyle.BODY_BOLD, Royal.goldLight, Gravity.CENTER))
+                }, kit.spaced(8))
+            }
             t.word?.takeIf { it.cat in PantoCategories.names }?.let { addView(kit.text(PantoCategories.name(it.cat), TextStyle.CAPTION, Royal.muted, Gravity.CENTER)) }
         }
     }
@@ -666,6 +674,7 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
     private fun changeWord() {
         val used = host.panto.used()
         if (PantoEngine.changeWord(m, pantoBank(), host.panto.userWords(), used, Random.Default)) {
+            host.gameAudio.play("panto", "swap")
             host.panto.saveUsed(used)
             m.turn?.remainingMs = timer?.remaining ?: (m.turn?.remainingMs ?: 0)
             wordHidden = false
@@ -800,6 +809,7 @@ class PantoResultScreen(host: MainActivity, matchId: Long) : PantoScreen(host, m
 
 /** «کلمات من»: the players' own words in three levels (add, edit, delete, search). */
 class PantoWordsScreen(host: MainActivity) : Screen(host) {
+    override val audioScope: String get() = "panto"
     override val featureKey: String get() = "panto_words"
     private var level = 1
     private var query = ""
@@ -866,6 +876,7 @@ class PantoWordsScreen(host: MainActivity) : Screen(host) {
 
 /** Browse the whole bank by category and level, with search (read only). */
 class PantoBankScreen(host: MainActivity) : Screen(host) {
+    override val audioScope: String get() = "panto"
     private var cat = 1
     private var level = 0
     private var query = ""
@@ -945,6 +956,7 @@ class PantoBankScreen(host: MainActivity) : Screen(host) {
 }
 
 class PantoRulesScreen(host: MainActivity) : Screen(host) {
+    override val audioScope: String get() = "panto"
     override fun build(): View = scaffold("قوانین پانتومیم", "قوانین مشترک و هر نوع مسابقه") {
         addView(kit.section("قوانین مشترک", RoyalIcon.RULES))
         PantoEngine.commonRules.forEach { addView(kit.text("•  $it", TextStyle.BODY, Royal.ivory), kit.spaced(4)) }
@@ -957,6 +969,7 @@ class PantoRulesScreen(host: MainActivity) : Screen(host) {
 
 /** Past and unfinished matches. */
 class PantoMatchesScreen(host: MainActivity) : Screen(host) {
+    override val audioScope: String get() = "panto"
     override fun build(): View {
         val list = host.panto.matches()
         return scaffold("مسابقه‌های گذشته", "${kit.n(list.size)} مسابقه") {

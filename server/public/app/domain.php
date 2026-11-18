@@ -54,6 +54,7 @@ final class Users
             'created_at' => $now, 'updated_at' => $now,
         ]);
         Audit::security('register', $id, $username);
+        AdminInbox::registration($id);
         return [self::byId($id), $key];
     }
 
@@ -460,6 +461,7 @@ final class Entitlements
             'policy' => 1,
             'device' => $device,
             'device_conflict' => $conflict,
+            'mafia_trial_until' => MafiaTrial::until((int)$user['id'], $device),
         ];
         $body = Crypto::b64u(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
         return ['certificate' => $body . '.' . Crypto::b64u(Crypto::sign($body)), 'summary' => $sum, 'server_time' => $now];
@@ -797,7 +799,7 @@ final class Ads
             // Divan's own pages around a web payment (site version, web, Windows, iPhone).
             ['pay_before', 'صفحهٔ پیش از پرداخت (نسخهٔ سایت)', 'pay', 'inline', 'card,image,text,sponsor', ''],
             ['pay_after', 'صفحهٔ پس از پرداخت (نسخهٔ سایت)', 'pay', 'inline', 'card,image,text,sponsor', ''],
-            // The introduction site (httpuser87890.ir); shown only while «تبلیغات سایت» is on in «مدیریت سایت».
+            // The introduction site (divan-emtiaz.ir); shown only while «تبلیغات سایت» is on in «مدیریت سایت».
             ['site_top', 'سایت — زیر معرفی بالای صفحهٔ اصلی', 'site', 'inline', 'card,image,text,sponsor,banner_wide', ''],
             ['site_middle', 'سایت — میان بخش‌های صفحهٔ اصلی', 'site', 'inline', 'card,image,text,sponsor,banner_wide', ''],
             ['site_bottom', 'سایت — پیش از بخش دریافت', 'site', 'inline', 'card,image,text,sponsor,banner_wide', ''],
@@ -846,6 +848,7 @@ final class Ads
                 'id' => (int)$a['id'], 'format' => $a['format'], 'title' => $a['title'], 'body' => $a['body'],
                 'media' => self::mediaUrl($a['media_id'] === null ? null : (int)$a['media_id']),
                 'target_url' => $a['target_url'], 'cta' => $a['cta_text'], 'style' => json_decode((string)$a['style_json'], true) ?: new stdClass(),
+                'close_delay_seconds' => (int)$a['close_delay_seconds'], 'reward_seconds' => (int)$a['reward_seconds'],
                 'closable' => (bool)$a['closable'], 'daily_cap' => $a['daily_cap'] === null ? null : (int)$a['daily_cap'],
                 'min_interval_sec' => (int)$a['min_interval_sec'], 'priority' => (int)$a['priority'],
                 'placements' => array_values(array_filter(explode(',', $a['placements']))),
@@ -1039,7 +1042,7 @@ final class Notices
             if (!in_array($store, explode(',', (string)$n['stores']), true)) continue;
             if ($pro && $n['audience'] !== 'all') continue;
             // Store versions: only in-app pages (store rules on ads); web links only in the site version.
-            if ($store !== 'direct' && stripos((string)$n['target'], 'https://') === 0) continue;
+            // HTTPS campaign destinations are allowed on every app flavor.
             if (Db::value('SELECT id FROM {notice_events} WHERE notice_id = ? AND device_hash = ?', [$n['id'], $h]) !== null) continue;
             $media = Ads::mediaUrl($n['media_id'] === null ? null : (int)$n['media_id']);
             return [[

@@ -45,6 +45,8 @@ abstract class Screen(val host: MainActivity) {
 
     /** Module of this page for the free / Pro rules of the panel (null: always open). */
     open val featureKey: String? get() = null
+    open val mafiaArea: Boolean get() = false
+    open val audioScope: String? get() = null
 
     /** For count-limited modules: how many the player already has when this page creates a new one (-1: not a create page). */
     open val featureUsed: Int get() = -1
@@ -158,6 +160,22 @@ class MainActivity : Activity() {
     private val stack = ArrayList<Screen>()
     private val handler = Handler(Looper.getMainLooper())
     private var resumed = false
+    private val accessHandler = Handler(Looper.getMainLooper())
+    private var lastNoticeCheck = 0L
+    private val accessTick = object : Runnable {
+        override fun run() {
+            if (!resumed) return
+            if (android.os.SystemClock.uptimeMillis() - lastNoticeCheck >= 60_000) { lastNoticeCheck = android.os.SystemClock.uptimeMillis(); Notices.check(this@MainActivity); AdsManager.refresh(this@MainActivity) }
+            if (current?.mafiaArea == true && !ProState.mafiaAllowed) {
+                kit.dismissDialogs()
+                if (audioUsed) { audio.stopCue(); audio.stopMusic() }
+                current?.onHide()
+                stack += ProScreen(this@MainActivity, "زمان تست مافیا تمام شد؛ برای ادامه اشتراک Pro بخرید. بازی شما ذخیره شده است.")
+                render()
+            }
+            accessHandler.postDelayed(this, 1000)
+        }
+    }
 
     val current: Screen? get() = stack.lastOrNull()
 
@@ -170,6 +188,7 @@ class MainActivity : Activity() {
 
     /** Narrator cues, night music and voice recording. */
     val audio: MafiaAudio by lazy { MafiaAudio(this) }
+    val gameAudio: GameAudio by lazy { GameAudio(this) }
     private var audioUsed = false
     fun audio(): MafiaAudio { audioUsed = true; return audio }
 
@@ -252,13 +271,23 @@ class MainActivity : Activity() {
         // Plans, module access and the account are refreshed in the background; games never wait for it.
         if (Build.FINGERPRINT != "robolectric") ProSync.onStart()
         resumed = true
+        accessHandler.removeCallbacks(accessTick)
+        accessHandler.post(accessTick)
+        gameAudio.enter(current?.audioScope)
         current?.onShow()
+        Notices.check(this)
+        // Native-only bridge: the web build has no Firebase dependency.
+        runCatching { Class.forName("com.meysam.divanpush.PushRuntime").getField("INSTANCE").get(null).let { runtime -> runtime.javaClass.getMethod("connect", android.content.Context::class.java, String::class.java, String::class.java).invoke(runtime, this, StoreInfo.apiBase, StoreInfo.storeId) } }
+        AdsManager.refresh(this)
+        AdsManager.recover(this)
     }
 
     override fun onPause() {
         AdEngine.flush()
+        gameAudio.pause()
         current?.onHide()
         resumed = false
+        accessHandler.removeCallbacks(accessTick)
         if (audioUsed) {
             audio.stopMusic()
             if (audio.isRecording) audio.stopRecording(discard = true)
@@ -267,8 +296,10 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        AdsManager.release()
         ProState.listeners -= proListener
         ProSync.signedOutElsewhere = null
+        gameAudio.release()
         if (audioUsed) audio.release()
         super.onDestroy()
     }
@@ -531,6 +562,7 @@ class MainActivity : Activity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if(requestCode==7001){Notices.updatePushConsent(this);Notices.check(this)}
         if (requestCode != REQUEST_MIC) return
         val callback = pendingPermission ?: return
         pendingPermission = null
@@ -625,8 +657,17 @@ class MainActivity : Activity() {
 
     private fun render(animate: Boolean = true, forward: Boolean = true, notify: Boolean = true) {
         val screen = current ?: return
+        if (screen.mafiaArea && !ProState.mafiaAllowed) {
+            kit.dismissDialogs()
+            if (audioUsed) { audio.stopCue(); audio.stopMusic() }
+            screen.onHide()
+            stack += ProScreen(this, "مافیا به اشتراک Pro نیاز دارد؛ تست ۱۰ دقیقه‌ای فقط یک بار پس از ثبت‌نام فعال می‌شود.")
+            render(animate, forward, notify)
+            return
+        }
         pageFade?.cancel()
         pageFade = null
+        AdsManager.releaseBanners()
         val view = screen.build()
         restoreScroll(view, screen.savedScroll)
         if (!animate || !settings.general.animations) {
@@ -674,6 +715,7 @@ class MainActivity : Activity() {
                 }
             })
         }
+        if (resumed) gameAudio.enter(screen.audioScope)
         if (notify && resumed) screen.onShow()
         updateStickyAds()
     }

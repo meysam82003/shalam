@@ -10,6 +10,7 @@ public class VideoView extends View {
     private MediaPlayer.OnPreparedListener prepared;
     private MediaPlayer.OnCompletionListener completion;
     private boolean playing;
+    private MediaPlayer.OnErrorListener error;
 
     public VideoView(Context context) { super(context); }
 
@@ -17,7 +18,7 @@ public class VideoView extends View {
     public void setVideoURI(android.net.Uri uri) { setVideoPath(uri.toString()); }
     public void setOnPreparedListener(MediaPlayer.OnPreparedListener l) { prepared = l; }
     public void setOnCompletionListener(MediaPlayer.OnCompletionListener l) { completion = l; }
-    public void setOnErrorListener(MediaPlayer.OnErrorListener l) {}
+    public void setOnErrorListener(MediaPlayer.OnErrorListener l) { error = l; }
     public void start() { playing = true; divan.web.Videos.update(this); }
     public void pause() { playing = false; divan.web.Videos.update(this); }
     public void stopPlayback() { playing = false; divan.web.Videos.remove(this); }
@@ -25,6 +26,7 @@ public class VideoView extends View {
     public String videoPath() { return path; }
     public boolean wantsPlay() { return playing; }
     public void firePrepared() { if (prepared != null) prepared.onPrepared(new MediaPlayer()); }
+    public void fireError() { playing = false; if (error != null) error.onError(new MediaPlayer(), 1, 0); }
     public void fireCompletion() { if (completion != null) completion.onCompletion(new MediaPlayer()); }
 
     @Override protected void onMeasure(int w, int h) { setMeasuredDimension(getDefaultSize(getSuggestedMinimumWidth(), w), getDefaultSize(getSuggestedMinimumHeight(), h)); }

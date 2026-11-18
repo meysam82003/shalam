@@ -2,4 +2,4 @@ User-agent: *
 Allow: /
 Disallow: /install/
 Disallow: /divan/
-Sitemap: https://httpuser87890.ir/sitemap.xml
+Sitemap: https://divan-emtiaz.ir/sitemap.xml

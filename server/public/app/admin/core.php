@@ -8,6 +8,7 @@ if (!defined('DIVAN')) { http_response_code(403); exit; }
 final class Admin
 {
     public static ?array $me = null;
+    public static bool $native = false;
 
     /** What each role may open or change. */
     public const ROLES = [
@@ -18,9 +19,9 @@ final class Admin
     ];
     private const ACCESS = [
         'owner' => ['*'],
-        'manager' => ['dashboard', 'promos', 'users', 'user', 'plans', 'subscriptions', 'transactions', 'transaction', 'features', 'campaigns', 'ads', 'ad', 'placements', 'media', 'reports', 'stores', 'bridge', 'paymethods', 'adnetwork', 'notices', 'site', 'gifts', 'support', 'ticket', 'audit', 'account', 'backups'],
+        'manager' => ['dashboard', 'promos', 'users', 'user', 'plans', 'subscriptions', 'transactions', 'transaction', 'features', 'campaigns', 'iranads', 'ads', 'ad', 'placements', 'media', 'reports', 'stores', 'bridge', 'paymethods', 'adnetwork', 'notices', 'site', 'gifts', 'support', 'ticket', 'audit', 'account', 'backups'],
         'support' => ['dashboard', 'users', 'user', 'subscriptions', 'transactions', 'transaction', 'gifts', 'support', 'ticket', 'account'],
-        'analyst' => ['dashboard', 'reports', 'subscriptions', 'transactions', 'ads', 'placements', 'account'],
+        'analyst' => ['dashboard', 'reports', 'subscriptions', 'transactions', 'iranads', 'ads', 'placements', 'account'],
     ];
     /** Pages that only the owner may change (managers may still view). */
     public const OWNER_WRITE = ['admins', 'backups-restore', 'backup-key'];
@@ -78,7 +79,7 @@ final class Admin
     public static function checkPost(bool $anyRole = false): void
     {
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') return;
-        if (!hash_equals((string)($_SESSION['csrf'] ?? ''), (string)($_POST['csrf'] ?? ''))) {
+        if (!self::$native && !hash_equals((string)($_SESSION['csrf'] ?? ''), (string)($_POST['csrf'] ?? ''))) {
             http_response_code(400);
             exit('نشست منقضی شده است؛ صفحه را دوباره باز کنید.');
         }
@@ -92,6 +93,7 @@ final class Admin
 
     public static function redirect(string $query): void
     {
+        if (self::$native) throw new NativePanelRedirect($query);
         header('Location: index.php?' . $query);
         exit;
     }
@@ -193,7 +195,9 @@ final class Admin
         ['placements', 'جایگاه‌های تبلیغ'],
         ['media', 'رسانه‌ها'],
         ['adnetwork', 'شبکهٔ تبلیغاتی'],
+        ['iranads', 'مدیریت تبلیغات ایرانی'],
         ['notices', 'اعلان‌های تبلیغاتی'],
+        ['push', 'اعلان بدون باز کردن اپ'],
         ['', 'سایت'],
         ['site', 'مدیریت سایت'],
         ['', 'تنظیمات'],
@@ -216,6 +220,7 @@ final class Admin
           <nav>
           <?php foreach (self::MENU as [$k, $label]):
               if ($k === '') { echo '<div class="group">' . e($label) . '</div>'; continue; }
+              if ($k === 'bridge' && App::directPayments()) continue;
               if (!self::can($k)) continue; ?>
             <a href="index.php?p=<?= e($k) ?>" class="<?= $active === $k ? 'on' : '' ?>"><?= e($label) ?></a>
           <?php endforeach; ?>
@@ -262,6 +267,12 @@ final class Admin
 
     public static function csv(string $name, array $header, array $rows): void
     {
+        if (self::$native) {
+            $out=fopen('php://temp','w+');fwrite($out,"\xEF\xBB\xBF");fputcsv($out,$header);
+            foreach($rows as $r) fputcsv($out,array_map(fn($v)=>is_string($v)&&preg_match('/^[=+\-@]/',$v)?"'".$v:$v,$r));
+            rewind($out);$data=stream_get_contents($out);fclose($out);
+            throw new NativePanelFile(['name'=>$name.'-'.gmdate('Ymd').'.csv','mime'=>'text/csv','data'=>base64_encode($data)]);
+        }
         header('Content-Type: text/csv; charset=utf-8');
         header('Content-Disposition: attachment; filename="' . $name . '-' . gmdate('Ymd') . '.csv"');
         $out = fopen('php://output', 'w');

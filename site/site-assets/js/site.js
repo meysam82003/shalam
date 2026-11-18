@@ -19,7 +19,14 @@
     started = true;
     if (live) mergeLive(live);
     render();
-    if (live) applyLive(live);
+    if (live) {
+      applyLive(live);
+      if (live.siteUrl && /^https:\/\//.test(live.siteUrl)) {
+        var canonical = new URL(window.location.pathname, live.siteUrl).href;
+        var tag = document.querySelector('link[rel="canonical"]'); if (tag) tag.href = canonical;
+        var og = document.querySelector('meta[property="og:url"]'); if (og) og.content = canonical;
+      }
+    }
   }
   if (cfg.liveUrl && window.fetch) {
     setTimeout(function () { begin(null); }, 2500);

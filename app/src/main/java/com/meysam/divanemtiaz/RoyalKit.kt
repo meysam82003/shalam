@@ -42,6 +42,12 @@ data class DialogAction(val label: String, val kind: ButtonKind = ButtonKind.SEC
 
 /** Builders for every widget of the design system; all screens are composed from these. */
 class RoyalKit(val context: Context, private val settingsProvider: () -> AppSettings) {
+    private val openDialogs = ArrayList<Dialog>()
+    fun dismissDialogs() {
+        val dialogs = openDialogs.toList(); openDialogs.clear()
+        dialogs.forEach { runCatching { it.dismiss() } }
+    }
+
     val settings: AppSettings get() = settingsProvider()
     private val metrics get() = context.resources.displayMetrics
 
@@ -369,7 +375,9 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
     }
 
     fun dialog(title: String, message: String? = null, body: View? = null, actions: List<DialogAction>): Dialog {
+        openDialogs.removeAll { !it.isShowing }
         val dialog = Dialog(context)
+        openDialogs += dialog
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
         val content = panel(PanelStyle.RAISED, 16).apply { layoutDirection = View.LAYOUT_DIRECTION_RTL }
         content.addView(text(title, TextStyle.HEADING, Royal.goldLight, Gravity.CENTER))

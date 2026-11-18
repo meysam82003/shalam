@@ -127,14 +127,15 @@ fun Screen.avatarPicker(current: Int, onPick: (Int) -> Unit) {
  * Chooses the people of a team (up to [max]) from the saved people, or adds a new person.
  * Teams built from people let every person have his own record in every game.
  */
-fun Screen.memberPicker(current: List<String>, max: Int = 2, title: String = "اعضای تیم", onDone: (List<String>) -> Unit) {
+fun Screen.memberPicker(current: List<String>, max: Int = 2, title: String = "اعضای تیم", unavailable: Set<String> = emptySet(), onDone: (List<String>) -> Unit) {
     val chosen = ArrayList(current)
     lateinit var dialog: Dialog
     val grid = kit.grid(3, emptyList(), 6)
     var query = ""
+    var showSelected = false
     fun fill() {
         grid.removeAllViews()
-        host.repo.roster().filter { !it.isTeam && SearchText.matches(query, it.name) }.forEach { e ->
+        host.repo.roster().filter { !it.isTeam && SearchText.matches(query, it.name) && (showSelected || it.name !in chosen && it.name !in unavailable) }.forEach { e ->
             val on = e.name in chosen
             grid.addView(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
                 background = PanelDrawable(kit.density, if (on) PanelStyle.SELECTED else PanelStyle.FLAT, 14f)
@@ -165,6 +166,7 @@ fun Screen.memberPicker(current: List<String>, max: Int = 2, title: String = "ا
             }
         }, kit.spaced(8))
         if (host.repo.roster().count { !it.isTeam } >= 7) addView(kit.searchBox("جست‌وجوی نام") { q -> query = q; fill() }, kit.spaced(8))
+        addView(kit.switchRow("نمایش افراد انتخاب‌شده", "افراد انتخاب‌شده در این تیم یا تیم‌های دیگر هم نمایش داده شوند", showSelected) { showSelected = it; fill() }, kit.spaced(8))
         addView(grid)
     }
     dialog = kit.dialog(title, if (max >= 99) "هر تعداد از افراد را انتخاب کنید" else "تا ${kit.n(max)} نفر از افراد را انتخاب کنید", body, listOf(
@@ -174,7 +176,7 @@ fun Screen.memberPicker(current: List<String>, max: Int = 2, title: String = "ا
     dialog.show()
 }
 
-fun Screen.rosterPicker(isTeam: Boolean, onPick: (RosterEntry) -> Unit) {
+fun Screen.rosterPicker(isTeam: Boolean, unavailable: Set<String> = emptySet(), onPick: (RosterEntry) -> Unit) {
     val entries = host.repo.roster().filter { it.isTeam == isTeam }
     if (entries.isEmpty()) {
         kit.toast(if (isTeam) "هنوز تیمی در فهرست نیست" else "هنوز بازیکنی در فهرست نیست")
@@ -199,11 +201,20 @@ fun Screen.rosterPicker(isTeam: Boolean, onPick: (RosterEntry) -> Unit) {
             })
         }
     }
-    val rows = (0 until list.childCount).map { list.getChildAt(it) }.zip(entries.map { it.name })
+    var showSelected = false
+    var query = ""
+    fun filter() {
+        entries.forEachIndexed { i, entry ->
+            val selected = entry.name in unavailable || entry.members.any { it in unavailable }
+            list.getChildAt(i).visibility = if (SearchText.matches(query, entry.name) && (showSelected || !selected)) View.VISIBLE else View.GONE
+        }
+    }
     val body = kit.vertical().apply {
-        kit.searchFilter("جست‌وجوی نام", rows, minItems = 7)?.let { addView(it, kit.spaced(8)) }
+        if (unavailable.isNotEmpty()) addView(kit.switchRow("نمایش افراد انتخاب‌شده", "تیم‌ها و افراد استفاده‌شده هم نمایش داده شوند", false) { showSelected = it; filter() }, kit.spaced(8))
+        if (entries.size >= 7) addView(kit.searchBox("جست‌وجوی نام") { query = it; filter() }, kit.spaced(8))
         addView(list)
     }
+    filter()
     dialog = kit.dialog(if (isTeam) "انتخاب از تیم‌ها" else "انتخاب از بازیکنان", null, body, listOf(DialogAction("بستن")))
     dialog.show()
 }

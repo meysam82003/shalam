@@ -37,7 +37,8 @@ import java.util.concurrent.Executors
 data class DirectAd(
     val id: Int, val format: String, val title: String, val body: String, val mediaUrl: String?, val mediaKind: String?, val mediaSha: String?,
     val target: String?, val cta: String?, val bg: Int, val fg: Int, val accent: Int, val closable: Boolean, val dailyCap: Int?,
-    val minIntervalSec: Int, val priority: Int, val placements: List<String>, val endsAt: Long?
+    val minIntervalSec: Int, val priority: Int, val placements: List<String>, val endsAt: Long?,
+    val closeDelaySeconds: Int = 5, val rewardSeconds: Int = 30, val mediaMime: String? = null
 ) {
     companion object {
         private fun color(s: String?, d: Int): Int = runCatching { if (s != null && s.startsWith("#")) Color.parseColor(s) else d }.getOrDefault(d)
@@ -52,7 +53,8 @@ data class DirectAd(
                 j.optString("target_url").takeIf { it.startsWith("http") || it.startsWith("divan://") }, j.optString("cta").takeIf { it.isNotBlank() && it != "null" },
                 color(st.optString("bg", null), 0xFF1C2A4A.toInt()), color(st.optString("fg", null), Color.WHITE), color(st.optString("accent", null), 0xFFC39A4A.toInt()),
                 j.optBoolean("closable", true), if (j.isNull("daily_cap")) null else j.optInt("daily_cap"), j.optInt("min_interval_sec"), j.optInt("priority"),
-                (0 until pl.length()).map { pl.optString(it) }, if (j.isNull("ends_at")) null else j.optLong("ends_at")
+                (0 until pl.length()).map { pl.optString(it) }, if (j.isNull("ends_at")) null else j.optLong("ends_at"),
+                j.optInt("close_delay_seconds", 5).coerceIn(0, 60), j.optInt("reward_seconds", 30).coerceIn(1, 3600), m?.optString("mime")
             )
         }
     }
@@ -209,7 +211,8 @@ object AdEngine {
     /** Picks a direct ad whose media is ready (or needs none); starts downloads for the others. */
     private fun pick(c: JSONObject, key: String, formats: List<String>): DirectAd? {
         val now = ProState.now()
-        val candidates = ads(c).filter { AdRules.eligible(it, key, formats, now, seen(it.id)) }.sortedByDescending { it.priority }
+        val eligible = ads(c).filter { AdRules.eligible(it, key, formats, now, seen(it.id)) && (key != "rewarded_offer" || it.mediaKind == "video") }
+        val candidates = if (key == "rewarded_offer") eligible.shuffled() else eligible.sortedByDescending { it.priority }
         for (ad in candidates) {
             if (ad.mediaUrl != null && cached(ad) == null) {
                 download(ad)
@@ -224,10 +227,11 @@ object AdEngine {
     // ---------------------------------------------------------------- inline slots
     /** A ready ad for [key], or null (Pro, ads off, nothing to show). Never blocks. */
     fun slot(screen: Screen, key: String): View? {
-        val c = cfg() ?: return null
+        val c = cfg() ?: return AdsManager.banner(screen, key)
         val priority = c.optString("priority", "direct_first")
         val direct = if (priority != "network_only") slotFormats(c, key, false)?.let { pick(c, key, it) } else null
         if (direct != null && priority != "network_first") return render(screen, key, direct)
+        if (priority != "direct_only") AdsManager.banner(screen, key) { direct?.let { render(screen, key, it) } }?.let { return it }
         val zone = c.optJSONObject("network")?.takeIf { it.optBoolean("enabled") }?.optJSONObject("zones")?.optString("banner").orEmpty()
         val netFormats = slotFormats(c, key, true).orEmpty()
         if (priority != "direct_only" && zone.isNotBlank() && "banner" in netFormats && network != null) {
@@ -291,7 +295,7 @@ object AdEngine {
             path == "pro" -> host.push(ProScreen(host))
             path.startsWith("plan/") -> host.push(ProScreen(host, focusPlan = path.removePrefix("plan/")))
             path == "subscription" -> host.push(SubscriptionScreen(host))
-            path == "rewarded" -> host.current?.let { screen -> showRewarded(screen) { ok -> screen.kit.toast(if (ok) "تا مدتی تبلیغی نمایش داده نمی‌شود" else "ویدئو کامل نشد") } }
+            path == "rewarded" -> host.current?.let { screen -> showRewarded(screen) { _ -> } }
             path == "screen/mafia" -> host.push(MafiaHomeScreen(host))
             path == "screen/panto" -> host.push(PantoHomeScreen(host))
             path == "screen/spy" -> host.push(SpyHomeScreen(host))
@@ -329,7 +333,11 @@ object AdEngine {
             return if (ad.mediaKind == "video") VideoView(ctx).apply {
                 setVideoPath(f.path)
                 setOnPreparedListener { mp -> mp.isLooping = true; mp.setVolume(0f, 0f); start() }
+                if (ad.target != null) setOnClickListener { open(screen, ad, key) }
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(maxH))
+            } else if (ad.mediaMime == "image/gif") AdImageView(ctx, f).apply {
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(maxH))
+                if (ad.target != null) setOnClickListener { open(screen, ad, key) }
             } else bitmap(f, width)?.let { bm ->
                 ImageView(ctx).apply {
                     setImageBitmap(bm); adjustViewBounds = true; scaleType = ImageView.ScaleType.FIT_CENTER
@@ -384,6 +392,7 @@ object AdEngine {
     // ---------------------------------------------------------------- fixed top / bottom bar
     private val dismissed = HashSet<String>()
     private val stickyShown = HashMap<String, String>()
+    fun invalidateNetworkSticky() { stickyShown.entries.removeAll { it.value.startsWith("iran:") } }
 
     /**
      * Fixed bar for [key] (sticky_top / sticky_bottom) on pages whose zone the panel allows. The bar is laid out
@@ -391,6 +400,15 @@ object AdEngine {
      */
     fun sticky(screen: Screen?, key: String, bar: FrameLayout) {
         val zone = screen?.adZone
+        if (screen != null && key == "sticky_bottom" && (zone !in setOf("home", "shop") || screen.host.resources.displayMetrics.widthPixels/screen.host.resources.displayMetrics.density<352) && AdsManager.active()) {
+            val tag = "iran:${System.identityHashCode(screen)}:${ProState.isPro}"
+            if (stickyShown[key] == tag && bar.childCount > 0) return
+            val networkBar = AdsManager.banner(screen, key)
+            if (networkBar != null) {
+                bar.removeAllViews(); bar.addView(networkBar); bar.visibility = View.VISIBLE; stickyShown[key] = tag
+                return
+            }
+        }
         val c = cfg()
         val p = c?.optJSONArray("placements")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) }.firstOrNull { it.optString("key") == key } }
         val zones = p?.optJSONArray("screens")?.let { a -> (0 until a.length()).map { a.optString(it) } }.orEmpty()
@@ -454,6 +472,7 @@ object AdEngine {
     // ---------------------------------------------------------------- full-screen
     /** Between two activities (after closing a finished result), within the panel's caps. */
     fun maybeInterstitial(screen: Screen) {
+        if (AdsManager.active()) { AdsManager.maybeInterstitial(screen); return }
         val c = cfg() ?: return
         val key = "between_games"
         val formats = slotFormats(c, key, false) ?: return
@@ -474,66 +493,131 @@ object AdEngine {
     }
 
     /** Optional video the player chooses to watch for an ad-free hour. */
-    fun rewardedAvailable(): Boolean {
+    fun rewardedAvailable(realOnly: Boolean = false): Boolean {
         val c = cfg() ?: return false
         val direct = slotFormats(c, "rewarded_offer", false)?.let { pick(c, "rewarded_offer", it) }
         val zone = c.optJSONObject("network")?.takeIf { it.optBoolean("enabled") }?.optJSONObject("zones")?.optString("rewarded").orEmpty()
-        return direct != null || (zone.isNotBlank() && network != null)
+        return direct != null || (zone.isNotBlank() && network != null && (!realOnly || !c.optJSONObject("network")!!.optBoolean("test")))
     }
 
+    private var rewardBusy = false
     fun showRewarded(screen: Screen, done: (Boolean) -> Unit) {
+        if (!ProState.loggedIn) { screen.host.push(AccountScreen(screen.host)); return done(false) }
+        if (rewardBusy || ProState.now() < ProState.rewardNextAt) return done(false)
         val c = cfg() ?: return done(false)
-        val minutes = c.optInt("rewarded_ad_free_minutes", 60)
-        val grant = { ok: Boolean ->
-            if (ok) { ProState.adFreeUntil = ProState.now() + minutes * 60L; event("reward", "rewarded_offer"); ProState.notifyChanged() }
-            done(ok)
-        }
         val direct = slotFormats(c, "rewarded_offer", false)?.let { pick(c, "rewarded_offer", it) }
-        if (direct != null) { fullScreen(screen, "rewarded_offer", direct, rewarded = true, grant); return }
-        val zone = c.optJSONObject("network")?.optJSONObject("zones")?.optString("rewarded").orEmpty()
-        val n = startNetwork(screen.host) ?: return done(false)
-        event("request", "rewarded_offer", network = true)
-        n.rewarded(screen.host, zone) { ok -> if (ok) event("impression", "rewarded_offer", network = true); grant(ok) }
+        val net = c.optJSONObject("network")?.takeIf { it.optBoolean("enabled") }
+        val zone = net?.optJSONObject("zones")?.optString("rewarded").orEmpty()
+        if (direct == null && (zone.isBlank() || network == null)) return done(false)
+        rewardBusy = true
+        Api.call("POST", "v1/rewards/start", JSONObject().put("ad_id", direct?.id ?: 0), ProState.token) { data, err ->
+            val token = data?.optString("watch_token").orEmpty()
+            if (token.isBlank()) { rewardBusy = false; screen.kit.toast(err?.message ?: "آغاز ویدئو ممکن نشد"); done(false) }
+            else {
+                val grant: (Boolean) -> Unit = { complete ->
+                    if (!complete) { rewardBusy = false; screen.kit.toast("پخش ویدئو کامل نشد؛ پاداشی ثبت نشد."); done(false) }
+                    else AdsManager.completeDirect(screen.host, data!!) { ok, message ->
+                        rewardBusy = false
+                        screen.kit.toast(message)
+                        done(ok)
+                    }
+                }
+                if (direct != null) fullScreen(screen, "rewarded_offer", direct, true, grant)
+                else {
+                    val n = startNetwork(screen.host)
+                    if (n == null) { rewardBusy = false; done(false) }
+                    else n.rewarded(screen.host, zone, grant)
+                }
+            }
+        }
     }
 
     private fun fullScreen(screen: Screen, key: String, ad: DirectAd, rewarded: Boolean, done: (Boolean) -> Unit) {
         val kit = screen.kit
         val ctx = screen.host
+        val file = cached(ad)
+        if (file == null || rewarded && ad.mediaKind != "video") { done(false); return }
         val d = Dialog(ctx, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
         d.requestWindowFeature(Window.FEATURE_NO_TITLE)
-        var finished = !rewarded
-        val closeBtn = kit.button(if (rewarded) "صبر کنید…" else "بستن", ButtonKind.SECONDARY, RoyalIcon.CLOSE, 42) {
-            if (rewarded && !finished) return@button
-            d.dismiss()
-        }
-        val root = kit.vertical(Gravity.CENTER).apply {
+        var finished = false
+        var closed = false
+        var video: VideoView? = null
+        val openedAt = android.os.SystemClock.uptimeMillis()
+        val closeBtn = kit.iconButton(RoyalIcon.CLOSE, "بستن تبلیغ", ButtonKind.SECONDARY, 44) { d.dismiss() }
+        val countdown = kit.text("", TextStyle.LABEL_BOLD, ad.fg, Gravity.CENTER)
+        closeBtn.visibility = if (rewarded || ad.closeDelaySeconds == 0) View.VISIBLE else View.INVISIBLE
+        d.setCancelable(rewarded || ad.closeDelaySeconds == 0)
+        val root = object : LinearLayout(ctx) {
+            override fun onWindowVisibilityChanged(visibility: Int) {
+                super.onWindowVisibilityChanged(visibility)
+                if (visibility == View.VISIBLE) video?.start() else video?.pause()
+            }
+        }.apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
             setBackgroundColor(ad.bg)
             setPadding(kit.dp(18), kit.dp(18), kit.dp(18), kit.dp(18))
             addView(kit.horizontal().apply {
                 addView(kit.badge("تبلیغات", Royal.goldLight, filled = true))
                 addView(View(ctx), LinearLayout.LayoutParams(0, 1, 1f))
+                addView(countdown)
                 addView(closeBtn)
             }, kit.spaced(12))
-            val f = cached(ad)
-            if (f != null && ad.mediaKind == "video") addView(VideoView(ctx).apply {
-                setVideoPath(f.path)
-                setOnPreparedListener { it.start() }
-                setOnCompletionListener { finished = true; (closeBtn.getChildAt(closeBtn.childCount - 1) as? android.widget.TextView)?.text = "بستن" }
-            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-            else if (f != null) bitmap(f, ctx.resources.displayMetrics.widthPixels)?.let { bm ->
-                addView(ImageView(ctx).apply { setImageBitmap(bm); scaleType = ImageView.ScaleType.FIT_CENTER }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+            if (rewarded) addView(kit.text("برای یک ساعت Pro، ویدئو را کامل ببینید. خروج زودتر جایزه ندارد.", TextStyle.LABEL, ad.fg, Gravity.CENTER), kit.spaced(8))
+            val mediaBox = FrameLayout(ctx).apply { clipChildren = true }
+            val details = kit.vertical()
+            val scroll = android.widget.ScrollView(ctx).apply {
+                isFillViewport = true
+                addView(details)
             }
-            if (ad.title.isNotBlank()) addView(kit.text(ad.title, TextStyle.TITLE, ad.fg, Gravity.CENTER), kit.spaced(6))
-            if (ad.body.isNotBlank()) addView(kit.text(ad.body, TextStyle.BODY, ad.fg, Gravity.CENTER), kit.spaced(10))
-            if (ad.cta != null && ad.target != null) addView(kit.button(ad.cta, ButtonKind.PRIMARY, null, 48) { open(screen, ad, key) })
+            addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+            details.addView(mediaBox, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(240)))
+            scroll.addOnLayoutChangeListener { _, _, _, _, bottom, _, _, _, oldBottom ->
+                if (bottom != oldBottom && scroll.height > 0) {
+                    mediaBox.layoutParams = (mediaBox.layoutParams as LinearLayout.LayoutParams).apply { height = (scroll.height * 0.80f).toInt().coerceAtLeast(kit.dp(120)) }
+                }
+            }
+            if (ad.mediaKind == "video") {
+                video = VideoView(ctx).apply {
+                    setVideoPath(file.path)
+                    setOnPreparedListener { start() }
+                    setOnCompletionListener { finished = true; countdown.text = if (rewarded) "ثبت جایزه…" else ""; if (rewarded) d.dismiss() }
+                    setOnErrorListener { _, _, _ -> if (!closed) { finished = false; d.dismiss() }; true }
+                    if (ad.target != null) setOnClickListener { open(screen, ad, key) }
+                }
+                mediaBox.addView(video, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER))
+            } else {
+                val media = AdImageView(ctx, file)
+                if (ad.target != null) media.setOnClickListener { open(screen, ad, key) }
+                mediaBox.addView(media, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            }
+            if (ad.title.isNotBlank()) details.addView(kit.text(ad.title, TextStyle.TITLE, ad.fg, Gravity.CENTER), kit.spaced(6))
+            if (ad.body.isNotBlank()) details.addView(kit.text(ad.body, TextStyle.BODY, ad.fg, Gravity.CENTER), kit.spaced(10))
+            if (ad.target != null) addView(kit.button(ad.cta ?: "مشاهده", ButtonKind.PRIMARY, null, 48) { open(screen, ad, key) })
         }
-        if (rewarded && cached(ad)?.let { ad.mediaKind != "video" } != false) {
-            // An image "video" counts after a short view.
-            main.postDelayed({ finished = true; (closeBtn.getChildAt(closeBtn.childCount - 1) as? android.widget.TextView)?.text = "بستن" }, 8000)
+        val update = object : Runnable {
+            override fun run() {
+                if (closed) return
+                val left = (ad.closeDelaySeconds - (android.os.SystemClock.uptimeMillis() - openedAt) / 1000).coerceAtLeast(0)
+                if (!rewarded) {
+                    countdown.text = if (left > 0) "${kit.n(left.toInt())} ثانیه" else ""
+                    if (left == 0L) { closeBtn.visibility = View.VISIBLE; d.setCancelable(true) }
+                }
+                main.postDelayed(this, 250)
+            }
         }
         d.setContentView(root)
-        d.setOnDismissListener { done(finished); if (!finished) event("close", key, ad.id) }
+        d.setOnDismissListener {
+            if (!closed) {
+                closed = true; main.removeCallbacks(update); video?.setOnErrorListener(null); video?.setOnCompletionListener(null); video?.stopPlayback()
+                if (!finished) event("close", key, ad.id)
+                done(if (rewarded) finished else true)
+            }
+        }
         markShown(ad.id); event("impression", key, ad.id)
+        root.setFitsSystemWindows(true)
         d.show()
+        d.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        main.post(update)
     }
 }

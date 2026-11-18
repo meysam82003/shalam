@@ -8,6 +8,7 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 
 class SetupScreen(host: MainActivity, private val game: GameType) : Screen(host) {
+    override val audioScope: String? get() = if (game == GameType.SHALAM) "shalam" else null
     override val featureKey: String get() = game.key
     private val sides: MutableList<Side> = initialSides()
     private var joker = settings.shalam.defaultJoker
@@ -34,7 +35,21 @@ class SetupScreen(host: MainActivity, private val game: GameType) : Screen(host)
         subtitle = game.subtitle,
         bottom = kit.button("شروع داوری ${game.title}", ButtonKind.PRIMARY, RoyalIcon.PLAY) { start() }
     ) {
+        addView(rulePresetButton(game.key, capture = {
+            val shalam = settings.shalam.copy(defaultJoker = joker, dealType = dealType,
+                noJoker = if (!joker) settings.shalam.noJoker.copy(defaultEndPoint = endPoint) else settings.shalam.noJoker,
+                joker = if (joker) settings.shalam.joker.copy(defaultEndPoint = endPoint) else settings.shalam.joker)
+            RulePresetPolicy.capture(settings.copy(shalam = shalam, menfi = settings.menfi.copy(hands = menfiHands, hidden = menfiHidden),
+                hezar = settings.hezar.copy(target = hezarTarget, rounds = hezarRounds, zeroPenalty = hezarPenalty), dolo = settings.dolo.copy(rules = dolo)), game.key)
+        }, apply = { data ->
+            applyRulePreset(game.key, data)
+            joker = settings.shalam.defaultJoker; endPoint = settings.shalam.mode(joker).defaultEndPoint; dealType = settings.shalam.dealType
+            menfiHands = settings.menfi.hands; menfiHidden = settings.menfi.hidden
+            hezarTarget = settings.hezar.target; hezarRounds = settings.hezar.rounds; hezarPenalty = settings.hezar.zeroPenalty; dolo = settings.dolo.rules
+            host.refresh()
+        }), kit.spaced(10))
         addView(kit.section(if (game.isTeamGame) "تیم‌ها" else "بازیکنان (${kit.n(sides.size)})", RoyalIcon.PLAYERS))
+        if (game == GameType.SHALAM) addView(kit.button("صداها و موسیقی شلم", ButtonKind.GHOST, RoyalIcon.PLAY) { host.push(GameAudioSettingsScreen(host, "shalam")) })
         if (game.isTeamGame) addView(versus())
         else {
             sides.indices.forEach { addView(playerRow(it)) }
@@ -42,7 +57,7 @@ class SetupScreen(host: MainActivity, private val game: GameType) : Screen(host)
                 kit.button("+ ۱ بازیکن", ButtonKind.GHOST, null, 40) { addPlayers(1) },
                 kit.button("+ ۵ بازیکن", ButtonKind.GHOST, null, 40) { addPlayers(5) },
                 kit.button("از فهرست", ButtonKind.GHOST, RoyalIcon.USER, 40) {
-                    rosterPicker(false) { entry ->
+                    rosterPicker(false, unavailable = sides.map { it.name }.toSet()) { entry ->
                         if (sides.size < game.maxSides) sides += Side(entry.name, entry.avatar)
                         host.refresh()
                     }
@@ -137,7 +152,7 @@ class SetupScreen(host: MainActivity, private val game: GameType) : Screen(host)
             addView(nameField.apply { gravity = Gravity.CENTER }, kit.fill())
             addView(kit.gap(6))
             addView(kit.chip(if (side.members.isEmpty()) "انتخاب اعضا" else side.members.joinToString(" و "), side.members.isNotEmpty()) {
-                memberPicker(sides[index].members) { members ->
+                memberPicker(sides[index].members, unavailable = sides.filterIndexed { i, _ -> i != index }.flatMap { it.members }.toSet()) { members ->
                     val old = sides[index]
                     val autoName = old.name.isBlank() || old.name == initialSides().getOrNull(index)?.name || old.name == old.members.joinToString(" و ")
                     sides[index] = old.copy(members = members, name = if (autoName && members.isNotEmpty()) members.joinToString(" و ") else old.name)
@@ -146,7 +161,7 @@ class SetupScreen(host: MainActivity, private val game: GameType) : Screen(host)
             }.apply { setPadding(kit.dp(8), kit.dp(4), kit.dp(8), kit.dp(6)) }, kit.fill())
             addView(kit.gap(6))
             addView(kit.button("از فهرست تیم‌ها", ButtonKind.GHOST, RoyalIcon.USER, 38) {
-                rosterPicker(game.isTeamGame) { entry ->
+                rosterPicker(game.isTeamGame, unavailable = sides.filterIndexed { i, _ -> i != index }.flatMap { it.members + it.name }.toSet()) { entry ->
                     sides[index] = Side(entry.name, entry.avatar, entry.members)
                     host.refresh()
                 }

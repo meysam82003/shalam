@@ -71,7 +71,9 @@ final class Api
         $store = self::$auth[1]['store'] ?? (in_array($_GET['store'] ?? '', Plans::STORES, true) ? $_GET['store'] : null);
         $cert = Entitlements::certificate($u, $store, self::$auth[1] ?? null);
         return [
+            'rewards' => ProRewards::status((int)$u['id'], self::$auth[1]['device_id'] ?? null),
             'user' => Users::publicView($u),
+            'wallet' => Monetization::wallet((int)$u['id']),
             'entitlement' => $cert['summary'],
             'certificate' => $cert['certificate'],
             'purchases' => array_map([Purchases::class, 'publicView'], Purchases::forUser((int)$u['id'])),
@@ -81,6 +83,20 @@ final class Api
     public static function handle(string $route, string $method): array
     {
         $in = $method === 'GET' ? $_GET : Http::body();
+        $normalized = preg_replace('#^v1/#', '', $route);
+        if (strpos($normalized, 'admin/') === 0) return AdminMobile::handle($normalized, $method, $in);
+        if ($normalized === 'ads/config') return Monetization::publicConfig(($u = self::optionalUser()) !== null && Entitlements::summary((int)$u['id'], self::store($in))['pro']);
+        if (in_array($normalized, ['ads/reward/start','ads/reward/claim','ads/events','coins/wallet'], true) && $route !== 'v1/ads/events') {
+            $u = self::user();
+            if (!RateLimit::hit('iran_ads:' . $u['id'], 180, 3600)) throw new ApiError('rate_limited','درخواست زیاد است.',429);
+            if ($normalized === 'coins/wallet' && $method === 'GET') return Monetization::wallet((int)$u['id']);
+            self::post($method);
+            if ($normalized === 'ads/reward/start') return Monetization::start($u, self::$auth[1], $in);
+            if ($normalized === 'ads/reward/claim') return Monetization::claim($u, self::$auth[1], $in);
+            return Monetization::events($u, self::$auth[1], $in);
+        }
+        if($normalized==='push/config'&&$method==='GET')return PushDelivery::publicConfig((string)($in['client']??'bazaar'));
+        if($normalized==='push/register'){self::post($method);$u=self::optionalUser();return PushDelivery::register($in,$u,self::$auth[1]??null);}
         // Keep pending store checks moving even without cron.
         if (random_int(1, 20) === 1) { try { Purchases::recheck(3); } catch (Throwable $e) { error_log('[divan] recheck ' . $e->getMessage()); } }
 
@@ -99,11 +115,17 @@ final class Api
                     'plans' => Plans::offers($store),
                     'features' => Features::forUser($u === null ? null : (int)$u['id'], $pro),
                     'ads' => Ads::configFor($store, $pro),
+                    'iran_ads' => Monetization::publicConfig($pro),
                     'cross_store' => (bool)Settings::get('cross_store', true),
                     // The store's public RSA key from the panel (public by design): the app checks each purchase's
                     // signature with it too, so a key changed in the panel reaches installed apps without a new APK.
                     'store_key' => in_array($store, Plans::STORES, true) ? trim((string)(Settings::get($store, [])['public_key'] ?? '')) : '',
+                    'api_url' => App::baseUrl() . '/api/index.php',
+                    'site_url' => PayPages::siteHome(),
+                    'admin_url' => App::baseUrl() . '/admin/',
                     'support_text' => Settings::get('support_text', ''),
+                    'contact_address' => Settings::get('contact_address', '@Meysam_pardaz'),
+                    'sponsor_contact' => Settings::get('sponsor_contact', '@Meysam_pardaz'),
                     'privacy_url' => App::baseUrl() . '/index.php?p=privacy',
                 ];
             }
@@ -144,9 +166,21 @@ final class Api
                 return ['ok' => true];
             }
 
+            case 'v1/rewards/start': {
+                self::post($method);
+                $u = self::user();
+                if (!RateLimit::hit('reward_start:' . $u['id'], 20, 3600)) throw new ApiError('rate_limited', 'کمی بعد دوباره تلاش کنید.', 429);
+                return ProRewards::start($u, self::$auth[1], (int)($in['ad_id'] ?? 0), isset($in['network']) ? (string)$in['network'] : null);
+            }
+            case 'v1/rewards/claim': {
+                self::post($method);
+                $u = self::user();
+                $test = ProRewards::claim($u, self::$auth[1], (string)($in['watch_token'] ?? ''));
+                return ['test_reward' => $test] + self::account($u);
+            }
             case 'v1/auth/register': {
                 self::post($method);
-                [$u, $key] = Users::register((string)($in['username'] ?? ''), (string)($in['password'] ?? ''), isset($in['email']) ? (string)$in['email'] : null);
+                [$u, $key] = MafiaTrial::register($in);
                 $token = self::open($u, $in);
                 return ['token' => $token, 'recovery_key' => $key] + self::account($u);
             }

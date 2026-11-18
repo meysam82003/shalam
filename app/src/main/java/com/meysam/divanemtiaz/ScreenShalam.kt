@@ -12,6 +12,7 @@ import kotlin.math.abs
 
 /** Timer bookkeeping shared by the three live boards. */
 abstract class BoardScreen(host: MainActivity, val session: GameSession) : Screen(host) {
+    override val audioScope: String? get() = if (session.game == GameType.SHALAM) "shalam" else null
     override val sessionId: Long get() = session.id
     private var shownAt = 0L
     private var active = false
@@ -43,6 +44,8 @@ abstract class BoardScreen(host: MainActivity, val session: GameSession) : Scree
 
     /** Called after any change; saves and moves to the result page when the game ended. */
     protected fun afterChange() {
+        AdsManager.handFinished(host, session)
+        if (session.game == GameType.SHALAM) host.gameAudio.play("shalam", "score")
         val ended = SessionOps.commitAndCheck(host, session)
         if (ended) host.replace(ResultScreen(host, session)) else host.refresh()
     }
@@ -72,6 +75,7 @@ abstract class BoardScreen(host: MainActivity, val session: GameSession) : Scree
         }
 
     protected fun commonMenu(): List<Pair<String, () -> Unit>> = listOfNotNull(
+        if (session.game == GameType.SHALAM) "صداها و موسیقی" to { host.push(GameAudioSettingsScreen(host, "shalam")) } else null,
         "نمودار بازی" to { gameChartDialog(session) },
         if (session.game.isTeamGame && (session.leagueId == 0L || host.repo.league(session.leagueId) == null))
             "افزودن این بازی به لیگ" to { addToLeague(session) { host.refresh() } } else null,
@@ -259,6 +263,7 @@ class ShalamHandScreen(host: MainActivity, private val session: GameSession, pri
     private var preview: LinearLayout? = null
     private var footer: FrameLayout? = null
 
+    override val audioScope: String? get() = if (session.game == GameType.SHALAM) "shalam" else null
     override val sessionId: Long get() = session.id
 
     override fun onBack(): Boolean {
@@ -515,6 +520,7 @@ class ShalamHandScreen(host: MainActivity, private val session: GameSession, pri
     }
 
     private fun finishEntry() {
+        if (session.game == GameType.SHALAM) host.gameAudio.play("shalam", "score")
         val ended = SessionOps.commitAndCheck(host, session)
         host.pop()
         if (ended) host.replace(ResultScreen(host, session))

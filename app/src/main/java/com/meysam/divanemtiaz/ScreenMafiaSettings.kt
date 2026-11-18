@@ -12,6 +12,7 @@ import android.widget.LinearLayout
  * phone or the narrator's own recorded voice) and the narrator's own picture for each role.
  */
 class MafiaSettingsScreen(host: MainActivity, private var tab: Int = 0) : Screen(host) {
+    override val mafiaArea: Boolean get() = true
     private var side = MafiaSide.CITY
 
     private fun update(change: (MafiaSettings) -> MafiaSettings, refresh: Boolean = false) {
@@ -20,6 +21,7 @@ class MafiaSettingsScreen(host: MainActivity, private var tab: Int = 0) : Screen
     }
 
     override fun build(): View = scaffold("تنظیمات راوی", "زمان‌ها، قوانین، صداها و تصاویر") {
+        addView(rulePresetButton("mafia"), kit.spaced(10))
         addView(kit.grid(3, listOf("بازی", "صداها", "تصاویر نقش").mapIndexed { i, t ->
             kit.chip(t, tab == i, ButtonKind.CHIP_GOLD) { tab = i; host.refresh() }
         }, 6), kit.spaced(8))

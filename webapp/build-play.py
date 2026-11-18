@@ -13,7 +13,7 @@ ROOT = os.path.dirname(HERE)
 APP = os.path.join(ROOT, 'app')
 
 ap = argparse.ArgumentParser()
-ap.add_argument('--api', default='https://httpuser87890.ir/divan/api/index.php')
+ap.add_argument('--api', default='https://divan-emtiaz.ir/divan/api/index.php')
 ap.add_argument('--channel', default='web')
 ap.add_argument('--out', default=os.path.join(HERE, 'build', 'play'))
 ap.add_argument('--skip-teavm', action='store_true')
