@@ -25,6 +25,34 @@ class ProTest {
             .put("exp", exp ?: JSONObject.NULL).put("grace", exp ?: JSONObject.NULL).put("iat", now).put("offline_until", offline)
             .put("features", JSONObject().put("cloud_backup", JSONObject().put("mode", "pro").put("allowed", true)))
 
+    @Test fun explicitDeploymentPinsAndUserDeviceBindingRemainEnforced() {
+        assertEquals("1fe9c4f5920ba9fc",License.keyId(B64.pemToDer(LicenseTrust.CURRENT_KEY)))
+        assertEquals("1ce0e85fcdca4bfb",License.keyId(B64.pemToDer(LicenseTrust.PREVIOUS_KEY)))
+        val c=cert(payload(1_800_000_000L).put("device","phone_a"))
+        val pin=B64.encode(der)
+        assertTrue(LicenseTrust.parse(c,pin,null,7,"phone_a").proAt(1_800_000_000L))
+        assertEquals("user",LicenseTrust.parse(c,pin,null,8,"phone_a").reason)
+        assertFalse(LicenseTrust.parse(c,pin,null,7,"phone_b").proAt(1_800_000_000L))
+        // A downloaded key cannot replace the shipped trust anchors.
+        assertFalse(LicenseTrust.parse(c,LicenseTrust.CURRENT_KEY,pin,7,"phone_a").valid)
+        val other=KeyPairGenerator.getInstance("RSA").apply{initialize(2048)}.generateKeyPair()
+        assertFalse(LicenseTrust.parse(cert(payload(1_800_000_000L),other.private),pin,null,7,"phone_a").valid)
+    }
+
+    @Test fun rewardEndsExactlyDespiteAnOldRenewalGraceAndCountdownUsesSeconds() {
+        val now=1_800_000_000L;val end=now+3600
+        val lic=License.parse(cert(payload(now,exp=end,offline=end+86400).put("plan","gift").put("grace",end+3*86400).put("reward_until",end)),der,7)
+        assertTrue(lic.proAt(end-1));assertFalse(lic.proAt(end));assertFalse(lic.proAt(end+1))
+        assertEquals(end,lic.rewardEndsAt())
+        assertEquals("00:59:58",ProCountdown.format(lic.remainingSeconds(now+2)!!))
+        assertEquals("00:00:01",ProCountdown.format(lic.remainingSeconds(end-1)!!))
+        assertEquals("00:00:00",ProCountdown.format(lic.remainingSeconds(end)!!))
+        assertEquals("00:00:00",ProCountdown.format(-1));assertEquals("25:00:00",ProCountdown.format(90000))
+        val paid=License.parse(cert(payload(now,exp=now+30*86400).put("reward_until",end)),der,7)
+        assertTrue("A concurrent paid subscription survives reward expiry",paid.proAt(end+1))
+        assertEquals(0L,License.parse(cert(payload(now).put("reward_until",0)),der,7).rewardEndsAt())
+    }
+
     @Test fun webPaymentPagesOnlyOnDomainsTheServerListed() {
         val hosts = setOf("blupal.top", "abangateway.ir")
         assertTrue(ProSync.isPayUrl("https://blupal.top/payment/abc", hosts))

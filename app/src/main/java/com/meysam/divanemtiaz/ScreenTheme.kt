@@ -100,10 +100,10 @@ class ThemePreviewView(context: Context, private val spec: ThemeSpec) : View(con
     }
 }
 
-/** «ظاهر برنامه»: the six styles with a live miniature of each; the choice applies to every page at once. */
+/** «ظاهر برنامه»: the eighteen colour palettes with a live miniature of each; the choice applies to every page at once. */
 class ThemeScreen(host: MainActivity) : Screen(host) {
-    override fun build(): View = scaffold("ظاهر برنامه", "${kit.n(Themes.all.size)} سبک • همهٔ صفحه‌ها و بازی‌ها") {
-        addView(kit.text("هر سبک رنگ، قاب کارت‌ها، دکمه‌ها، نور و بافت پس‌زمینه و زمان‌سنج‌های خودش را دارد؛ داده‌ها و بازی‌ها تغییری نمی‌کنند.",
+    override fun build(): View = scaffold("ظاهر برنامه", "${kit.n(Themes.all.size)} رنگ‌بندی • همهٔ صفحه‌ها و بازی‌ها") {
+        addView(kit.text("۱۸ رنگ‌بندی برای تمام بخش‌ها؛ چیدمان، تصاویر و تزئینات فعلی شما حفظ می‌شوند.",
             TextStyle.CAPTION, Royal.muted), kit.spaced(10))
         addView(themeGrid(this@ThemeScreen))
     }
@@ -123,7 +123,7 @@ class ThemeWelcomeScreen(host: MainActivity) : Screen(host) {
         addView(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
             addView(HeroCrestView(host), LinearLayout.LayoutParams(kit.dp(200), kit.dp(150)))
         }, kit.spaced(4))
-        addView(kit.text("یکی از شش سبک را لمس کنید تا همین حالا روی برنامه ببینید؛ بعداً هم از «تنظیمات ← ظاهر برنامه» قابل تغییر است.",
+        addView(kit.text("یکی از ۱۸ رنگ‌بندی را لمس کنید تا همین حالا روی برنامه ببینید؛ بعداً هم از «تنظیمات ← ظاهر برنامه» قابل تغییر است.",
             TextStyle.LABEL, Royal.muted, Gravity.CENTER), kit.spaced(10))
         addView(themeGrid(this@ThemeWelcomeScreen) { t -> host.applyTheme(t.id) })
     }

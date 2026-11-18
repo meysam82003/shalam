@@ -53,7 +53,7 @@ src_assets = os.path.join(APP, 'src', 'main', 'assets')
 for dirpath, _, files in os.walk(src_assets):
     for f in files:
         rel = os.path.relpath(os.path.join(dirpath, f), src_assets).replace(os.sep, '/')
-        if rel.startswith('fonts/'):
+        if rel.startswith(('fonts/', 'certs/')):
             continue
         copy(os.path.join(dirpath, f), os.path.join(out, 'assets', rel))
         assets.append(rel)

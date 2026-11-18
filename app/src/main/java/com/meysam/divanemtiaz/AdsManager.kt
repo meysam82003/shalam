@@ -274,10 +274,21 @@ object AdsManager {
                 settling.remove(watch)
                 if(ProState.userId!=uid)return@call
                 if(data!=null){
-                    forget(uid,watch)
                     val test=data.optBoolean("test_reward")
-                    if(pro){AdEngine.event("reward","rewarded_offer",network=!pending.optBoolean("direct"));ProState.applyAccount(data)}
-                    done?.invoke(true,if(test)"ویدئوی آزمایشی تکمیل شد؛ جایزهٔ واقعی پرداخت نمی‌شود." else if(pro)"یک ساعت Pro فعال شد." else "سکه‌ها به حساب شما اضافه شد.")
+                    if(pro)ProState.applyAccount(data)
+                    val activated=!pro||test||ProState.isPro
+                    if(activated){
+                        forget(uid,watch)
+                        if(pro&&!test)AdEngine.event("reward","rewarded_offer",network=!pending.optBoolean("direct"))
+                    }
+                    val message=when {
+                        test->"ویدئوی آزمایشی تکمیل شد؛ جایزهٔ واقعی پرداخت نمی‌شود."
+                        !activated&&ProState.license.elsewhere!=null->"جایزه ثبت شده، اما اشتراک روی دستگاه دیگری است؛ از اشتراک من انتقال دهید."
+                        !activated->"ویدئو کامل شد؛ فعال‌سازی Pro هنوز تأیید نشده است. اتصال و کلید سرور بررسی می‌شود؛ دوباره ویدئو نبینید."
+                        pro->"یک ساعت Pro فعال شد."
+                        else->"سکه‌ها به حساب شما اضافه شد."
+                    }
+                    done?.invoke(activated,message)
                 } else {
                     if(err?.code in setOf("reward_limit","reward_cooldown","watch"))forget(uid,watch)
                     done?.invoke(false,err?.message?:"ثبت پاداش در انتظار اتصال است.")

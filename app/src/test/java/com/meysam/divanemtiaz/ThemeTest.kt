@@ -11,7 +11,7 @@ import kotlin.math.min
 import kotlin.math.pow
 
 class ThemeTest {
-    @After fun restore() = ThemeEngine.apply(Themes.EMERALD)
+    @After fun restore() { Themes.configureGeometry("emerald");ThemeEngine.apply(Themes.EMERALD) }
 
     private fun channel(c: Int, shift: Int): Double {
         val v = ((c shr shift) and 0xFF) / 255.0
@@ -33,9 +33,9 @@ class ThemeTest {
         return (0xFF shl 24) or mix(16) or mix(8) or mix(0)
     }
 
-    @Test fun sixStylesAndTheFirstLaunchAsksForOne() {
-        assertEquals(6, Themes.all.size)
-        assertEquals(6, Themes.all.map { it.id }.toSet().size)
+    @Test fun eighteenPalettesRetainExistingChoices() {
+        assertEquals(18, Themes.all.size)
+        assertEquals(18, Themes.all.map { it.id }.toSet().size)
         assertEquals("", GeneralSettings().theme)
         assertFalse(Themes.isChosen(GeneralSettings().theme))
         // The removed blue style of older versions counts as not chosen, so the picker is shown once.
@@ -45,11 +45,19 @@ class ThemeTest {
         assertEquals(Themes.NEON, Themes.byId("neon"))
     }
 
-    @Test fun stylesDifferInShapeNotOnlyColour() {
-        assertTrue(Themes.all.map { it.button }.toSet().size >= 4)
-        assertTrue(Themes.all.map { it.frame }.toSet().size >= 3)
-        assertEquals(6, Themes.all.map { it.pattern }.toSet().size)
-        assertEquals(3, Themes.all.count { it.light })
+    @Test fun everyPalettePreservesTheSelectedDecorations() {
+        for(original in LegacyThemes.all){
+            Themes.configureGeometry(original.id)
+            Themes.all.forEach { next ->
+                assertEquals(original.frame,next.frame);assertEquals(original.button,next.button)
+                assertEquals(original.pattern,next.pattern);assertEquals(original.radius,next.radius)
+                assertEquals(original.buttonRadius,next.buttonRadius);assertEquals(original.frameWidth,next.frameWidth)
+                assertEquals(original.jewels,next.jewels);assertEquals(original.shadowDepth,next.shadowDepth)
+                assertEquals(original.primaryHorizontal,next.primaryHorizontal)
+                assertEquals(original.glows.map{Triple(it.x,it.y,it.radius)},next.glows.map{Triple(it.x,it.y,it.radius)})
+            }
+        }
+        assertEquals("کریستال",Themes.IVORY.title);assertEquals("مروارید",Themes.IRANIC.title)
     }
 
     @Test fun textIsReadableOnCardsInEveryStyle() {
@@ -77,8 +85,13 @@ class ThemeTest {
     }
 
     @Test fun themeAndLeaguePictureAreStoredAndOldDataStillLoads() {
-        val s = AppSettings(general = GeneralSettings(theme = "iranic"))
+        val s = AppSettings(general = GeneralSettings(theme = "iranic",paletteGeometry="cobalt"))
         assertEquals("iranic", GameCodec.decodeSettings(GameCodec.encodeSettings(s)).general.theme)
+        assertEquals("cobalt", GameCodec.decodeSettings(GameCodec.encodeSettings(s)).general.paletteGeometry)
+        for(t in Themes.all){
+            val p=AppSettings(general=GeneralSettings(theme=t.id,paletteGeometry="copper"))
+            assertEquals(p.general,GameCodec.decodeSettings(GameCodec.encodeSettings(p)).general)
+        }
         val old = GameCodec.encodeSettings(AppSettings())
         old.getJSONObject("general").remove("theme")
         assertEquals("", GameCodec.decodeSettings(old).general.theme)

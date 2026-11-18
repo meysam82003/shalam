@@ -100,6 +100,7 @@ class ProScreen(host: MainActivity, private val reason: String? = null, private 
         if (ProState.isPro) {
             addView(kit.panel(PanelStyle.SUCCESS).apply {
                 addView(kit.text(if (lic.lifetime) "اشتراک Pro مادام‌العمر — فعال" else "Pro شما تا ${date(lic.expiresAt)} فعال است", TextStyle.BODY_BOLD, Royal.ivory))
+                if(!lic.lifetime)addView(proTimeView(),kit.spaced(6))
                 if (!lic.lifetime) addView(kit.text("${kit.n(lic.daysLeft(now) ?: 0)} روز باقی‌مانده؛ خرید تازه به انتهای همین دوره اضافه می‌شود.", TextStyle.LABEL, Royal.muted))
                 addView(kit.gap(8))
                 addView(kit.button("اشتراک من", ButtonKind.SECONDARY, RoyalIcon.CROWN, 44) { host.push(SubscriptionScreen(host)) })
@@ -490,6 +491,7 @@ class SubscriptionScreen(host: MainActivity) : Screen(host) {
                 addView(kit.text(if (pro) (if (lic.lifetime) "اشتراک Pro مادام‌العمر — فعال" else "Pro فعال") else "نسخهٔ رایگان", TextStyle.TITLE, Royal.title), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
                 addView(kit.badge(if (pro) "بدون تبلیغ" else "رایگان", if (pro) Royal.turquoise else Royal.dim, filled = pro))
             })
+            if(pro&&!lic.lifetime)addView(proTimeView(),kit.spaced(6))
             if (pro && !lic.lifetime) {
                 addView(kit.text("تا ${date(lic.expiresAt)} — ${kit.n(lic.daysLeft(now) ?: 0)} روز باقی‌مانده", TextStyle.BODY, Royal.ivory))
                 val total = 30.0.coerceAtLeast(((lic.expiresAt ?: now) - now) / 86400.0)

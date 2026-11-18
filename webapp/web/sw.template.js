@@ -18,6 +18,14 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== self.location.origin || !url.pathname.startsWith(new URL('./', self.location).pathname)) return;
+  if (/\/api(?:\/|$)/.test(url.pathname) || /\.php$/.test(url.pathname)) return;
+  if (e.request.mode === 'navigate') {
+    e.respondWith(fetch(e.request).then((r) => {
+      if (r.ok) caches.open(CACHE).then((c) => c.put('./', r.clone()));
+      return r;
+    }).catch(() => caches.open(CACHE).then((c) => c.match('./'))));
+    return;
+  }
   e.respondWith(caches.open(CACHE).then((c) => c.match(e.request, { ignoreSearch: true }).then((hit) => hit || fetch(e.request).then((r) => {
     if (r.ok && r.type === 'basic') c.put(e.request, r.clone());
     return r;

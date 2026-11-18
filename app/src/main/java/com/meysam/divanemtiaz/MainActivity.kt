@@ -166,7 +166,14 @@ class MainActivity : Activity() {
         override fun run() {
             if (!resumed) return
             if (android.os.SystemClock.uptimeMillis() - lastNoticeCheck >= 60_000) { lastNoticeCheck = android.os.SystemClock.uptimeMillis(); Notices.check(this@MainActivity); AdsManager.refresh(this@MainActivity) }
-            if (current?.mafiaArea == true && !ProState.mafiaAllowed) {
+            if(ProState.consumeExpiredReward()) {
+                gameAudio.pause()
+                if(audioUsed){audio.stopCue();audio.stopMusic()}
+                kit.dismissDialogs()
+                resetTo(HomeScreen(this@MainActivity))
+                kit.dialog("سپاس از همراهی شما", "زمان دسترسی هدیهٔ Pro تمام شد. بازی و اطلاعات شما محفوظ است؛ می‌توانید رایگان ادامه دهید یا اشتراک تهیه کنید.", null,
+                    listOf(DialogAction("ادامهٔ رایگان",ButtonKind.PRIMARY),DialogAction("دیدن اشتراک‌ها"){push(ProScreen(this@MainActivity))})).show()
+            } else if (current?.mafiaArea == true && !ProState.mafiaAllowed) {
                 kit.dismissDialogs()
                 if (audioUsed) { audio.stopCue(); audio.stopMusic() }
                 current?.onHide()
@@ -196,6 +203,11 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         repo = GameStore.open(this)
         settings = repo.settings()
+        if(settings.general.paletteGeometry.isBlank()){
+            settings=settings.copy(general=settings.general.copy(paletteGeometry=LegacyThemes.byId(settings.general.theme).id))
+            repo.saveSettings(settings)
+        }
+        Themes.configureGeometry(settings.general.paletteGeometry)
         kit = RoyalKit(this) { settings }
         ThemeEngine.apply(Themes.byId(settings.general.theme))
         LaunchLook.remember(this, ThemeEngine.spec)
@@ -350,6 +362,7 @@ class MainActivity : Activity() {
 
     /** Switches the whole interface to another style without losing the page stack. */
     fun applyTheme(id: String) {
+        Themes.configureGeometry(settings.general.paletteGeometry)
         val next = Themes.byId(id)
         if (next === ThemeEngine.spec) return
         ThemeEngine.apply(next)
@@ -365,11 +378,11 @@ class MainActivity : Activity() {
     }
 
     fun updateSettings(transform: (AppSettings) -> AppSettings) {
-        val before = settings.general.theme
+        val before = settings.general
         settings = transform(settings)
         repo.saveSettings(settings)
         applyWindowSettings()
-        if (settings.general.theme != before) applyTheme(settings.general.theme)
+        if (settings.general.theme != before.theme || settings.general.paletteGeometry != before.paletteGeometry) applyTheme(settings.general.theme)
     }
 
     fun push(screen: Screen) {

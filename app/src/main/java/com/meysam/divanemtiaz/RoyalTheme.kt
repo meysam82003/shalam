@@ -89,7 +89,7 @@ class ThemeSpec(
 private fun c(v: Long): Int = v.toInt()
 
 /** The six selectable styles; the user picks one on the first launch and can change it in the settings. */
-object Themes {
+object LegacyThemes {
     val COBALT = ThemeSpec(
         id = "cobalt", title = "وایت کبالت", latin = "White Cobalt", summary = "روشن، تمیز و دقیق؛ سفید با آبی کبالت",
         light = true,
@@ -267,6 +267,75 @@ object Themes {
 
     /** True once the user has picked one of the current styles. */
     fun isChosen(id: String?): Boolean = all.any { it.id == id }
+}
+
+/** Eighteen colour palettes. Geometry comes from the user's existing style and never changes on colour selection. */
+object Themes {
+    var geometryId:String="emerald"; private set
+    private fun rgb(value:String)=java.lang.Long.parseLong(value,16).toInt() or 0xFF000000.toInt()
+    private fun blend(a:Int,b:Int,t:Float):Int {
+        fun part(shift:Int)=((((a ushr shift)and 255)*(1-t)+((b ushr shift)and 255)*t).toInt() shl shift)
+        return 0xFF000000.toInt() or part(16) or part(8) or part(0)
+    }
+    private fun alpha(color:Int,value:Int)=(color and 0x00FFFFFF) or ((value and 255) shl 24)
+    private fun palette(id:String,title:String,latin:String,light:Boolean,bg:String,surface:String,text:String,muted:String,accent:String,border:String):ThemeSpec {
+        val shape=LegacyThemes.byId(geometryId)
+        val b=rgb(bg);val card=rgb(surface);val ink=rgb(text);val quiet=rgb(muted);val brand=rgb(accent);val edge=rgb(border)
+        val black=rgb("081722");val white=rgb("FFFFFF");val on=if(light)white else black
+        val brandText=if(light)brand else blend(brand,white,.18f)
+        val primary=intArrayOf(blend(brand,if(light)black else white,.04f),brand,blend(brand,if(light)black else white,.09f))
+        val secondary=intArrayOf(card,blend(card,b,.12f),blend(card,b,.28f))
+        val success=if(light)rgb("23715D")else rgb("87DFC2")
+        val danger=if(light)rgb("AD354D")else rgb("FFADC0")
+        return ThemeSpec(
+            id=id,title=title,latin=latin,summary=if(light)"رنگ‌بندی روشن • $title" else "رنگ‌بندی تیره • $title",light=light,
+            bg=intArrayOf(blend(b,card,.06f),b,blend(b,if(light)card else black,.18f)),
+            glows=shape.glows.map{ThemeGlow(it.x,it.y,it.radius,alpha(brand,(it.color ushr 24)and 255))},
+            vignette=alpha(if(light)b else black,(shape.vignette ushr 24)and 255),pattern=shape.pattern,patternColor=brand,
+            surface=card,surfaceLow=blend(card,b,.18f),raised=blend(card,if(light)white else brand,.04f),raisedLow=blend(card,b,.12f),
+            flat=blend(card,b,.12f),flatLow=blend(card,b,.26f),border=edge,borderLow=blend(edge,b,.28f),inner=alpha(brand,(shape.inner ushr 24)and 255),
+            jewels=shape.jewels,frame=shape.frame,frameWidth=shape.frameWidth,shadow=alpha(if(light)brand else black,(shape.shadow ushr 24)and 255),
+            shadowDepth=shape.shadowDepth,gloss=shape.gloss,radius=shape.radius,
+            accent=brand,accentText=brandText,accentDeep=blend(brand,black,.23f),accentShadow=blend(brand,black,.53f),
+            metalLight=blend(brand,white,.58f),metal=brand,metalDeep=blend(brand,black,.28f),metalShadow=blend(brand,black,.62f),
+            success=success,successText=if(light)success else blend(success,white,.15f),successDeep=blend(success,black,.42f),
+            danger=danger,dangerText=if(light)danger else blend(danger,white,.14f),dangerDeep=blend(danger,black,.42f),
+            text=ink,muted=quiet,dim=blend(quiet,card,.25f),titleColor=ink,onAccent=on,scrim=b,lapis=blend(card,brand,.12f),lapisLight=blend(card,brand,.23f),
+            button=shape.button,primary=primary,primaryHorizontal=shape.primaryHorizontal,primaryText=on,primaryEdge=blend(brand,black,.45f),
+            secondary=secondary,secondaryText=brandText,secondaryBorder=edge,chip=secondary,chipText=ink,chipBorder=blend(edge,card,.25f),
+            successFill=intArrayOf(success,blend(success,if(light)black else white,.04f),success),successOn=if(light)white else black,
+            dangerFill=intArrayOf(danger,blend(danger,if(light)black else white,.04f),danger),dangerOn=if(light)white else black,
+            buttonRadius=shape.buttonRadius,glow=shape.glow,ring=intArrayOf(brand,blend(brand,white,.25f),blend(brand,if(light)black else white,.1f)),
+            ringTrack=alpha(brand,35),swatch=intArrayOf(b,brand,card)
+        )
+    }
+    private fun create():List<ThemeSpec> = listOf(
+        palette("emerald","جنگل زمرد","Emerald Grove",false,"071F1C","103B34","E7FAF3","A8C9BE","68D9B6","457F72"),
+        palette("cobalt","یاقوت آبی","Blue Sapphire",false,"071B35","112F52","EDF5FF","ABCAE5","83BEFF","4C7599"),
+        palette("copper","غروب مسی","Copper Dusk",false,"24130F","3E2720","FFF3E7","D7BEAD","F2B787","91684C"),
+        palette("neon","شفق قطبی","Aurora",false,"130C2B","281C45","F4EFFF","C5B6DE","D1ADFF","81669D"),
+        palette("iranic","مروارید","Pearl Atelier",true,"F3EDE1","FFFCF5","28241F","686057","805522","C4B18B"),
+        palette("ivory","کریستال","Crystal Palace",true,"EAF2F7","FCFEFF","172A42","50677E","245D9C","A8C2D9"),
+        palette("pomegranate","مخمل انار","Pomegranate Velvet",false,"290D1B","43172E","FFF0F5","DAB5C6","FFAACD","A36E89"),
+        palette("caspian","اقیانوس کاسپین","Caspian Ocean",false,"061E2B","0C3547","E7F9FF","A2C8D6","70DBEE","3E7B8B"),
+        palette("midnight","نیمه‌شب نقره‌ای","Silver Midnight",false,"0C1524","192A40","F0F6FF","AFBFD2","B5D1EF","647E9C"),
+        palette("amethyst","بنفشهٔ سحر","Dawn Amethyst",false,"1D1230","33204C","F7EEFF","CBBDDD","D4B8FF","896BA6"),
+        palette("rose","رز مهتاب","Moonlit Rose",true,"FBF0F4","FFFAFC","472436","76616E","9A3F69","E1B8CE"),
+        palette("pistachio","پستهٔ بهاری","Spring Pistachio",true,"F0F6E9","FBFFF6","293924","65725D","4E7041","C5D8B5"),
+        palette("saffron","زعفران کویر","Desert Saffron",false,"241B0A","3A2E15","FFF6DE","D3C4A2","F4CE70","96804D"),
+        palette("coral","مرجان ساحلی","Coastal Coral",false,"291512","462922","FFF1EB","DCBEB2","FFB49A","A27664"),
+        palette("lavender","لاوندر ابری","Cloud Lavender",true,"F4F0FC","FDFBFF","362849","746984","715494","DAC9EF"),
+        palette("mint","نعنای یخی","Ice Mint",true,"EAF8F3","F8FFFC","1F4037","56756A","266C58","B7DCD0"),
+        palette("sky","آسمان سحر","Dawn Sky",true,"EEF6FC","FCFEFF","213B52","5B7286","2E6591","BDD7EB"),
+        palette("lotus","طلوع نیلوفر","Lotus Sunrise",false,"181A34","292E50","F1F1FF","B9C0E3","B3C0FF","727DA9")
+    )
+    var all:List<ThemeSpec> = create(); private set
+    fun configureGeometry(id:String){val chosen=LegacyThemes.byId(id).id;if(chosen!=geometryId){geometryId=chosen;all=create()}}
+    val COBALT get()=byId("cobalt");val COPPER get()=byId("copper");val IRANIC get()=byId("iranic")
+    val EMERALD get()=byId("emerald");val IVORY get()=byId("ivory");val NEON get()=byId("neon")
+    val FALLBACK get()=all.first{it.id=="emerald"}
+    fun byId(id:String?):ThemeSpec=all.firstOrNull{it.id==id}?:FALLBACK
+    fun isChosen(id:String?)=all.any{it.id==id}
 }
 
 /** The active style; [apply] copies its tokens into [Royal] so every existing widget follows it. */

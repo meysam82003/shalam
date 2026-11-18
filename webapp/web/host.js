@@ -594,7 +594,7 @@
     var assets = {};
     Promise.all([
       openDb().then(function (d) { db = d; return Promise.all([readAll('files'), readAll('prefs')]); }),
-      Promise.all((cfg.assets || []).map(function (p) { return fetchBytes('assets/' + p).then(function (b) { assets[p] = b; }); })),
+      Promise.all((cfg.assets || []).filter(function (p) { return !/^certs\//.test(p); }).map(function (p) { return fetchBytes('assets/' + p).then(function (b) { assets[p] = b; }); })),
       loadFonts()
     ]).then(function (r) {
       DH.boot = {
