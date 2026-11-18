@@ -21,23 +21,27 @@ fun Screen.proTimeView():View = object:TextView(host) {
     private val tick=object:Runnable {
         override fun run(){
             if(!attached||windowVisibility!=View.VISIBLE)return
-            val license=ProState.license
-            val remaining=license.remainingSeconds(ProState.now())?:0
-            val shown=if(license.plan=="gift"&&license.expiresAt==license.rewardEndsAt()&&remaining<=3600)remaining.coerceAtMost(3599)else remaining
-            text=when {
-                !ProState.isPro->"Pro فعال نیست"
-                license.lifetime->"Pro مادام‌العمر فعال است"
-                else->"زمان باقی‌ماندهٔ Pro: "+kit.n(ProCountdown.format(shown))
-            }
-            contentDescription=text
+            updateText()
             handler.postDelayed(this,1000)
         }
+    }
+    private fun updateText(){
+        val license=ProState.license
+        val remaining=license.remainingSeconds(ProState.now())?:0
+        val shown=if(license.plan=="gift"&&license.expiresAt==license.rewardEndsAt()&&remaining<=3600)remaining.coerceAtMost(3599)else remaining
+        text=when {
+            !ProState.isPro->"Pro فعال نیست"
+            license.lifetime->"Pro مادام‌العمر فعال است"
+            else->"زمان باقی‌ماندهٔ Pro: "+kit.n(ProCountdown.format(shown))
+        }
+        contentDescription=text
     }
     init {
         typeface=kit.text("",TextStyle.BODY).typeface
         textSize=kit.textSize(18f);setTextColor(Royal.turquoiseLight)
         gravity=Gravity.CENTER
         setPadding(kit.dp(4),kit.dp(10),kit.dp(4),kit.dp(10))
+        updateText()
     }
     override fun onAttachedToWindow(){super.onAttachedToWindow();attached=true;handler.removeCallbacks(tick);handler.post(tick)}
     override fun onDetachedFromWindow(){attached=false;handler.removeCallbacks(tick);super.onDetachedFromWindow()}

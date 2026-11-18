@@ -43,37 +43,56 @@ class RewardActivationSmokeTest {
         val sig=Signature.getInstance("SHA256withRSA").run{initSign(signer);update(body.toByteArray(Charsets.US_ASCII));sign()}
         return JSONObject().put("user",JSONObject().put("id",987654).put("username","reward_ui_fixture")).put("certificate",body+"."+B64.encode(sig,url=true))
     }
-    private fun awaitText(text:String):Boolean {
+    private fun timerText():String {
+        var found=""
+        fun visit(v:android.view.View){
+            if(v is android.widget.TextView&&v.text.toString().startsWith("زمان باقی‌ماندهٔ Pro"))found=v.text.toString()
+            if(v is android.view.ViewGroup)for(i in 0 until v.childCount)visit(v.getChildAt(i))
+        }
+        scenario.onActivity{visit(it.window.decorView)}
+        return found
+    }
+    private fun screenshot(name:String){
         val ui=InstrumentationRegistry.getInstrumentation().uiAutomation
-        val end=SystemClock.uptimeMillis()+5000
-        while(SystemClock.uptimeMillis()<end){if(ui.rootInActiveWindow?.findAccessibilityNodeInfosByText(text)?.isNotEmpty()==true)return true;SystemClock.sleep(100)}
-        return false
+        for(cmd in listOf("mkdir -p /sdcard/Download/divan-ui-smoke","screencap -p /sdcard/Download/divan-ui-smoke/$name.png")) {
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(ui.executeShellCommand(cmd)).use{it.readBytes()}
+        }
     }
     @Test fun verifiedRewardUnlocksMafiaAndExpiresWithCountdownAndSavedData(){
-        var end=0L;var snapshot=""
+        var end=0L;var savedId=0L
         scenario.onActivity{host->
             end=ProState.now()+12
-            snapshot=host.repo.store.get("fixture_saved_game").orEmpty()
-            host.repo.store.write(mapOf("fixture_saved_game" to "{\"score11\":33,\"round\":7}"))
+            savedId=host.repo.newSessionId()
+            host.repo.save(GameSession(savedId,GameType.MENFI,listOf(Side("الف",1),Side("ب",2)),rules=GameRules(),label="reward_expiry_fixture"))
             ProState.applyAccount(response(end))
             assertTrue(ProState.isPro);assertTrue(ProState.mafiaAllowed);assertFalse(ProState.adsAllowed)
             host.resetTo(HomeScreen(host),SubscriptionScreen(host))
         }
-        assertTrue("Actual native subscription UI shows the ticking verified entitlement",awaitText("زمان باقی‌ماندهٔ Pro"))
+        SystemClock.sleep(250)
+        val first=timerText()
+        screenshot("verified-pro-countdown")
+        assertTrue("Actual native subscription UI shows the ticking verified entitlement: $first",first.isNotBlank())
         SystemClock.sleep(1500)
+        assertNotEquals("The displayed seconds actually decrease",first,timerText())
         scenario.onActivity{assertTrue(ProState.isPro);assertTrue(ProState.license.remainingSeconds(ProState.now())!! in 1..11)}
-        assertTrue("Respectful expiry notice appears automatically",awaitExpiry(end))
+        assertTrue("Respectful expiry returns to Home automatically",awaitExpiry())
+        screenshot("verified-pro-expired")
         scenario.onActivity{host->
             assertFalse(ProState.isPro);assertFalse(ProState.mafiaAllowed)
             assertTrue(host.current is HomeScreen)
-            assertEquals("{\"score11\":33,\"round\":7}",host.repo.store.get("fixture_saved_game"))
+            assertEquals("reward_expiry_fixture",host.repo.session(savedId)?.label)
             assertFalse("Only one expiry notice for this grant",ProState.consumeExpiredReward())
-            host.repo.store.write(mapOf("fixture_saved_game" to snapshot.takeIf{it.isNotBlank()}))
+            host.repo.delete(savedId)
         }
     }
-    private fun awaitExpiry(end:Long):Boolean {
+    private fun awaitExpiry():Boolean {
         val until=SystemClock.uptimeMillis()+20000
-        while(SystemClock.uptimeMillis()<until){if(awaitText("سپاس از همراهی شما"))return true}
+        while(SystemClock.uptimeMillis()<until){
+            var expired=false
+            scenario.onActivity{expired=!ProState.isPro&&it.current is HomeScreen}
+            if(expired)return true
+            SystemClock.sleep(100)
+        }
         return false
     }
     @Test fun claimNeverReportsSuccessForAnUnverifiedCertificate(){
