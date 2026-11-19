@@ -79,18 +79,7 @@ class LeagueSetupScreen(host: MainActivity, private val editing: Long? = null) :
         bottom = kit.button(if (existing == null) "قرعه‌کشی نهایی و شروع لیگ" else "ذخیرهٔ تغییرات لیگ", ButtonKind.PRIMARY, RoyalIcon.PLAY) { start() }
     ) {
         addView(rulePresetButton("league", capture = {
-            if (clean.withIndex().any { (index, side) ->
-                !TeamIdentity.validCardTeam(side) && existing?.teams?.getOrNull(index)?.members != side.members
-            }) {
-            kit.toast("هر تیم لیگ دو نفر متفاوت دارد. برای ثبت سریع می‌توانید نام اعضا را خالی بگذارید.")
-            return
-        }
-        val identityKeys = clean.map(TeamIdentity::key)
-        if (identityKeys.distinct().size != identityKeys.size && identityKeys != existing?.teams?.map(TeamIdentity::key)) {
-            kit.toast("این ترکیب بازیکنان قبلاً در لیگ وارد شده است")
-            return
-        }
-        val base = presetRules ?: existing?.rules ?: settings.rulesFor(game, joker, endPoint)
+            val base = presetRules ?: existing?.rules ?: settings.rulesFor(game, joker, endPoint)
             val rules = when (game) {
                 GameType.MENFI -> base.copy(menfi = base.menfi.copy(hands = menfiHands, hidden = menfiHidden))
                 GameType.SHALAM -> base.copy(shalam = base.shalam.copy(joker = joker, endPoint = endPoint, mode = if (base.shalam.joker != joker) settings.shalam.mode(joker) else base.shalam.mode))
