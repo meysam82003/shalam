@@ -180,6 +180,9 @@ class MainActivity : Activity() {
                 stack += ProScreen(this@MainActivity, "زمان تست مافیا تمام شد؛ برای ادامه اشتراک Pro بخرید. بازی شما ذخیره شده است.")
                 render()
             }
+            val key = current?.featureKey
+            if (key != null && key in Features.newProModules && !ProState.access(key).allowed) refresh()
+            if (Gate.itemLocked("themes", ThemeEngine.spec.id)) applyTheme(settings.general.theme)
             accessHandler.postDelayed(this, 1000)
         }
     }
@@ -209,10 +212,10 @@ class MainActivity : Activity() {
         }
         Themes.configureGeometry(settings.general.paletteGeometry)
         kit = RoyalKit(this) { settings }
-        ThemeEngine.apply(Themes.byId(settings.general.theme))
+        ProState.init(this)
+        ThemeEngine.apply(availableTheme(settings.general.theme))
         LaunchLook.remember(this, ThemeEngine.spec)
         PhotoStore.init(this)
-        ProState.init(this)
         AdEngine.init(this)
         MafiaRoleRegistry.user = mafia.roleDefs()
         val root = FrameLayout(this).apply {
@@ -360,10 +363,16 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun availableTheme(id: String): ThemeSpec {
+        val requested = Themes.byId(id)
+        if (!Gate.itemLocked("themes", requested.id)) return requested
+        return Themes.all.firstOrNull { !Gate.itemLocked("themes", it.id) } ?: Themes.FALLBACK
+    }
+
     /** Switches the whole interface to another style without losing the page stack. */
     fun applyTheme(id: String) {
         Themes.configureGeometry(settings.general.paletteGeometry)
-        val next = Themes.byId(id)
+        val next = availableTheme(id)
         if (next === ThemeEngine.spec) return
         ThemeEngine.apply(next)
         LaunchLook.remember(this, next)
@@ -670,6 +679,15 @@ class MainActivity : Activity() {
 
     private fun render(animate: Boolean = true, forward: Boolean = true, notify: Boolean = true) {
         val screen = current ?: return
+        val restricted = screen.featureKey?.takeIf { it in Features.newProModules && !ProState.access(it).allowed }
+        if (restricted != null) {
+            kit.dismissDialogs()
+            screen.onHide()
+            stack.removeAt(stack.lastIndex)
+            stack += ProScreen(this, "«${Features.titles[restricted]}» از امکانات Pro است.")
+            render(animate, forward, notify)
+            return
+        }
         if (screen.mafiaArea && !ProState.mafiaAllowed) {
             kit.dismissDialogs()
             if (audioUsed) { audio.stopCue(); audio.stopMusic() }
@@ -743,7 +761,12 @@ class MainActivity : Activity() {
     /** New plans, rules or ads from the server, Pro bought or ended: pages that show ads or Pro are redrawn. */
     private fun onProChanged() {
         val screen = current ?: return
-        if (screen.adZone != null) refresh() else updateStickyAds()
+        val chosen = Themes.byId(settings.general.theme)
+        if (Gate.itemLocked("themes", ThemeEngine.spec.id) ||
+            (chosen.id != ThemeEngine.spec.id && !Gate.itemLocked("themes", chosen.id) && screen !is ThemeWelcomeScreen && settings.general.theme.isNotBlank())) {
+            applyTheme(settings.general.theme)
+        } else if (screen.adZone != null || screen is ThemeScreen || screen is ThemeWelcomeScreen) refresh()
+        else updateStickyAds()
     }
 
     private fun findScroll(view: View): ScrollView? {

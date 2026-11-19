@@ -33,17 +33,18 @@ object SessionOps {
         val roster = host.repo.roster().toMutableList()
         var changed = false
         sides.forEach { side ->
-            val existing = roster.indexOfFirst { it.name == side.name && it.isTeam == isTeam }
+            val key = TeamIdentity.key(RosterEntry(0L, side.name, side.avatar, isTeam, side.members))
+            val existing = roster.indexOfFirst { TeamIdentity.key(it) == key }
             if (existing < 0) {
                 roster += RosterEntry(System.currentTimeMillis() + roster.size, side.name, side.avatar, isTeam, side.members)
                 changed = true
-            } else if (roster[existing].avatar != side.avatar || (side.members.isNotEmpty() && roster[existing].members != side.members)) {
-                roster[existing] = roster[existing].copy(avatar = side.avatar, members = side.members.ifEmpty { roster[existing].members })
+            } else if (roster[existing].avatar != side.avatar || (side.members.isNotEmpty() && roster[existing].members.isEmpty())) {
+                roster[existing] = roster[existing].copy(avatar = side.avatar, members = roster[existing].members.ifEmpty { side.members })
                 changed = true
             }
             // Every person of a team is kept in the people list too.
             side.members.forEach { m ->
-                if (roster.none { it.name == m && !it.isTeam }) {
+                if (roster.none { !it.isTeam && TeamIdentity.person(it.name) == TeamIdentity.person(m) }) {
                     roster += RosterEntry(System.currentTimeMillis() + roster.size, m, (roster.size * 7 + 3) % Emblems.COUNT, false)
                     changed = true
                 }
@@ -128,25 +129,47 @@ fun Screen.avatarPicker(current: Int, onPick: (Int) -> Unit) {
  * Teams built from people let every person have his own record in every game.
  */
 fun Screen.memberPicker(current: List<String>, max: Int = 2, title: String = "اعضای تیم", unavailable: Set<String> = emptySet(), onDone: (List<String>) -> Unit) {
-    val chosen = ArrayList(current)
-    lateinit var dialog: Dialog
+    val chosen = current.distinctBy(TeamIdentity::person).toMutableList()
+    val blocked = unavailable.map(TeamIdentity::person).toSet()
     val grid = kit.grid(3, emptyList(), 6)
+    val selection = kit.vertical()
     var query = ""
     var showSelected = false
+
     fun fill() {
+        selection.removeAllViews()
+        selection.addView(kit.text(if (max < 99) "${kit.n(chosen.size)} از ${kit.n(max)} نفر انتخاب شده" else "${kit.n(chosen.size)} نفر انتخاب شده",
+            TextStyle.LABEL_BOLD, Royal.turquoiseLight))
+        if (chosen.isNotEmpty()) {
+            selection.addView(kit.flow(chosen.map { name ->
+                kit.chip("$name ×", true) { chosen.remove(name); fill() }
+            }, 5))
+        }
         grid.removeAllViews()
-        host.repo.roster().filter { !it.isTeam && SearchText.matches(query, it.name) && (showSelected || it.name !in chosen && it.name !in unavailable) }.forEach { e ->
-            val on = e.name in chosen
+        val chosenKeys = chosen.map(TeamIdentity::person).toSet()
+        val entries = host.repo.roster().filter {
+            val key = TeamIdentity.person(it.name)
+            !it.isTeam && SearchText.matches(query, it.name) && (showSelected || key !in chosenKeys && key !in blocked)
+        }
+        entries.forEach { entry ->
+            val key = TeamIdentity.person(entry.name)
+            val selected = key in chosenKeys
             grid.addView(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
-                background = PanelDrawable(kit.density, if (on) PanelStyle.SELECTED else PanelStyle.FLAT, 14f)
+                background = PanelDrawable(kit.density, if (selected) PanelStyle.SELECTED else PanelStyle.FLAT, 14f)
                 setPadding(kit.dp(4), kit.dp(6), kit.dp(4), kit.dp(8))
-                addView(kit.avatar(e.avatar, 42))
-                addView(kit.text(e.name, TextStyle.LABEL_BOLD, if (on) Royal.turquoiseLight else Royal.ivory, Gravity.CENTER, 1))
+                addView(kit.avatar(entry.avatar, 42))
+                addView(kit.text(entry.name, TextStyle.LABEL_BOLD, Royal.ivory, Gravity.CENTER, 1))
+                if (key in blocked && !selected) addView(kit.text("تیم دیگر", TextStyle.CAPTION, Royal.muted))
                 isClickable = true
-                contentDescription = e.name
+                contentDescription = entry.name
                 setOnClickListener {
                     kit.tap(it)
-                    if (on) chosen.remove(e.name) else { if (chosen.size >= max) chosen.removeAt(0); chosen += e.name }
+                    when {
+                        selected -> chosen.removeAll { TeamIdentity.person(it) == key }
+                        max == 1 -> { chosen.clear(); chosen.add(entry.name) }
+                        chosen.size < max -> chosen.add(entry.name)
+                        else -> kit.toast("برای انتخاب نفر دیگر، ابتدا یکی از انتخاب‌ها را بردارید")
+                    }
                     fill()
                 }
             })
@@ -154,30 +177,44 @@ fun Screen.memberPicker(current: List<String>, max: Int = 2, title: String = "ا
     }
     fill()
     val body = kit.vertical().apply {
+        addView(selection, kit.spaced(8))
+        addView(kit.searchBox("جست‌وجوی نام") { text -> query = text; fill() }, kit.spaced(6))
+        addView(kit.switchRow("نمایش افراد انتخاب‌شده", "افراد انتخاب‌شده در این تیم یا تیم‌های دیگر هم نمایش داده شوند", showSelected) { showSelected = it; fill() }, kit.spaced(6))
+        addView(grid)
         addView(kit.button("فرد جدید", ButtonKind.GHOST, RoyalIcon.PLUS, 40) {
             kit.textPrompt("نام فرد", "") { name ->
                 val roster = host.repo.roster().toMutableList()
-                if (roster.none { it.name == name && !it.isTeam }) {
+                val key = TeamIdentity.person(name)
+                val existing = roster.firstOrNull { !it.isTeam && TeamIdentity.person(it.name) == key }
+                if (existing == null && key.isNotBlank()) {
                     roster += RosterEntry(System.currentTimeMillis(), name, (roster.size * 7 + 3) % Emblems.COUNT, false)
                     host.repo.saveRoster(roster)
                 }
-                if (name !in chosen) { if (chosen.size >= max) chosen.removeAt(0); chosen += name }
+                val display = existing?.name ?: name
+                if (key.isNotBlank() && chosen.none { TeamIdentity.person(it) == key }) {
+                    if (max == 1) chosen.clear()
+                    if (chosen.size < max) chosen += display
+                    else kit.toast("فرد به فهرست اضافه شد. برای انتخاب او یک جای خالی لازم است.")
+                }
                 fill()
             }
         }, kit.spaced(8))
-        if (host.repo.roster().count { !it.isTeam } >= 7) addView(kit.searchBox("جست‌وجوی نام") { q -> query = q; fill() }, kit.spaced(8))
-        addView(kit.switchRow("نمایش افراد انتخاب‌شده", "افراد انتخاب‌شده در این تیم یا تیم‌های دیگر هم نمایش داده شوند", showSelected) { showSelected = it; fill() }, kit.spaced(8))
-        addView(grid)
     }
-    dialog = kit.dialog(title, if (max >= 99) "هر تعداد از افراد را انتخاب کنید" else "تا ${kit.n(max)} نفر از افراد را انتخاب کنید", body, listOf(
-        DialogAction("تایید", ButtonKind.PRIMARY) { onDone(chosen.toList()) },
+    kit.dialog(title, null, body, listOf(
+        DialogAction("تأیید", ButtonKind.PRIMARY) { onDone(chosen.toList()) },
         DialogAction("لغو")
-    ))
-    dialog.show()
+    )).show()
 }
 
-fun Screen.rosterPicker(isTeam: Boolean, unavailable: Set<String> = emptySet(), onPick: (RosterEntry) -> Unit) {
-    val entries = host.repo.roster().filter { it.isTeam == isTeam }
+fun Screen.rosterPicker(isTeam: Boolean, unavailable: Set<String> = emptySet(), cardTeamsOnly: Boolean = false, onPick: (RosterEntry) -> Unit) {
+    if (isTeam && !ProState.access("teams").allowed) {
+        Gate.open(this, "teams") {}
+        return
+    }
+    val occupied = unavailable.map(TeamIdentity::person).toSet()
+    val entries = host.repo.roster().filter { entry ->
+        entry.isTeam == isTeam && (!cardTeamsOnly || TeamIdentity.validCardTeam(Side(entry.name, entry.avatar, entry.members)))
+    }
     if (entries.isEmpty()) {
         kit.toast(if (isTeam) "هنوز تیمی در فهرست نیست" else "هنوز بازیکنی در فهرست نیست")
         return
@@ -191,7 +228,12 @@ fun Screen.rosterPicker(isTeam: Boolean, unavailable: Set<String> = emptySet(), 
                 layoutParams = kit.spaced(6)
                 addView(kit.avatar(entry.avatar, 40))
                 addView(kit.hgap(10))
-                addView(kit.weight(kit.text(entry.name, TextStyle.BODY_BOLD)))
+                addView(kit.weight(kit.vertical().apply {
+                    addView(kit.text(entry.name, TextStyle.BODY_BOLD))
+                    if (isTeam && entry.members.isNotEmpty()) {
+                        addView(kit.text(entry.members.joinToString(" و "), TextStyle.CAPTION, Royal.muted))
+                    }
+                }))
                 isClickable = true
                 setOnClickListener {
                     kit.tap(it)
@@ -205,13 +247,13 @@ fun Screen.rosterPicker(isTeam: Boolean, unavailable: Set<String> = emptySet(), 
     var query = ""
     fun filter() {
         entries.forEachIndexed { i, entry ->
-            val selected = entry.name in unavailable || entry.members.any { it in unavailable }
-            list.getChildAt(i).visibility = if (SearchText.matches(query, entry.name) && (showSelected || !selected)) View.VISIBLE else View.GONE
+            val selected = (entry.members + entry.name).any { TeamIdentity.person(it) in occupied }
+            list.getChildAt(i).visibility = if (SearchText.matches(query, entry.name, entry.members.joinToString(" ")) && (showSelected || !selected)) View.VISIBLE else View.GONE
         }
     }
     val body = kit.vertical().apply {
         if (unavailable.isNotEmpty()) addView(kit.switchRow("نمایش افراد انتخاب‌شده", "تیم‌ها و افراد استفاده‌شده هم نمایش داده شوند", false) { showSelected = it; filter() }, kit.spaced(8))
-        if (entries.size >= 7) addView(kit.searchBox("جست‌وجوی نام") { query = it; filter() }, kit.spaced(8))
+        if (isTeam || entries.size >= 7) addView(kit.searchBox("جست‌وجوی نام") { query = it; filter() }, kit.spaced(8))
         addView(list)
     }
     filter()

@@ -108,8 +108,25 @@ object LeagueEngine {
         val b = st.teamB ?: return false
         val teamA = league.teams[a]
         val teamB = league.teams[b]
-        session.sides[0] = if (teamAFirst) teamA else teamB
-        session.sides[1] = if (teamAFirst) teamB else teamA
+        val sides = if (teamAFirst) listOf(teamA, teamB) else listOf(teamB, teamA)
+        session.menfiDeal?.let { deal ->
+            val oldOrder = session.sides.map { it.members.map(TeamIdentity::person) }
+            val newOrder = sides.map { it.members.map(TeamIdentity::person) }
+            if (oldOrder.indices.any { oldOrder[it].size > 2 || newOrder[it].size > 2 || oldOrder[it].toSet() != newOrder[it].toSet() }) {
+                // Attaching the result to different people requires seating them again for the next hand.
+                session.menfiDeal = null
+            } else {
+                fun remap(seat: Int): Int {
+                    val team = seat / 2
+                    val person = oldOrder[team].getOrNull(seat % 2) ?: return seat
+                    val index = newOrder[team].indexOf(person)
+                    return if (index in 0..1) team * 2 + index else seat
+                }
+                session.menfiDeal = MenfiDeal.restore(deal.order.map(::remap), deal.seats.map(::remap))
+            }
+        }
+        session.sides[0] = sides[0]
+        session.sides[1] = sides[1]
         session.leagueId = league.id
         session.label = "${league.name} • ${stageTitle(league, league.matches[index].stage)}"
         league.matches[index] = league.matches[index].let { it.copy(games = it.games + session.id) }

@@ -699,6 +699,7 @@ final class Features
             ['panto_words', 'کلمات من در پانتومیم', 'افزودن واژه‌های شخصی', 'party'],
             ['spy', 'جاسوس (کل بخش)', 'پخش نقش و زمان‌سنج', 'party'],
             ['spy_words', 'کلمات من در جاسوس', 'افزودن کلمه‌های شخصی', 'party'],
+            ['teams', 'تیم‌های ذخیره‌شده', 'ساخت، ویرایش و انتخاب تیم آماده', 'general'],
             ['leagues', 'لیگ‌ها', 'لیگ دوره‌ای و حذفی؛ محدودیت = تعداد لیگ', 'general'],
             ['rankings', 'رنک‌بندی', 'رتبه و رکورد', 'general'],
             ['profiles', 'کارنامهٔ افراد و تیم‌ها', 'آمار و کارنامهٔ هر نفر', 'general'],
@@ -724,7 +725,7 @@ final class Features
         }
         $out = [];
         foreach (self::all() as $f) {
-            $mode = $f['mode'];
+            $mode = $f['k'] === 'menfi' ? 'free' : $f['mode'];
             $granted = isset($grants[$f['k']]);
             switch ($mode) {
                 case 'free': $allowed = true; break;
@@ -733,7 +734,7 @@ final class Features
                 case 'gift': $allowed = $granted; break;
                 default: $allowed = false;
             }
-            $listed = array_values(array_filter(array_map('trim', explode(',', (string)($f['pro_items'] ?? '')))));
+            $listed = array_values(array_unique(array_filter(array_map('trim', explode(',', (string)($f['pro_items'] ?? ''))))));
             $allItems = false;
             if (in_array($f['k'], self::ITEM_MODULES, true)) {
                 // Ticked items: only those are Pro and the section stays open. Nothing ticked: the mode covers every item.

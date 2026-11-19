@@ -151,7 +151,7 @@ class SetupScreen(host: MainActivity, private val game: GameType) : Screen(host)
             addView(kit.gap(6))
             addView(nameField.apply { gravity = Gravity.CENTER }, kit.fill())
             addView(kit.gap(6))
-            addView(kit.chip(if (side.members.isEmpty()) "انتخاب اعضا" else side.members.joinToString(" و "), side.members.isNotEmpty()) {
+            addView(kit.chip(if (side.members.isEmpty()) "انتخاب دو نفر" else side.members.joinToString(" و "), side.members.isNotEmpty()) {
                 memberPicker(sides[index].members, unavailable = sides.filterIndexed { i, _ -> i != index }.flatMap { it.members }.toSet()) { members ->
                     val old = sides[index]
                     val autoName = old.name.isBlank() || old.name == initialSides().getOrNull(index)?.name || old.name == old.members.joinToString(" و ")
@@ -161,7 +161,7 @@ class SetupScreen(host: MainActivity, private val game: GameType) : Screen(host)
             }.apply { setPadding(kit.dp(8), kit.dp(4), kit.dp(8), kit.dp(6)) }, kit.fill())
             addView(kit.gap(6))
             addView(kit.button("از فهرست تیم‌ها", ButtonKind.GHOST, RoyalIcon.USER, 38) {
-                rosterPicker(game.isTeamGame, unavailable = sides.filterIndexed { i, _ -> i != index }.flatMap { it.members + it.name }.toSet()) { entry ->
+                rosterPicker(true, unavailable = sides.filterIndexed { i, _ -> i != index }.flatMap { it.members + it.name }.toSet(), cardTeamsOnly = true) { entry ->
                     sides[index] = Side(entry.name, entry.avatar, entry.members)
                     host.refresh()
                 }
@@ -239,6 +239,14 @@ class SetupScreen(host: MainActivity, private val game: GameType) : Screen(host)
         val finalSides = sides.mapIndexed { i, s ->
             Side(s.name.trim().ifBlank { defaults.getOrNull(i)?.name ?: "بازیکن ${kit.n(i + 1)}" }, s.avatar, s.members)
         }
+        if (game.isTeamGame && finalSides.any { !TeamIdentity.validCardTeam(it) }) {
+            kit.toast("برای هر تیم دو نفر متفاوت انتخاب کنید، یا برای داوری سریع اعضا را خالی بگذارید")
+            return
+        }
+        if (game.isTeamGame && finalSides.map(TeamIdentity::key).distinct().size != finalSides.size) {
+            kit.toast("یک تیم را نمی‌توان در هر دو طرف قرار داد")
+            return
+        }
         val base = settings.rulesFor(game, joker, endPoint)
         val rules = when (game) {
             GameType.SHALAM -> base.copy(shalam = base.shalam.copy(dealType = dealType))
@@ -246,6 +254,12 @@ class SetupScreen(host: MainActivity, private val game: GameType) : Screen(host)
             GameType.HEZARTAII -> base.copy(hezar = HezarRules(hezarTarget, hezarRounds, hezarPenalty))
             GameType.DOLO -> base.copy(dolo = dolo)
         }
+        if (game == GameType.MENFI) {
+            chooseMenfiDeal(finalSides, null) { deal -> openGame(finalSides, rules, deal) }
+        } else openGame(finalSides, rules, null)
+    }
+
+    private fun openGame(finalSides: List<Side>, rules: GameRules, deal: MenfiDeal?) {
         val now = host.repo.newSessionId()
         val session = GameSession(
             id = now,
@@ -253,9 +267,11 @@ class SetupScreen(host: MainActivity, private val game: GameType) : Screen(host)
             sides = finalSides,
             rules = rules,
             updatedAt = now,
+            menfiDeal = deal,
             label = if (game == GameType.SHALAM) DealType.title(dealType) else ""
         )
         SessionOps.rosterAdd(host, finalSides, game.isTeamGame)
+        if (deal != null) host.repo.save(session)
         host.replace(host.boardFor(session))
     }
 }

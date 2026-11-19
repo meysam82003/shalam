@@ -4,7 +4,9 @@ import kotlin.math.abs
 import kotlin.math.pow
 
 /** A team (شلم، منفی) or a player (هزارتایی، دو لو گشنیز), identified by name. */
-data class Identity(val name: String, val isTeam: Boolean)
+data class Identity(val name: String, val isTeam: Boolean, val teamKey: String? = null) {
+    val rankingKey: String get() = if (isTeam) teamKey ?: TeamIdentity.key(name, emptyList()) else "person:${TeamIdentity.person(name)}"
+}
 
 /** One finished game seen from one side against one opponent. */
 data class Meeting(
@@ -64,9 +66,14 @@ object StatsEngine {
 
     fun compute(sessions: List<GameSession>): Map<Identity, PlayerStats> {
         val stats = linkedMapOf<Identity, PlayerStats>()
+        val identities = mutableMapOf<String, Identity>()
         fun of(id: Identity) = stats.getOrPut(id) { PlayerStats(id) }
         sessions.filter { it.finished && it.sides.size >= 2 }.sortedWith(compareBy<GameSession> { time(it) }.thenBy { it.id }).forEach { s ->
-            val ids = s.sides.map { Identity(it.name.trim(), s.game.isTeamGame) }
+            val ids = s.sides.map { side ->
+                val memberKey = if (s.game.isTeamGame && TeamIdentity.members(side.members).size >= 2) TeamIdentity.key(side) else null
+                val identity = Identity(side.name.trim(), s.game.isTeamGame, memberKey)
+                identities.getOrPut(identity.rankingKey) { identity }
+            }
             if (ids.distinct().size != ids.size) return@forEach
             val players = ids.map(::of)
             val before = players.map { it.rating }
@@ -185,23 +192,29 @@ object StatsEngine {
 
     fun worstLoss(p: PlayerStats): Meeting? = p.meetings.filter { it.result == -1 }.minByOrNull { it.opponentBefore }
 
-    fun records(sessions: List<GameSession>, digits: (Any) -> String): List<GameRecord> {
+    fun records(sessions: List<GameSession>, excluded: Set<String> = emptySet(), digits: (Any) -> String): List<GameRecord> {
         val finished = sessions.filter { it.finished && it.sides.size >= 2 }
         val out = mutableListOf<GameRecord>()
+        fun visible(session: GameSession, index: Int): Boolean {
+            val side = session.sides[index]
+            val key = if (session.game.isTeamGame) TeamIdentity.key(side) else "person:${TeamIdentity.person(side.name)}"
+            return key !in excluded
+        }
         var best: Triple<GameSession, Int, Int>? = null
         finished.forEach { s ->
-            GameEngine.totals(s).forEachIndexed { i, v -> if (best == null || v > best!!.third) best = Triple(s, i, v) }
+            GameEngine.totals(s).forEachIndexed { i, v -> if (visible(s, i) && (best == null || v > best!!.third)) best = Triple(s, i, v) }
         }
         best?.let { (s, i, v) -> out += GameRecord("بیشترین جمع امتیاز در یک بازی", s.sides[i].name, "${digits(v)} در ${s.game.title}", s.id) }
         var margin: Triple<GameSession, Int, Int>? = null
         finished.filter { it.sides.size == 2 }.forEach { s ->
             val w = GameEngine.winners(s).singleOrNull() ?: return@forEach
+            if (!visible(s, w) || !visible(s, 1 - w)) return@forEach
             val t = GameEngine.totals(s)
             val d = abs(t[0] - t[1])
             if (margin == null || d > margin!!.third) margin = Triple(s, w, d)
         }
         margin?.let { (s, w, d) -> out += GameRecord("بزرگ‌ترین اختلاف برد", s.sides[w].name, "${digits(d)} امتیاز مقابل ${s.sides[1 - w].name}", s.id) }
-        val all = compute(finished).values
+        val all = compute(finished).values.filter { it.id.rankingKey !in excluded }
         all.maxByOrNull { it.bestStreak }?.takeIf { it.bestStreak > 0 }?.let { out += GameRecord("طولانی‌ترین زنجیرهٔ برد", it.id.name, "${digits(it.bestStreak)} برد پشت سر هم", null) }
         all.maxByOrNull { it.games }?.let { out += GameRecord("بیشترین بازی", it.id.name, "${digits(it.games)} بازی", null) }
         all.maxByOrNull { it.rating }?.let { out += GameRecord("بالاترین رتبه", it.id.name, digits(Math.round(it.rating)), null) }

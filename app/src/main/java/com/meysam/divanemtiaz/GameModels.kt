@@ -101,13 +101,14 @@ class GameSession(
     var elapsedMs: Long = 0L,
     var endedAt: Long? = null,
     var label: String = "",
-    var leagueId: Long = 0L
+    var leagueId: Long = 0L,
+    var menfiDeal: MenfiDeal? = null
 ) {
     val sides: MutableList<Side> = sides.toMutableList()
     val rounds: MutableList<Round> = rounds.toMutableList()
 
     fun copy(): GameSession = GameSession(
-        id, game, sides.toList(), rounds.toList(), rules, finished, updatedAt, elapsedMs, endedAt, label, leagueId
+        id, game, sides.toList(), rounds.toList(), rules, finished, updatedAt, elapsedMs, endedAt, label, leagueId, menfiDeal
     )
 }
 

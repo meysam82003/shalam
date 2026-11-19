@@ -225,9 +225,7 @@ object MafiaNight {
     }
 
     /** Text the narrator reads for a role's turn (wake instruction plus what the role does). */
-    fun rolePrompt(g: MafiaGame, r: MafiaRole): String {
-        val wake = "${r.faName} بیدار شود"
-        val what = when (r) {
+    private fun roleTask(g: MafiaGame, r: MafiaRole): String = when (r) {
             MafiaRole.DOCTOR -> "دکتر می‌تواند یک نفر را نجات دهد" + if (g.night == 1) " (شب اول تا ${PersianText.digits(g.optionInt(r, "نجات شب اول", 1))} نفر)" else ""
             MafiaRole.DOCTOR_LECTOR -> "دکتر لکتر می‌تواند یکی از اعضای مافیا را نجات دهد"
             MafiaRole.PSYCHOLOGIST -> "روانپزشک می‌تواند یک نفر را برای فردا ساکت کند"
@@ -247,8 +245,83 @@ object MafiaNight {
             MafiaRole.INTERROGATOR -> "بازپرس دو نفر را برای بازپرسی فردا انتخاب کند"
             MafiaRole.JACK_SPARROW -> "برای طلسم کردن یک نفر را انتخاب کنید."
             else -> MafiaRoleText.explain(r)
+    }
+
+    fun rolePrompt(g: MafiaGame, r: MafiaRole): String = listOf(
+        "${r.faName} بیدار شود",
+        roleTask(g, r),
+        MafiaRoleText.explain(r)
+    ).filter { it.isNotBlank() }.distinct().joinToString("\n")
+
+    /** Lead with the action, not the long role description or wake announcement. */
+    fun brief(g: MafiaGame, job: NightJob, mode: JobMode): String {
+        val role = job.role
+        val custom = role?.let { MafiaRoleRegistry.user[it]?.prompt }
+        val action = when {
+            job.key == MAFIA_GROUP -> when (mode.label) {
+                "شلیک شب" -> if (mode.max == 1) "هدف شلیک شب را انتخاب کنید." else "هدف‌های شلیک امشب را انتخاب کنید."
+                "حس ششم", "ناتو" -> "بازیکن را انتخاب کنید و نقش او را حدس بزنید."
+                "سوداگری" -> "دو بازیکن را برای سوداگری انتخاب کنید."
+                "مرد قوی" -> "بازیکن هدف مرد قوی را انتخاب کنید."
+                "سم ساز" -> "یک نفر را برای مسموم کردن انتخاب کنید."
+                "ساول گودمن" -> "یک نفر را برای خرید و پیوستن به مافیا انتخاب کنید."
+                else -> MafiaGeneric.groupAbility(g, mode.label)?.second?.hint ?: mode.label
+            }
+            job.key == ATTAR_ANTIDOTE -> "عطار تصمیم بگیرد پادزهر می‌دهد یا نه."
+            !custom.isNullOrBlank() -> custom.lineSequence().firstOrNull { it.isNotBlank() && !it.trim().endsWith("بیدار شود") }.orEmpty()
+            role != null && role.isGeneric -> {
+                val def = MafiaGeneric.def(role)
+                (if (mode.label == def?.altAbility?.title) def?.altAbility?.hint else def?.ability?.hint).orEmpty()
+            }
+            role == MafiaRole.DOCTOR -> if (mode.max == 1) "یک نفر را برای نجات انتخاب کنید." else "تا ${PersianText.digits(mode.max)} نفر را برای نجات انتخاب کنید."
+            role == MafiaRole.MATADOR -> "برای بستن توانایی شب، یک شهروند را انتخاب کنید."
+            role == MafiaRole.NOSTRADAMUS -> "${PersianText.digits(mode.min)} نفر را انتخاب کنید، سپس سمت نوستراداموس را تعیین کنید."
+            role == MafiaRole.JIGSAW -> "سه نفر را انتخاب کنید؛ نفر اول صاحب اره است."
+            role == MafiaRole.ZODIAC -> if (mode.word) "متن نامهٔ زودیاک را وارد کنید." else "هدف شلیک زودیاک را انتخاب کنید."
+            role == MafiaRole.COMMANDER -> if (mode.pool == TargetPool.NONE) "شلیک اسنایپر را تأیید یا لغو کنید." else "هدف شلیک فرمانده را انتخاب کنید."
+            role == MafiaRole.CLEVER -> if (mode.guessRole) "نقش را انتخاب کنید تا صاحبش مشخص شود." else "بازیکن را انتخاب کنید تا نقشش مشخص شود."
+            role == MafiaRole.CHURCHILL -> when {
+                g.night == 0 -> "بازیکنی را برای شرط خروج چرچیل انتخاب کنید."
+                mode.guessRole -> "بازیکن را انتخاب کنید و نقشش را برای حس ششم حدس بزنید."
+                else -> "هدف شلیک چرچیل را انتخاب کنید."
+            }
+            role in setOf(MafiaRole.PROFESSIONAL, MafiaRole.SNIPER, MafiaRole.FELON, MafiaRole.KILLER, MafiaRole.COMMANDO) ->
+                "بازیکن هدف شلیک را انتخاب کنید."
+            role == MafiaRole.RESEARCHER -> "بازیکنی را برای پیوند محقق انتخاب کنید."
+            role == MafiaRole.SALESMAN -> "بازیکن هدف را برای گرفتن توانایی‌اش انتخاب کنید."
+            role == MafiaRole.REPORTER -> "یک بازیکن را برای استعلام خرید شدن انتخاب کنید."
+            role == MafiaRole.SABA -> "بازیکن هدف را برای گرفتن نقشش انتخاب کنید."
+            role == MafiaRole.CITIZEN_KANE -> "بازیکنی را که گمان می‌کنید مافیاست انتخاب کنید."
+            role == MafiaRole.JUPITER -> "یک نفر را برای محافظت در برابر یاکوزا انتخاب کنید."
+            role == MafiaRole.OCEAN || role == MafiaRole.MASON -> "یک شهروند را برای پیوستن به گروه انتخاب کنید."
+            role == MafiaRole.SMITH -> "بازیکنی را برای دریافت زره انتخاب کنید."
+            role == MafiaRole.SPECIAL_DETECTIVE -> "یک نفر را برای استعلام نقش مستقل انتخاب کنید."
+            role == MafiaRole.CAST_AWAY -> "بازیکنی را که گمان می‌کنید مافیاست انتخاب کنید."
+            role == MafiaRole.INHERITOR -> "بازیکنی را برای ارث بردن از او انتخاب کنید."
+            role == MafiaRole.CHAPLIN -> "بازیکنی را برای محافظت در برابر خرید انتخاب کنید."
+            role == MafiaRole.SNOWMAN -> "هدف گلولهٔ برفی را انتخاب کنید."
+            role == MafiaRole.HACKER -> "سه بازیکن را برای بررسی هکر انتخاب کنید."
+            role == MafiaRole.SALVATION_ANGEL -> "یکی از کشته‌شده‌های امشب را برای نجات انتخاب کنید."
+            role == MafiaRole.THIEF -> "دو نفر را به‌ترتیب انتخاب کنید؛ توانایی نفر اول روی نفر دوم اجرا می‌شود."
+            role == MafiaRole.GUARD -> "بازیکنانی را برای محافظت در برابر بازجو انتخاب کنید."
+            role == MafiaRole.GUARDIAN -> "بازیکنانی را برای محافظت در برابر بستن توانایی انتخاب کنید."
+            role == MafiaRole.INVESTIGATOR -> "یک شهروند را برای دیدن نقش و کار امشبش انتخاب کنید."
+            role == MafiaRole.FRAUD -> "بازیکنی را که گمان می‌کنید کارآگاه است انتخاب کنید."
+            role == MafiaRole.YAKUZA -> "یک بازیکن را برای پیوستن به مافیا انتخاب کنید."
+            role == MafiaRole.WITCHER -> "بازیکنی را انتخاب کنید تا اثر کارش به خودش برگردد."
+            role == MafiaRole.CORONA -> "بازیکنانی را برای آلوده‌کردن در شب معارفه انتخاب کنید."
+            role == MafiaRole.CONSTANTINE -> "یکی از بازیکنان خارج‌شده را برای بازگشت انتخاب کنید."
+            role == MafiaRole.WRECKER -> "بازیکنان هدف خرابکاری در تفنگ را انتخاب کنید."
+            role == MafiaRole.SHERLOCK_HOLMES -> "یک بازیکن را انتخاب کنید و نقش او را حدس بزنید."
+            role == MafiaRole.PRIEST -> "بازیکنان دارای حق صحبت اضافهٔ فردا را انتخاب کنید."
+            role == MafiaRole.SAINT -> "بازیکنان را برای محافظت در برابر افسون انتخاب کنید."
+            role == MafiaRole.SPIDER -> "بازیکنانی را برای پیوند عنکبوت انتخاب کنید."
+            role == MafiaRole.ATTAR -> "یک نفر را برای زهر دادن انتخاب کنید."
+            role == MafiaRole.PABLO -> "یک نفر را برای جابه‌جایی نقش با پدرخوانده انتخاب کنید."
+            role != null -> roleTask(g, role)
+            else -> job.prompt
         }
-        return listOf(wake, what, MafiaRoleText.explain(r)).filter { !it.isNullOrBlank() }.distinct().joinToString("\n")
+        return action.lineSequence().firstOrNull { it.isNotBlank() }?.trim()?.ifBlank { job.title } ?: job.title
     }
 
     // ------------------------------------------------------------------ who may be chosen
