@@ -513,6 +513,10 @@ fun leagueMatchOf(league: League, sessionId: Long): LeagueMatch? = league.matche
  * a running one stays open and can be continued from the league.
  */
 fun Screen.addToLeague(session: GameSession, onDone: () -> Unit) {
+    if (!ProState.access("leagues").allowed) {
+        Gate.open(this, "leagues") {}
+        return
+    }
     if (session.leagueId != 0L && host.repo.league(session.leagueId) != null) {
         kit.toast("این بازی از قبل در لیگ است")
         return
@@ -551,8 +555,8 @@ fun Screen.addToLeague(session: GameSession, onDone: () -> Unit) {
         val s0 = session.sides[0].name
         val s1 = session.sides[1].name
         when {
-            s0 == a.name && s1 == b.name -> apply(true)
-            s0 == b.name && s1 == a.name -> apply(false)
+            TeamIdentity.key(session.sides[0]) == TeamIdentity.key(a) && TeamIdentity.key(session.sides[1]) == TeamIdentity.key(b) -> apply(true)
+            TeamIdentity.key(session.sides[0]) == TeamIdentity.key(b) && TeamIdentity.key(session.sides[1]) == TeamIdentity.key(a) -> apply(false)
             else -> kit.dialog(
                 "کدام تیم، کدام است؟",
                 "نام تیم‌های این بازی با تیم‌های لیگ فرق دارد؛ نام و نشان تیم‌های لیگ روی بازی قرار می‌گیرد.",
@@ -567,9 +571,9 @@ fun Screen.addToLeague(session: GameSession, onDone: () -> Unit) {
     }
     fun chooseMatch(league: League) {
         val open = LeagueEngine.openMatches(league, lookup)
-        val names = session.sides.map { it.name }.toSet()
+        val teams = session.sides.map(TeamIdentity::key).toSet()
         // Matches between the same two teams come first.
-        val sorted = open.sortedByDescending { st -> listOfNotNull(st.teamA, st.teamB).count { league.teams[it].name in names } }
+        val sorted = open.sortedByDescending { st -> listOfNotNull(st.teamA, st.teamB).count { TeamIdentity.key(league.teams[it]) in teams } }
         if (sorted.size == 1) return chooseSides(league, sorted[0])
         kit.dialog(
             "کدام رویارویی؟",
