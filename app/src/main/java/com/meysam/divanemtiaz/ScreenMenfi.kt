@@ -75,7 +75,8 @@ class MenfiBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(h
             addView(statusRow("دست ${kit.n(played)} از ${menfiHandsText(rules)}"))
             if (played < rules.totalHands) session.menfiDeal?.let { deal ->
                 val first = session.sides[deal.biddingOrder(played).first()].name
-                addView(statusRow("دست‌دهنده: ${deal.dealerName(session.sides, played)} • اعلام اول: $first"))
+                addView(kit.text("دست‌دهنده: ${deal.dealerName(session.sides, played)} • اعلام اول: $first",
+                    TextStyle.LABEL_BOLD, Royal.turquoiseLight, Gravity.CENTER), kit.spaced(7))
             }
             if (MenfiEngine.isComplete(played, totals, rules)) {
                 addView(kit.panel(PanelStyle.SUCCESS, 12).apply {
@@ -215,12 +216,13 @@ class MenfiHandScreen(host: MainActivity, private val session: GameSession, priv
                         setPadding(kit.dp(10), kit.dp(8), kit.dp(10), kit.dp(11))
                         layoutParams = kit.spaced(6)
                         addView(kit.horizontal(Gravity.CENTER).apply {
-                            addView(kit.text("${session.sides[0].name} ", TextStyle.LABEL, Royal.muted))
-                            addView(kit.text(kit.signed(o.teamAScore), TextStyle.NUMBER_L, scoreColor(o.teamAScore), Gravity.CENTER))
-                            addView(kit.text("   |   ", TextStyle.HEADING, Royal.dim))
-                            addView(kit.text(kit.signed(o.teamBScore), TextStyle.NUMBER_L, scoreColor(o.teamBScore), Gravity.CENTER))
-                            addView(kit.text(" ${session.sides[1].name}", TextStyle.LABEL, Royal.muted))
-                        })
+                            listOf(o.teamAScore, o.teamBScore).forEachIndexed { index, score ->
+                                addView(kit.weight(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
+                                    addView(kit.text(session.sides[index].name, TextStyle.LABEL, Royal.muted, Gravity.CENTER, 2))
+                                    addView(kit.text(kit.signed(score), TextStyle.NUMBER_L, scoreColor(score), Gravity.CENTER))
+                                }))
+                            }
+                        }, kit.fill())
                         addView(kit.text(title, TextStyle.LABEL, if (selected) Royal.turquoiseLight else Royal.ivory, Gravity.CENTER))
                         if (lastHand && showProjection) addView(projection(Round(RoundKind.MENFI_HAND, emptyList(), numbers = listOf(a, b), outcome = o.index)))
                         isClickable = true

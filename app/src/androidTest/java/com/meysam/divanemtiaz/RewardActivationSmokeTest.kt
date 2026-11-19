@@ -52,6 +52,70 @@ class RewardActivationSmokeTest {
         InstrumentationRegistry.getInstrumentation().runOnMainSync{try{action(host)}catch(t:Throwable){failure=t}}
         failure?.let{throw it}
     }
+    private fun views(root: android.view.View): Sequence<android.view.View> = sequence {
+        yield(root)
+        if (root is android.view.ViewGroup) {
+            for (i in 0 until root.childCount) yieldAll(views(root.getChildAt(i)))
+        }
+    }
+
+    @Test(timeout = 90000) fun menfiPromptsOpponentThenDealerAndPreviewsLastHandWithoutSaving() {
+        onMain { host ->
+            ProState.logout()
+            val teams = listOf(Side("تیم یک", 0, listOf("رضا", "مصطفی")), Side("تیم دو", 1, listOf("بهروز", "بهزاد")))
+            val deal = MenfiDeal.fromSeats(MenfiDeal.clockwiseSeats, first = 0)
+            val rules = GameRules(menfi = MenfiRules(hidden = false))
+            val session = GameSession(host.repo.newSessionId(), GameType.MENFI, teams,
+                List(7) { Round(RoundKind.FIXED, if (it == 0) listOf(34, 35) else listOf(0, 0)) }, rules, menfiDeal = deal)
+            host.resetTo(HomeScreen(host), MenfiBoardScreen(host, session))
+            assertTrue(host.current is MenfiBoardScreen)
+            host.push(MenfiHandScreen(host, session, null))
+            fun texts() = views(host.window.decorView).filterIsInstance<android.widget.TextView>().map { it.text.toString() }.toList()
+            fun click(label: String) {
+                val view = views(host.window.decorView).firstOrNull { it.contentDescription?.toString() == label }
+                assertNotNull("Missing action $label", view)
+                assertTrue(view!!.performClick())
+            }
+            assertTrue(texts().any { it.contains("اول تیم یک، بعد تیم دو") })
+            assertTrue(texts().any { it == "پس از اعلام تیم دیگر" })
+            click(host.kit.n(8))
+            assertTrue(texts().none { it == "حالت رخ‌داده را انتخاب کنید" })
+            click(host.kit.n(3))
+            assertTrue(texts().any { it.contains(host.kit.signed(42)) && it.contains(host.kit.signed(38)) })
+            assertTrue(texts().any { it.contains(host.kit.signed(42)) && it.contains(host.kit.signed(32)) })
+            assertEquals(7, session.rounds.size)
+            assertEquals(listOf(34, 35), GameEngine.totals(session))
+            host.resetTo(HomeScreen(host))
+            host.repo.delete(session.id)
+        }
+    }
+
+    @Test(timeout = 90000) fun mafiaOnlyCollapsesNarratorTextAndKeepsTargetSelection() {
+        onMain { host ->
+            ProState.applyAccount(response(ProState.now() + 3600))
+            val game = MafiaGame(System.currentTimeMillis()).apply {
+                started = true
+                night = 1
+                listOf(MafiaRole.MATADOR, MafiaRole.MAFIA, MafiaRole.CITIZEN, MafiaRole.DOCTOR, MafiaRole.DETECTIVE)
+                    .forEachIndexed { i, role -> players += MafiaPlayer(i + 1, "بازیکن ${i + 1}", 0).apply { this.role = role } }
+            }
+            host.mafia.save(game)
+            fun texts() = views(host.window.decorView).filterIsInstance<android.widget.TextView>()
+            host.resetTo(HomeScreen(host), MafiaJobScreen(host, game.id, MafiaRole.MATADOR.name))
+            val short = texts().firstOrNull { it.text.toString().contains("برای بستن توانایی شب") }
+            assertNotNull(short)
+            assertEquals(2, short!!.maxLines)
+            assertTrue(texts().none { it.text.toString().contains("انجام کار منع خواهد شد") })
+            assertTrue(texts().any { it.text.toString() == "انتخاب یک نفر" })
+            val arrow = views(host.window.decorView).first { it.contentDescription?.toString() == "نمایش شرح کامل راوی" }
+            assertTrue(arrow.performClick())
+            assertTrue(texts().any { it.text.toString().contains("انجام کار منع خواهد شد") })
+            assertTrue(texts().any { it.text.toString() == "انتخاب یک نفر" })
+            host.resetTo(HomeScreen(host))
+            host.mafia.delete(game.id)
+        }
+    }
+
     private fun timerText():String {
         var found=""
         fun visit(v:android.view.View){

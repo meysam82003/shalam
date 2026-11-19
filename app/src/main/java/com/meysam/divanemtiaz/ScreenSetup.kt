@@ -271,6 +271,7 @@ class SetupScreen(host: MainActivity, private val game: GameType) : Screen(host)
             label = if (game == GameType.SHALAM) DealType.title(dealType) else ""
         )
         SessionOps.rosterAdd(host, finalSides, game.isTeamGame)
+        if (deal != null) host.repo.save(session)
         host.replace(host.boardFor(session))
     }
 }

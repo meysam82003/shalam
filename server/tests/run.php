@@ -467,9 +467,9 @@ scenario('features, gifts and ads', function () use ($storeKey) {
     [$pro] = Users::register('feat_pro', 'secret123');
     buy($pro, 'm1', 'bazaar', 'tok-f1', $storeKey);
     $all = Features::forUser((int)$free['id'], false);
-    $nonMafia = array_filter($all, fn($k) => $k !== 'mafia' && strpos($k, 'mafia_') !== 0, ARRAY_FILTER_USE_KEY);
-    $mafia = array_diff_key($all, $nonMafia);
-    check(count($all) === 27 && !in_array(false, array_column($nonMafia, 'allowed'), true) && !in_array(true, array_column($mafia, 'allowed'), true), 'only Mafia modules require Pro by default; all other modules retain free defaults');
+    $proModules = array_filter($all, fn($k) => $k === 'mafia' || strpos($k, 'mafia_') === 0 || in_array($k, ['teams','leagues','rankings'], true), ARRAY_FILTER_USE_KEY);
+    $freeModules = array_diff_key($all, $proModules);
+    check(count($all) === 28 && !in_array(false, array_column($freeModules, 'allowed'), true) && !in_array(true, array_column($proModules, 'allowed'), true), 'Mafia, saved teams, leagues and rankings require Pro and other modules remain open');
     // Single items as Pro: two mafia scenarios and one last-move card.
     Db::update('features', ['pro_items' => 'godfather,zodiac'], 'k = ?', ['mafia_scenarios']);
     Db::update('features', ['pro_items' => 'INTELLIGENCE'], 'k = ?', ['mafia_last_cards']);
