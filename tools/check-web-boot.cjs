@@ -35,8 +35,22 @@ const server=http.createServer((req,res)=>{
  }
  try {
   await page.goto(base);await ready();
+  const touch = await browser.newContext({viewport:{width:980,height:1600},hasTouch:true,isMobile:true,deviceScaleFactor:2});
+  const phone = await touch.newPage();
+  await phone.goto(base);
+  await phone.waitForFunction(() => window.DH && DH.width > 0);
+  const mobileLayout = await phone.evaluate(() => {
+    const box = document.querySelector('#app').getBoundingClientRect();
+    const canvas = document.querySelector('#screen');
+    return { width:box.width, height:box.height, viewportWidth:innerWidth, viewportHeight:innerHeight, scaledWidth:canvas.width, dpr:devicePixelRatio };
+  });
+  assert.equal(mobileLayout.width,mobileLayout.viewportWidth,'touchscreen with a desktop-sized viewport fills the screen');
+  assert.equal(mobileLayout.height,mobileLayout.viewportHeight,'canvas stays inside the viewport height');
+  assert.equal(mobileLayout.scaledWidth,Math.round(mobileLayout.width*mobileLayout.dpr),'canvas backs the CSS layout at device pixel scale');
+  await touch.close();
+
   const cfg=await page.evaluate(()=>DIVAN_CONFIG);
-  assert.equal(cfg.versionName,'5.6.2');assert.equal(pemRequests,0,'no request for protected Android certificate');
+  assert.equal(cfg.versionName,'5.6.3');assert.equal(pemRequests,0,'no request for protected Android certificate');
   // Persist representative existing game data through the actual host storage, reload it, then boot offline.
   await page.evaluate(()=>{DH.saveFile('/data/data/com.meysam.divanemtiaz.site/files/existing-game.json',new Int8Array([7,11,33,99]),12345);DH.savePrefs('existing-user-settings',JSON.stringify({score11:33,preset:4}));});
   let stored=false;
@@ -60,7 +74,7 @@ const server=http.createServer((req,res)=>{
   await context.setOffline(true);await page.reload();await ready();
   assert.equal(pemRequests,0);assert.deepEqual(errors,[],'no JavaScript or shared-code runtime errors');
   await page.screenshot({path:path.join(out,'web-boot-offline.png')});
-  fs.writeFileSync(path.join(out,'results.json'),JSON.stringify({version:cfg.versionName,checks:['actual TeaVM application boot','stale config ignores protected PEM','canvas rendered','stored game survives reload','stored preferences survive reload','service worker offline boot','no JavaScript runtime errors'],pemRequests},null,2));
+  fs.writeFileSync(path.join(out,'results.json'),JSON.stringify({version:cfg.versionName,checks:['actual TeaVM application boot','stale config ignores protected PEM','canvas rendered','touchscreen viewport fits','stored game survives reload','stored preferences survive reload','service worker offline boot','no JavaScript runtime errors'],pemRequests},null,2));
   console.log('PASS: real PWA boot, protected PEM, existing game/settings retained, offline reload.');
  }catch(e){await page.screenshot({path:path.join(out,'failure.png')}).catch(()=>{});fs.writeFileSync(path.join(out,'failure.txt'),String(e)+'\n'+errors.join('\n'));fs.writeFileSync(path.join(out,'storage-state.json'),JSON.stringify(await page.evaluate(()=>({url:location.href,files:(DH.boot&&DH.boot.files||[]).map(x=>x[0]),prefs:Object.keys(DH.boot&&DH.boot.prefs||{})})).catch(()=>({})),null,2));throw e;}
  finally {await browser.close();server.close();}

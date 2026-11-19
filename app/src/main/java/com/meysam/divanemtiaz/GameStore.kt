@@ -182,6 +182,7 @@ class GameRepository(private val kv: KeyValueStore, private val legacy: () -> Le
             put("settings", GameCodec.encodeSettings(settings()))
             put("rule_presets", RulePresetBook(kv).export())
             put("roster", GameCodec.encodeRoster(roster()))
+            put("rankingHidden", JSONObject(hiddenRanks()))
             put("sessions", JSONArray().apply { sessions().forEach { put(GameCodec.encodeSession(it)) } })
             put("leagues", JSONArray().apply { leagues().forEach { put(GameCodec.encodeLeague(it)) } })
             // Gallery pictures of people, teams and leagues (small JPEGs), so they come back with the data.
@@ -242,7 +243,7 @@ class GameRepository(private val kv: KeyValueStore, private val legacy: () -> Le
         val mergedRoster = if (replace) mutableListOf() else roster().toMutableList()
         var rosterAdded = 0
         roster.forEach { e ->
-            if (mergedRoster.none { it.name == e.name && it.isTeam == e.isTeam }) {
+            if (mergedRoster.none { TeamIdentity.key(it) == TeamIdentity.key(e) }) {
                 mergedRoster += e.copy(id = if (mergedRoster.any { it.id == e.id }) System.currentTimeMillis() + mergedRoster.size else e.id)
                 rosterAdded++
             }
@@ -258,6 +259,11 @@ class GameRepository(private val kv: KeyValueStore, private val legacy: () -> Le
             runCatching { GameCodec.decodeSettings(st) }.getOrNull()?.let { changes[KEY_SETTINGS] = GameCodec.encodeSettings(it).toString() }
         }
         o.optJSONObject("rule_presets")?.let { incoming -> changes[RulePresetBook.KEY] = RulePresetBook.merge(RulePresetBook(kv).export(), incoming, replace).toString() }
+        val hidden = if (replace) mutableMapOf() else hiddenRanks().toMutableMap()
+        o.optJSONObject("rankingHidden")?.let { incoming ->
+            incoming.keys().asSequence().forEach { key -> hidden[key] = incoming.optString(key) }
+        }
+        changes[KEY_RANKING_HIDDEN] = JSONObject(hidden).toString()
         kv.write(changes)
         o.optJSONObject("photos")?.let { p ->
             PhotoStore.import(p.keys().asSequence().mapNotNull { k -> k.toIntOrNull()?.let { it to p.optString(k) } }.toMap())
@@ -266,14 +272,37 @@ class GameRepository(private val kv: KeyValueStore, private val legacy: () -> Le
     }
 
     fun roster(): List<RosterEntry> = kv.get(KEY_ROSTER)?.let { raw ->
-        runCatching { GameCodec.decodeRoster(JSONArray(raw)) }.getOrNull()
+        runCatching { GameCodec.decodeRoster(JSONArray(raw)).distinctBy(TeamIdentity::key) }.getOrNull()
     } ?: emptyList()
 
     fun saveRoster(entries: List<RosterEntry>) {
-        kv.write(mapOf(KEY_ROSTER to GameCodec.encodeRoster(entries).toString()))
+        kv.write(mapOf(KEY_ROSTER to GameCodec.encodeRoster(entries.distinctBy(TeamIdentity::key)).toString()))
+    }
+
+    fun hiddenRanks(): Map<String, String> {
+        val stored = runCatching { JSONObject(kv.get(KEY_RANKING_HIDDEN) ?: "{}") }.getOrElse { JSONObject() }
+        return stored.keys().asSequence().associateWith { stored.optString(it) }
+    }
+
+    fun hideRank(key: String, name: String) {
+        kv.write(mapOf(KEY_RANKING_HIDDEN to JSONObject(hiddenRanks() + (key to name)).toString()))
+    }
+
+    fun restoreRank(key: String) {
+        kv.write(mapOf(KEY_RANKING_HIDDEN to JSONObject(hiddenRanks() - key).toString()))
+    }
+
+    fun removeFromRoster(entry: RosterEntry) {
+        val key = TeamIdentity.key(entry)
+        val remaining = roster().filterNot { TeamIdentity.key(it) == key }
+        kv.write(mapOf(
+            KEY_ROSTER to GameCodec.encodeRoster(remaining).toString(),
+            KEY_RANKING_HIDDEN to JSONObject(hiddenRanks() + (key to entry.name)).toString()
+        ))
     }
 
     companion object {
+        const val KEY_RANKING_HIDDEN = "ranking_hidden"
         const val SCHEMA = 3
         const val KEY_SCHEMA = "schema"
         const val KEY_INDEX = "index"
@@ -320,6 +349,10 @@ object GameCodec {
         session.endedAt?.let { put("endedAt", it) }
         put("label", session.label)
         if (session.leagueId != 0L) put("league", session.leagueId)
+        session.menfiDeal?.let {
+            put("menfiDeal", JSONArray(it.order))
+            put("menfiSeats", JSONArray(it.seats))
+        }
         put("sides", JSONArray().apply {
             session.sides.forEach { side -> put(encodeSide(side)) }
         })
@@ -360,7 +393,12 @@ object GameCodec {
             elapsedMs = o.optLong("elapsed", 0L),
             endedAt = if (o.has("endedAt")) o.optLong("endedAt") else null,
             label = o.optString("label", ""),
-            leagueId = o.optLong("league", 0L)
+            leagueId = o.optLong("league", 0L),
+            menfiDeal = o.optJSONArray("menfiDeal")?.let { a ->
+                val seats = o.optJSONArray("menfiSeats")
+                MenfiDeal.restore(List(a.length().coerceAtMost(5)) { a.optInt(it, -1) },
+                    List((seats?.length() ?: 0).coerceAtMost(5)) { seats?.optInt(it, -1) ?: -1 })
+            }
         )
     }
 

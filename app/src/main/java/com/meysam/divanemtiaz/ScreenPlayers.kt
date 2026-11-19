@@ -16,6 +16,7 @@ class PlayersScreen(host: MainActivity) : Screen(host) {
     private var query = ""
 
     override fun build(): View {
+        if (teams && !ProState.access("teams").allowed) teams = false
         val roster = host.repo.roster()
         val shown = roster.filter { it.isTeam == teams }
         val stats = allPeopleStats()
@@ -28,7 +29,9 @@ class PlayersScreen(host: MainActivity) : Screen(host) {
         ) {
             addView(kit.grid(2, listOf(
                 kit.chip("افراد", !teams, ButtonKind.CHIP_GOLD) { teams = false; host.refresh() },
-                kit.chip("تیم‌ها", teams, ButtonKind.CHIP_GOLD) { teams = true; host.refresh() }
+                kit.chip(if (ProState.access("teams").allowed) "تیم‌ها" else "تیم‌ها · Pro", teams, ButtonKind.CHIP_GOLD) {
+                    Gate.open(this@PlayersScreen, "teams") { teams = true; host.refresh() }
+                }
             ), 6), kit.spaced(10))
             addView(kit.text(if (!teams) "هر نفر را یک بار ثبت کنید؛ در شلم، منفی، لیگ‌ها، هزارتایی، دو لو گشنیز، مافیا، پانتومیم و جاسوس از همین فهرست استفاده می‌شود و کارنامهٔ هر نفر در همهٔ بازی‌ها جدا ساخته می‌شود."
                 else "تیم‌های ثبت‌شده در شلم، منفی و پانتومیم آماده‌اند؛ در پانتومیم هر تیم می‌تواند هر تعداد عضو داشته باشد.", TextStyle.CAPTION, Royal.muted), kit.spaced(8))
@@ -40,8 +43,8 @@ class PlayersScreen(host: MainActivity) : Screen(host) {
             if (shown.size >= 7) addView(searchSlot, kit.spaced(8))
             shown.forEach { entry ->
                 val caption = if (teams) {
-                    val related = sessions.filter { s -> s.game.isTeamGame && s.sides.any { it.name == entry.name } }
-                    val wins = related.count { s -> s.finished && GameEngine.winners(s).any { s.sides[it].name == entry.name } }
+                    val related = sessions.filter { s -> s.game.isTeamGame && s.sides.any { TeamIdentity.key(it) == TeamIdentity.key(entry) } }
+                    val wins = related.count { s -> s.finished && GameEngine.winners(s).any { TeamIdentity.key(s.sides[it]) == TeamIdentity.key(entry) } }
                     val panto = pantoMatches.filter { pm -> pm.finished && pm.teams.any { it.name == entry.name } }
                     val pantoWins = panto.count { pm -> pm.winner?.let { pm.teams[it].name } == entry.name }
                     (if (entry.members.isEmpty()) "بدون عضو" else entry.members.joinToString(" و ")) + "  •  ${kit.n(related.size)} بازی  •  ${kit.n(wins)} برد" +
@@ -66,7 +69,7 @@ class PlayersScreen(host: MainActivity) : Screen(host) {
                         addView(kit.text(entry.name, TextStyle.BODY_BOLD, Royal.goldLight, maxLines = 1))
                         addView(kit.text(caption, TextStyle.CAPTION, Royal.muted, maxLines = 2))
                     }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-                    val open = { if (teams) host.push(ProfileScreen(host, entry.name, true)) else host.push(PersonProfileScreen(host, entry.name)) }
+                    val open = { if (teams) host.push(ProfileScreen(host, entry.name, true, TeamIdentity.key(entry))) else host.push(PersonProfileScreen(host, entry.name)) }
                     isClickable = true
                     setOnClickListener { kit.tap(it); open() }
                     addView(kit.iconButton(RoyalIcon.CHART, "کارنامهٔ ${entry.name}", ButtonKind.CHIP, 44) { open() })
@@ -74,8 +77,8 @@ class PlayersScreen(host: MainActivity) : Screen(host) {
                     addView(kit.iconButton(RoyalIcon.EDIT, "ویرایش ${entry.name}", ButtonKind.CHIP, 44) { edit(entry) })
                     addView(kit.hgap(6))
                     addView(kit.iconButton(RoyalIcon.TRASH, "حذف ${entry.name}", ButtonKind.CHIP, 44) {
-                        kit.confirm("حذف از فهرست", "«${entry.name}» از فهرست حذف شود؟ بازی‌های ثبت‌شده تغییری نمی‌کنند.", "حذف", true) {
-                            host.repo.saveRoster(host.repo.roster().filterNot { it.id == entry.id })
+                        kit.confirm("حذف از فهرست", "«${entry.name}» از فهرست و رنک‌بندی حذف شود؟ نتیجهٔ بازی‌های ثبت‌شده حفظ می‌شود.", "حذف", true) {
+                            host.repo.removeFromRoster(entry)
                             host.refresh()
                         }
                     })
@@ -125,7 +128,11 @@ class PlayersScreen(host: MainActivity) : Screen(host) {
                 val roster = host.repo.roster().toMutableList()
                 when {
                     value.isEmpty() -> error.text = "نام را وارد کنید"
-                    roster.any { it.name == value && it.isTeam == teams && it.id != entry?.id } -> error.text = "این نام قبلاً ثبت شده است"
+                    teams && members.size >= 2 && roster.any {
+                        it.isTeam && it.id != entry?.id && TeamIdentity.key(it) == TeamIdentity.key(value, members)
+                    } -> error.text = "این ترکیب اعضا قبلاً به‌عنوان تیم ثبت شده است"
+                    roster.any { TeamIdentity.person(it.name) == TeamIdentity.person(value) && it.isTeam == teams && it.id != entry?.id } ->
+                        error.text = "این نام قبلاً ثبت شده است"
                     else -> {
                         dialog.dismiss()
                         if (entry == null) roster += RosterEntry(System.currentTimeMillis(), value, avatar, teams, members)
@@ -134,6 +141,7 @@ class PlayersScreen(host: MainActivity) : Screen(host) {
                             if (i >= 0) roster[i] = entry.copy(name = value, avatar = avatar, members = members)
                         }
                         host.repo.saveRoster(roster)
+                        if (entry == null) host.repo.restoreRank(TeamIdentity.key(RosterEntry(0L, value, avatar, teams, members)))
                         host.refresh()
                     }
                 }
@@ -161,7 +169,9 @@ fun Screen.peopleRanking(parent: LinearLayout, sessions: List<GameSession>, game
     val selectedChip = when { party == PersonStats.SPY -> chips.lastIndex; party == PersonStats.PANTO -> chips.size - 2; mafia -> chips.size - 3; game != null -> 1 + GameType.values().indexOf(game); else -> 0 }
     parent.addView(kit.chipRail(chips, selectedChip), kit.spaced(10))
     }
+    val hidden = host.repo.hiddenRanks()
     val list = PersonStats.leaderboard(all, game, mafia && party == null, party)
+        .filterNot { "person:${TeamIdentity.person(it.name)}" in hidden }
     if (list.isEmpty()) {
         parent.addView(emptyState(RoyalIcon.TROPHY, "هنوز آماری نیست", if (party == PersonStats.PANTO) "اعضای تیم‌ها را از افراد انتخاب کنید تا با پایان هر مسابقه، آمار هر نفر ساخته شود."
             else if (party == PersonStats.SPY) "بازیکنان جاسوس را از افراد انتخاب کنید تا نتیجهٔ هر بازی برای هر نفر ثبت شود."

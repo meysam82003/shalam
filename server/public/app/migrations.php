@@ -484,6 +484,11 @@ final class Migrations
                 "CREATE TABLE IF NOT EXISTS {push_devices} (token_hash CHAR(64) PRIMARY KEY, token_enc TEXT NOT NULL, kind VARCHAR(10) NOT NULL, client VARCHAR(12) NOT NULL, device CHAR(64) NOT NULL, user_id BIGINT UNSIGNED NULL, admin_id BIGINT UNSIGNED NULL, session_hash CHAR(64) NULL, offers TINYINT NOT NULL, pro_optin TINYINT NOT NULL, seen_at BIGINT NOT NULL, last_scan BIGINT NOT NULL DEFAULT 0) $e",
                 "CREATE TABLE IF NOT EXISTS {push_deliveries} (id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, device_hash CHAR(64) NOT NULL, source_key VARCHAR(100) NOT NULL, attempts INT NOT NULL DEFAULT 0, next_at BIGINT NOT NULL, expires_at BIGINT NOT NULL, sent_at BIGINT NULL, last_error VARCHAR(60) NULL, UNIQUE KEY uq_push (device_hash,source_key), KEY k_due (sent_at,next_at)) $e",
             ],
+            15 => [
+                "UPDATE {features} SET mode='free', limit_value=NULL WHERE k='menfi'",
+                "UPDATE {features} SET mode='pro', limit_value=NULL WHERE k IN ('leagues','rankings') AND mode IN ('free','limited')",
+                "UPDATE {features} SET pro_items=TRIM(BOTH ',' FROM CONCAT(COALESCE(pro_items,''),',amethyst,rose,pistachio,saffron,coral,lavender,mint,sky,lotus')) WHERE k='themes' AND (mode IN ('free','limited') OR COALESCE(pro_items,'') <> '')",
+            ],
         ];
     }
 
@@ -549,7 +554,7 @@ final class Seed
                 Db::update('features', ['sort' => $i] + ($hasSection ? ['section' => $section] : []), 'k = ?', [$k]);
                 continue;
             }
-            Db::insert('features', ['k' => $k, 'title' => $title, 'description' => $desc, 'mode' => (($k === 'mafia' || strpos($k, 'mafia_') === 0) ? 'pro' : 'free'), 'limit_value' => null, 'sort' => $i, 'updated_at' => $now] + ($hasSection ? ['section' => $section] : []));
+            Db::insert('features', ['k' => $k, 'title' => $title, 'description' => $desc, 'mode' => ((in_array($k, ['mafia','teams','leagues','rankings'], true) || strpos($k, 'mafia_') === 0) ? 'pro' : 'free'), 'limit_value' => null, 'pro_items' => $k === 'themes' ? 'amethyst,rose,pistachio,saffron,coral,lavender,mint,sky,lotus' : null, 'sort' => $i, 'updated_at' => $now] + ($hasSection ? ['section' => $section] : []));
         }
         $hasScreens = self::hasColumn('placements', 'screens');
         foreach (Ads::defaultPlacements() as $i => [$k, $title, $screen, $pos, $formats, $network]) {

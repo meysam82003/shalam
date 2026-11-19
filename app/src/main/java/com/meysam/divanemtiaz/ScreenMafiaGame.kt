@@ -510,6 +510,7 @@ class MafiaIntroScreen(host: MainActivity, gameId: Long) : MafiaScreen(host, gam
 
 /** One night job: wake text, its cue, target choice, immediate answer, done / cancel. */
 class MafiaJobScreen(host: MainActivity, gameId: Long, private val key: String) : MafiaScreen(host, gameId) {
+    private var detailsExpanded = false
     private var targetQuery = ""
     private var modeIndex = 0
     private val chosen = ArrayList<Int>()
@@ -588,7 +589,22 @@ class MafiaJobScreen(host: MainActivity, gameId: Long, private val key: String) 
                     })
                 }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             })
-            addView(narration(job.prompt, wakeCue(job)))
+            addView(kit.panel(PanelStyle.RAISED, 14).apply {
+                layoutParams = kit.spaced(10)
+                addView(kit.horizontal().apply {
+                    addView(kit.icon(RoyalIcon.RULES, Royal.gold, 20))
+                    addView(kit.hgap(6))
+                    addView(kit.weight(kit.text("متن راوی", TextStyle.LABEL_BOLD, Royal.gold)))
+                    wakeCue(job)?.let { addView(cueButton(it, 40)) }
+                    addView(kit.wordButton(if (detailsExpanded) "▲" else "▼", if (detailsExpanded) "بستن شرح راوی" else "نمایش شرح کامل راوی", ButtonKind.GHOST, 40) {
+                        detailsExpanded = !detailsExpanded
+                        host.refresh()
+                    })
+                })
+                addView(kit.gap(6))
+                addView(kit.text(MafiaNight.brief(g, job, mode), TextStyle.BODY_BOLD, Royal.ivory, Gravity.CENTER, 2))
+                if (detailsExpanded) addView(kit.text(job.prompt, TextStyle.BODY, Royal.muted))
+            })
             if (record != null) {
                 addView(kit.panel(PanelStyle.SUCCESS, 12).apply {
                     layoutParams = kit.spaced(8)

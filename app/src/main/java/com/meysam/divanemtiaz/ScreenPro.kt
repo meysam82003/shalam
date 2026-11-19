@@ -138,10 +138,17 @@ class ProScreen(host: MainActivity, private val reason: String? = null, private 
 
     private fun benefits(): List<Triple<RoyalIcon, String, String>> {
         val out = mutableListOf(Triple(RoyalIcon.EYE_OFF, "بدون هیچ تبلیغی", "در هیچ صفحه‌ای تبلیغ نمایش داده نمی‌شود و کتابخانهٔ تبلیغات اجرا نمی‌شود."))
-        val features = ProState.config.optJSONObject("features")
-        val names = Features.titles
-        val pro = features?.keys()?.asSequence()?.filter { features.optJSONObject(it)?.optString("mode") in setOf("pro", "limited") }?.toList().orEmpty()
-        pro.take(6).forEach { k -> out += Triple(RoyalIcon.CROWN, names[k] ?: k, if (features?.optJSONObject(k)?.optString("mode") == "limited") "بدون محدودیت" else "فقط برای Pro") }
+        out += Triple(RoyalIcon.PLAYERS, "تیم‌های ذخیره‌شده", "ساخت، ویرایش و انتخاب تیم از فهرست")
+        out += Triple(RoyalIcon.CHART, "رنک‌بندی", "رتبهٔ افراد، بازیکنان و تیم‌ها")
+        out += Triple(RoyalIcon.LEAGUE, "لیگ‌ها", "ساخت و مدیریت لیگ شلم و منفی")
+        out += Triple(RoyalIcon.STAR, "رنگ‌بندی‌های ویژه", "شامل ${kit.n(Features.newProThemes.size)} رنگ‌بندی Pro")
+        Features.titles.forEach { (key, title) ->
+            if (key in Features.newProModules || key == "themes") return@forEach
+            val mode = ProState.access(key).mode
+            if (mode == "pro" || mode == "limited") {
+                out += Triple(RoyalIcon.CROWN, title, if (mode == "limited") "بدون محدودیت" else "دسترسی با Pro")
+            }
+        }
         out += Triple(RoyalIcon.SAVE, "با دستگاه تازه از دست نمی‌رود", "روی هر دستگاه و نسخه‌ای با همان حساب وارد شوید؛ دستگاه قبلی خودکار از حساب خارج می‌شود.")
         out += Triple(RoyalIcon.TIMER, "بدون اینترنت هم معتبر", "اشتراک تا چند روز بدون اتصال کار می‌کند و بعد با یک اتصال کوتاه تمدید می‌شود.")
         out += Triple(RoyalIcon.HEART, "حمایت از ساخت بازی‌های تازه", "هزینهٔ سرور و توسعهٔ دیوان از همین راه تأمین می‌شود.")
@@ -306,12 +313,15 @@ class ProScreen(host: MainActivity, private val reason: String? = null, private 
 }
 
 object Features {
+    val newProModules = setOf("teams", "rankings", "leagues")
+    val newProThemes = setOf("amethyst", "rose", "pistachio", "saffron", "coral", "lavender", "mint", "sky", "lotus")
+
     val titles = mapOf(
         "shalam" to "داوری شلم", "menfi" to "داوری منفی", "hezartaii" to "هزارتایی", "dolo" to "دو لو گشنیز",
         "mafia" to "راوی مافیا", "mafia_scenarios" to "سناریوهای مافیا", "mafia_custom" to "ساخت و ویرایش سناریو و نقش مافیا",
         "mafia_last_cards" to "کارت حرکت آخر", "mafia_groups" to "گروه‌های بازی مافیا", "mafia_report" to "گزارش بازی مافیا",
         "mafia_audio" to "موسیقی و صدای راوی", "panto" to "پانتومیم", "panto_modes" to "نوع مسابقهٔ پانتومیم", "panto_words" to "کلمات من در پانتومیم",
-        "spy" to "جاسوس", "spy_words" to "کلمات من در جاسوس", "leagues" to "لیگ‌ها", "rankings" to "رنک‌بندی", "profiles" to "کارنامهٔ افراد و تیم‌ها",
+        "spy" to "جاسوس", "spy_words" to "کلمات من در جاسوس", "teams" to "تیم‌های ذخیره‌شده", "leagues" to "لیگ‌ها", "rankings" to "رنک‌بندی", "profiles" to "کارنامهٔ افراد و تیم‌ها",
         "history" to "تاریخچه", "charts" to "نمودار و آمار کامل بازی", "photos" to "عکس از گالری", "themes" to "سبک‌های ظاهری",
         "backup" to "پشتیبان‌گیری", "cloud_backup" to "پشتیبان ابری", "share" to "اشتراک تصویر", "deck_calc" to "ماشین‌حساب ورق"
     )

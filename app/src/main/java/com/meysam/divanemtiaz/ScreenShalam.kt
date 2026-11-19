@@ -14,6 +14,7 @@ import kotlin.math.abs
 abstract class BoardScreen(host: MainActivity, val session: GameSession) : Screen(host) {
     override val audioScope: String? get() = if (session.game == GameType.SHALAM) "shalam" else null
     override val sessionId: Long get() = session.id
+    override val featureKey: String? get() = if (session.leagueId != 0L) "leagues" else null
     private var shownAt = 0L
     private var active = false
     protected var timerLabel: TextView? = null

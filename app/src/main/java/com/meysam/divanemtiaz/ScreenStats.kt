@@ -166,8 +166,12 @@ class RankingScreen(host: MainActivity) : Screen(host) {
 
     override fun build(): View {
         val sessions = host.repo.sessions()
+        val excluded = host.repo.hiddenRanks()
         val list = StatsEngine.leaderboard(sessions, teams, game?.takeIf { it.isTeamGame == teams })
-        return scaffold(title = "رنک‌بندی", subtitle = "رتبهٔ Elo از همهٔ بازی‌های پایان‌یافته") {
+            .filterNot { it.id.rankingKey in excluded }
+        return scaffold(title = "رنک‌بندی", subtitle = "رتبهٔ Elo از همهٔ بازی‌های پایان‌یافته",
+            actions = listOf(kit.iconButton(RoyalIcon.SLIDERS, "مدیریت رنک‌بندی") { manageRanking(sessions) })
+        ) {
             addView(SlidingTabs(host, kit, listOf("افراد", "تیم‌ها", "بازیکنان"), if (people) 0 else if (teams) 1 else 2) { i ->
                 people = i == 0; teams = i == 1; game = null; mafia = false; party = null
                 host.post(Motion.ITEM.toLong()) { host.refresh() }
@@ -204,9 +208,9 @@ class RankingScreen(host: MainActivity) : Screen(host) {
                 addView(emptyState(RoyalIcon.TROPHY, "هنوز بازی پایان‌یافته‌ای نیست", "با پایان هر بازی، رتبهٔ ${if (teams) "تیم‌ها" else "بازیکنان"} اینجا ساخته می‌شود."))
             }
             val roster = host.repo.roster()
-            fun avatarOf(p: PlayerStats) = roster.firstOrNull { it.name == p.id.name && it.isTeam == p.id.isTeam }?.avatar ?: sessions.firstNotNullOfOrNull { s -> s.sides.firstOrNull { it.name == p.id.name }?.avatar } ?: 0
+            fun avatarOf(p: PlayerStats) = roster.firstOrNull { TeamIdentity.key(it) == p.id.rankingKey }?.avatar ?: sessions.firstNotNullOfOrNull { s -> s.sides.firstOrNull { it.name == p.id.name }?.avatar } ?: 0
             if (list.size >= 3) addView(podium(list.take(3).map { p ->
-                PodiumItem(p.id.name, avatarOf(p), kit.n(p.rating.roundToInt()), "${kit.n(p.wins)} برد") { host.push(ProfileScreen(host, p.id.name, p.id.isTeam)) }
+                PodiumItem(p.id.name, avatarOf(p), kit.n(p.rating.roundToInt()), "${kit.n(p.wins)} برد") { host.push(ProfileScreen(host, p.id.name, p.id.isTeam, p.id.teamKey)) }
             }))
             list.forEachIndexed { place, p ->
                 if (list.size >= 3 && place < 3) return@forEachIndexed
@@ -235,10 +239,10 @@ class RankingScreen(host: MainActivity) : Screen(host) {
                     addView(kit.hgap(8))
                     addView(kit.text(kit.n(p.rating.roundToInt()), TextStyle.HEADING, Royal.goldLight))
                     isClickable = true
-                    setOnClickListener { kit.tap(it); host.push(ProfileScreen(host, p.id.name, p.id.isTeam)) }
+                    setOnClickListener { kit.tap(it); host.push(ProfileScreen(host, p.id.name, p.id.isTeam, p.id.teamKey)) }
                 })
             }
-            val records = StatsEngine.records(sessions) { kit.n(it) }
+            val records = StatsEngine.records(sessions, excluded.keys) { kit.n(it) }
             if (records.isNotEmpty()) {
                 addView(kit.section("رکوردها", RoyalIcon.STAR))
                 records.forEach { r ->
@@ -263,15 +267,55 @@ class RankingScreen(host: MainActivity) : Screen(host) {
             addView(kit.text("رتبه از ۱۰۰۰ شروع می‌شود؛ برد مقابل حریف قوی‌تر امتیاز بیشتری دارد.", TextStyle.CAPTION, Royal.dim, Gravity.CENTER))
         }
     }
+
+    private fun manageRanking(sessions: List<GameSession>) {
+        val hidden = host.repo.hiddenRanks()
+        val entries = linkedMapOf<String, String>()
+        StatsEngine.compute(sessions).values.forEach { entries[it.id.rankingKey] = it.id.name }
+        allPeopleStats().keys.forEach { entries["person:${TeamIdentity.person(it)}"] = it }
+        host.panto.matches().filter { it.finished }.flatMap { it.teams }.forEach {
+            entries.getOrPut(TeamIdentity.key(it.name, it.members)) { it.name }
+        }
+        entries.putAll(hidden)
+        val body = kit.vertical()
+        lateinit var dialog: android.app.Dialog
+        val rows = entries.entries.sortedBy { it.value }.map { (key, name) ->
+            val removed = key in hidden
+            val label = if (key.startsWith("person:")) name else "$name · تیم"
+            kit.horizontal().apply {
+                addView(kit.weight(kit.text(label, TextStyle.BODY_BOLD)))
+                addView(kit.button(if (removed) "بازگردانی" else "حذف", ButtonKind.SECONDARY, height = 40) {
+                    dialog.dismiss()
+                    if (removed) {
+                        host.repo.restoreRank(key)
+                        host.refresh()
+                    } else {
+                        kit.confirm("حذف از رنک‌بندی", "«$name» از همهٔ جدول‌های رنک‌بندی پنهان شود؟ بازی‌های قبلی در تاریخچه باقی می‌مانند.", "حذف", true) {
+                            host.repo.hideRank(key, name)
+                            host.refresh()
+                        }
+                    }
+                })
+            } to label
+        }
+        if (rows.isEmpty()) body.addView(kit.text("هنوز کسی در رنک‌بندی نیست.", TextStyle.BODY, Royal.muted))
+        kit.searchFilter("جست‌وجوی نام", rows, "", minItems = 5)?.let { body.addView(it) }
+        rows.forEach { (row, _) -> body.addView(row, kit.spaced(6)) }
+        dialog = kit.dialog("مدیریت رنک‌بندی", null, body, listOf(DialogAction("بستن")))
+        dialog.show()
+    }
+
 }
 
 /** Profile of one team or player: rating, record, charts, head-to-head and recent games. */
-class ProfileScreen(host: MainActivity, private val name: String, private val isTeam: Boolean) : Screen(host) {
+class ProfileScreen(host: MainActivity, private val name: String, private val isTeam: Boolean, private val teamKey: String? = null) : Screen(host) {
     override val featureKey: String get() = "profiles"
     override fun build(): View {
         val sessions = host.repo.sessions()
         val all = StatsEngine.compute(sessions)
-        val p = all[Identity(name, isTeam)]
+        val alias = if (isTeam) sessions.asSequence().filter { it.game.isTeamGame }.flatMap { it.sides.asSequence() }
+            .firstOrNull { it.name == name }?.let(TeamIdentity::key) else null
+        val p = all.values.firstOrNull { it.id.rankingKey == (teamKey ?: alias ?: Identity(name, isTeam).rankingKey) }
         val board = all.values.filter { it.id.isTeam == isTeam }.sortedByDescending { it.rating }
         val place = p?.let { board.indexOf(it) }?.takeIf { it >= 0 }
         val avatar = host.repo.roster().firstOrNull { it.name == name && it.isTeam == isTeam }?.avatar
@@ -406,12 +450,13 @@ private fun Screen.pantoTeamRanking(parent: LinearLayout) {
     host.panto.matches().filter { it.finished }.forEach { m ->
         val win = m.winner
         m.teams.forEachIndexed { i, t ->
-            val r = rows.getOrPut(t.name) { Row(t.name, t.avatar) }
+            val r = rows.getOrPut(TeamIdentity.key(t.name, t.members)) { Row(t.name, t.avatar) }
             r.games++; r.points += t.points
             if (win == i) r.wins++
         }
     }
-    val list = rows.values.sortedWith(compareByDescending<Row> { it.wins }.thenByDescending { it.points })
+    val excluded = host.repo.hiddenRanks()
+    val list = rows.filterKeys { it !in excluded }.values.sortedWith(compareByDescending<Row> { it.wins }.thenByDescending { it.points })
     if (list.isEmpty()) {
         parent.addView(emptyState(RoyalIcon.TROPHY, "هنوز مسابقه‌ای پایان نیافته", "با پایان هر مسابقهٔ پانتومیم، رتبهٔ تیم‌ها اینجا ساخته می‌شود."))
         return

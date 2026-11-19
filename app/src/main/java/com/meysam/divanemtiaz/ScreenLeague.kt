@@ -79,7 +79,18 @@ class LeagueSetupScreen(host: MainActivity, private val editing: Long? = null) :
         bottom = kit.button(if (existing == null) "قرعه‌کشی نهایی و شروع لیگ" else "ذخیرهٔ تغییرات لیگ", ButtonKind.PRIMARY, RoyalIcon.PLAY) { start() }
     ) {
         addView(rulePresetButton("league", capture = {
-            val base = presetRules ?: existing?.rules ?: settings.rulesFor(game, joker, endPoint)
+            if (clean.withIndex().any { (index, side) ->
+                !TeamIdentity.validCardTeam(side) && existing?.teams?.getOrNull(index)?.members != side.members
+            }) {
+            kit.toast("هر تیم لیگ دو نفر متفاوت دارد. برای ثبت سریع می‌توانید نام اعضا را خالی بگذارید.")
+            return
+        }
+        val identityKeys = clean.map(TeamIdentity::key)
+        if (identityKeys.distinct().size != identityKeys.size && identityKeys != existing?.teams?.map(TeamIdentity::key)) {
+            kit.toast("این ترکیب بازیکنان قبلاً در لیگ وارد شده است")
+            return
+        }
+        val base = presetRules ?: existing?.rules ?: settings.rulesFor(game, joker, endPoint)
             val rules = when (game) {
                 GameType.MENFI -> base.copy(menfi = base.menfi.copy(hands = menfiHands, hidden = menfiHidden))
                 GameType.SHALAM -> base.copy(shalam = base.shalam.copy(joker = joker, endPoint = endPoint, mode = if (base.shalam.joker != joker) settings.shalam.mode(joker) else base.shalam.mode))
@@ -138,7 +149,7 @@ class LeagueSetupScreen(host: MainActivity, private val editing: Long? = null) :
                 host.refresh()
             },
             kit.button("از فهرست تیم‌ها", ButtonKind.GHOST, RoyalIcon.USER, 40) {
-                rosterPicker(true, unavailable = teams.flatMap { it.members + it.name }.toSet()) { entry ->
+                rosterPicker(true, unavailable = teams.flatMap { it.members + it.name }.toSet(), cardTeamsOnly = true) { entry ->
                     teams += Side(entry.name, entry.avatar, entry.members)
                     host.refresh()
                 }
@@ -205,6 +216,17 @@ class LeagueSetupScreen(host: MainActivity, private val editing: Long? = null) :
             kit.toast("نام تیم‌ها نباید تکراری باشد")
             return
         }
+        if (clean.withIndex().any { (index, side) ->
+                !TeamIdentity.validCardTeam(side) && existing?.teams?.getOrNull(index)?.members != side.members
+            }) {
+            kit.toast("هر تیم لیگ دو نفر متفاوت دارد. برای ثبت سریع می‌توانید نام اعضا را خالی بگذارید.")
+            return
+        }
+        val identityKeys = clean.map(TeamIdentity::key)
+        if (identityKeys.distinct().size != identityKeys.size && identityKeys != existing?.teams?.map(TeamIdentity::key)) {
+            kit.toast("این ترکیب بازیکنان قبلاً در لیگ وارد شده است")
+            return
+        }
         val base = presetRules ?: existing?.rules ?: settings.rulesFor(game, joker, endPoint)
         val rules = when (game) {
             GameType.MENFI -> base.copy(menfi = base.menfi.copy(hands = menfiHands, hidden = menfiHidden))
@@ -243,6 +265,7 @@ class LeagueSetupScreen(host: MainActivity, private val editing: Long? = null) :
 }
 
 class LeagueScreen(host: MainActivity, private val leagueId: Long) : Screen(host) {
+    override val featureKey: String get() = "leagues"
     private val lookup: (Long) -> GameSession? = { host.repo.session(it) }
 
     override fun build(): View {
@@ -457,26 +480,39 @@ class LeagueScreen(host: MainActivity, private val leagueId: Long) : Screen(host
 
 /** Starts the next game of a league match between its two teams (team A first). */
 fun Screen.startLeagueGame(league: League, match: LeagueMatch) {
+    if (!ProState.access("leagues").allowed) {
+        Gate.open(this, "leagues") {}
+        return
+    }
     val lookup: (Long) -> GameSession? = { host.repo.session(it) }
     val st = LeagueEngine.state(league, match, lookup)
     val a = st.teamA ?: return
     val b = st.teamB ?: return
-    val id = host.repo.newSessionId()
-    val session = GameSession(
-        id = id,
-        game = league.game,
-        sides = listOf(league.teams[a], league.teams[b]),
-        rules = league.rules,
-        updatedAt = id,
-        label = "${league.name} • ${LeagueEngine.stageTitle(league, match.stage)}",
-        leagueId = league.id
-    )
-    host.repo.save(session)
-    val index = league.matches.indexOfFirst { it.id == match.id }
-    league.matches[index] = league.matches[index].copy(games = league.matches[index].games + id)
-    league.updatedAt = System.currentTimeMillis()
-    host.repo.saveLeague(league)
-    host.push(host.boardFor(session))
+    val sides = listOf(league.teams[a], league.teams[b])
+    fun start(deal: MenfiDeal?) {
+        // Recheck after the seating dialog so double taps or a stale fixture never create a second game.
+        val fresh = host.repo.league(league.id) ?: return
+        val index = fresh.matches.indexOfFirst { it.id == match.id }
+        if (index < 0) return
+        val entry = fresh.matches[index]
+        val current = LeagueEngine.state(fresh, entry, lookup)
+        if (current.openGame != null) {
+            lookup(current.openGame)?.let(host::openSession)
+            return
+        }
+        if (!current.ready || current.decided || current.teamA != a || current.teamB != b) return
+        val id = host.repo.newSessionId()
+        val session = GameSession(id, fresh.game, sides, rules = fresh.rules,
+            label = "${fresh.name} • ${LeagueEngine.stageTitle(fresh, entry.stage)}",
+            leagueId = fresh.id, menfiDeal = deal)
+        host.repo.save(session)
+        fresh.matches[index] = entry.copy(games = entry.games + id)
+        fresh.updatedAt = System.currentTimeMillis()
+        host.repo.saveLeague(fresh)
+        host.push(host.boardFor(session))
+    }
+    if (league.game == GameType.MENFI) chooseMenfiDeal(sides, null) { start(it) }
+    else start(null)
 }
 
 /** The league match a saved game belongs to, if any. */

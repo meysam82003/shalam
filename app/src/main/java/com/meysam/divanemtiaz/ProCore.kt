@@ -475,11 +475,18 @@ object ProState {
     class Access(val mode: String, val allowed: Boolean, val limit: Int?, val items: Set<String>, val allItems: Boolean)
 
     fun access(key: String): Access {
+        if (key == GameType.MENFI.key) return Access("free", true, null, emptySet(), false)
         if (key == "mafia" || key.startsWith("mafia_")) return Access("pro", mafiaAllowed, null, emptySet(), !mafiaAllowed && key in ITEM_MODULES)
-        val signed = if (loggedIn && license.valid) license.features.optJSONObject(key) else null
-        // The panel's latest rules (fetched with the account, cached for offline use) win over the older signed copy.
-        val f = config.optJSONObject("features")?.optJSONObject(key) ?: signed ?: return Access("free", true, null, emptySet(), false)
-        val mode = f.optString("mode", "free")
+        val signedFeatures = if (loggedIn && license.valid) license.features else null
+        val publicFeatures = config.optJSONObject("features")
+        val signed = signedFeatures?.optJSONObject(key)
+        val remote = publicFeatures?.optJSONObject(key) ?: signed
+        // A config from before 5.6.3 may still label these modules as free.
+        val updated = publicFeatures?.has("teams") == true || (publicFeatures == null && signedFeatures?.has("teams") == true)
+        val mode = if (key in Features.newProModules && !updated && remote?.optString("mode") in setOf(null, "", "free", "limited")) {
+            "pro"
+        } else remote?.optString("mode", if (key in Features.newProModules) "pro" else "free")
+            ?: if (key in Features.newProModules) "pro" else "free"
         val granted = signed?.optBoolean("granted", false) == true
         val pro = isPro
         var allowed = when (mode) {
@@ -488,14 +495,17 @@ object ProState {
             "gift" -> granted
             else -> false
         }
-        val list = (f.optJSONArray("items") ?: f.optJSONArray("pro_items"))?.let { a -> (0 until a.length()).map { a.optString(it) }.filter { it.isNotBlank() }.toSet() }.orEmpty()
+        val itemArray = remote?.optJSONArray("items") ?: remote?.optJSONArray("pro_items")
+        val listed = itemArray?.let { array -> (0 until array.length()).map { array.optString(it) }.filter { it.isNotBlank() }.toSet() }.orEmpty()
+        val defaults = if (key == "themes" && !updated) Features.newProThemes else emptySet()
+        val lockedItems = if (mode == "disabled" || (mode in setOf("pro", "gift") && listed.isEmpty() && remote != null)) listed else listed + defaults
         var allItems = false
         if (key in ITEM_MODULES) {
-            if (list.isNotEmpty() && mode != "disabled") allowed = true
+            if (lockedItems.isNotEmpty() && mode != "disabled") allowed = true
             else if (!allowed) allItems = true
         }
-        val items = if (pro || granted) emptySet() else list
-        val limit = if (mode == "limited" && !pro && !granted && f.has("limit") && !f.isNull("limit")) f.optInt("limit") else null
+        val items = if (pro || granted) emptySet() else lockedItems
+        val limit = if (mode == "limited" && !pro && !granted && remote != null && !remote.isNull("limit")) remote.optInt("limit") else null
         return Access(mode, allowed, limit, items, allItems)
     }
 

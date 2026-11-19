@@ -225,16 +225,14 @@ object MafiaNight {
     }
 
     /** Text the narrator reads for a role's turn (wake instruction plus what the role does). */
-    fun rolePrompt(g: MafiaGame, r: MafiaRole): String {
-        val wake = "${r.faName} بیدار شود"
-        val what = when (r) {
+    private fun roleTask(g: MafiaGame, r: MafiaRole): String = when (r) {
             MafiaRole.DOCTOR -> "دکتر می‌تواند یک نفر را نجات دهد" + if (g.night == 1) " (شب اول تا ${PersianText.digits(g.optionInt(r, "نجات شب اول", 1))} نفر)" else ""
             MafiaRole.DOCTOR_LECTOR -> "دکتر لکتر می‌تواند یکی از اعضای مافیا را نجات دهد"
             MafiaRole.PSYCHOLOGIST -> "روانپزشک می‌تواند یک نفر را برای فردا ساکت کند"
             MafiaRole.DETECTIVE -> "کارآگاه استعلام یک نفر را می‌گیرد"
             MafiaRole.PROFESSIONAL -> "حرفه‌ای می‌تواند به یک نفر شلیک کند؛ شلیک به شهروند باعث خروج خودش می‌شود"
             MafiaRole.SNIPER -> "اسنایپر یک نفر را هدف می‌گیرد"
-            MafiaRole.MATADOR -> "ماتادور هر شب می‌تواند یک نفر را انتخاب کند\nاگر آن شخص قابلیت شب داشته باشد از انجام کار منع خواهد شد"
+            MafiaRole.MATADOR -> "برای بستن توانایی شب، یک شهروند را انتخاب کنید."
             MafiaRole.ILLUSIONIST -> "شعبده باز توانایی یک نفر را برای ۲۴ ساعت می‌گیرد"
             MafiaRole.NATASHA -> "ناتاشا یک نفر را برای فردا کاملاً ساکت می‌کند"
             MafiaRole.SLEEP_WALKER -> "خوابگرد می‌تواند یک بار در بازی گروه مافیا را بخواباند (و خودش از بازی خارج می‌شود)"
@@ -247,8 +245,33 @@ object MafiaNight {
             MafiaRole.INTERROGATOR -> "بازپرس دو نفر را برای بازپرسی فردا انتخاب کند"
             MafiaRole.JACK_SPARROW -> "برای طلسم کردن یک نفر را انتخاب کنید."
             else -> MafiaRoleText.explain(r)
+    }
+
+    fun rolePrompt(g: MafiaGame, r: MafiaRole): String = listOf(
+        "${r.faName} بیدار شود",
+        if (r == MafiaRole.MATADOR) "ماتادور هر شب می‌تواند یک نفر را انتخاب کند\nاگر آن شخص قابلیت شب داشته باشد از انجام کار منع خواهد شد" else roleTask(g, r),
+        MafiaRoleText.explain(r)
+    ).filter { it.isNotBlank() }.distinct().joinToString("\n")
+
+    /** Lead with the action, not the long role description or wake announcement. */
+    fun brief(g: MafiaGame, job: NightJob, mode: JobMode): String {
+        val role = job.role
+        val custom = role?.let { MafiaRoleRegistry.user[it]?.prompt }
+        val action = when {
+            job.key == MAFIA_GROUP -> mode.label.takeIf { it.isNotBlank() } ?: "قابلیت امشب گروه را انتخاب کنید"
+            job.key == ATTAR_ANTIDOTE -> "عطار تصمیم بگیرد پادزهر می‌دهد یا نه"
+            !custom.isNullOrBlank() -> custom.lineSequence().firstOrNull { it.isNotBlank() && !it.trim().endsWith("بیدار شود") }.orEmpty()
+            role != null && role.isGeneric -> {
+                val def = MafiaGeneric.def(role)
+                (if (mode.label == def?.altAbility?.title) def?.altAbility?.hint else def?.ability?.hint).orEmpty()
+            }
+            job.modes.size > 1 && role != MafiaRole.DIE_HARD && role != MafiaRole.SLEEP_WALKER -> mode.label
+            role == MafiaRole.DOCTOR -> if (mode.max == 1) "یک نفر را برای نجات انتخاب کنید" else "تا ${PersianText.digits(mode.max)} نفر را برای نجات انتخاب کنید"
+            role != null -> roleTask(g, role)
+            else -> job.prompt
         }
-        return listOf(wake, what, MafiaRoleText.explain(r)).filter { !it.isNullOrBlank() }.distinct().joinToString("\n")
+        return action.lineSequence().firstOrNull { it.isNotBlank() }?.trim()
+            ?.substringBefore('؛')?.ifBlank { job.title } ?: job.title
     }
 
     // ------------------------------------------------------------------ who may be chosen

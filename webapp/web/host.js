@@ -25,9 +25,9 @@
   };
 
   // ------------------------------------------------------------------ screen size
-  var phone = window.matchMedia('(max-width: 639px), (max-height: 559px)');
+  var phone = window.matchMedia('(max-width: 639px), (max-height: 559px), (any-pointer: coarse)');
   function measureScreen() {
-    frame.classList.toggle('full', phone.matches || document.documentElement.classList.contains('app-window'));
+    frame.classList.toggle('full', phone.matches || navigator.maxTouchPoints > 0 && /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent) || document.documentElement.classList.contains('app-window'));
     var r = frame.getBoundingClientRect();
     var dpr = window.devicePixelRatio || 1;
     var w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr));

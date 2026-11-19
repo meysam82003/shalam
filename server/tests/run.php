@@ -126,6 +126,11 @@ function apiGet(string $route, array $query = []): array { Api::reset(); $_GET =
 scenario('new installation keeps the complete Mafia module Pro-only', function () {
     $f = Features::forUser(null, false);
     check($f['mafia']['mode'] === 'pro' && !$f['mafia']['allowed'], 'Mafia starts as Pro even before any panel setting');
+    foreach (['teams','leagues','rankings'] as $feature) {
+        check($f[$feature]['mode'] === 'pro' && !$f[$feature]['allowed'], $feature . ' starts as Pro');
+    }
+    check($f['menfi']['mode'] === 'free' && $f['menfi']['allowed'], 'regular Menfi is free');
+    check(count($f['themes']['items']) === 9 && !in_array('ivory', $f['themes']['items'], true), 'exactly nine Pro palettes and Crystal stays free');
 });
 
 scenario('accounts: register, login, lockout', function () {
