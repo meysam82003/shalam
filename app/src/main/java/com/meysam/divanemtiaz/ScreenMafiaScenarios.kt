@@ -90,10 +90,14 @@ private fun Screen.valueRow(title: String, value: String, onClick: () -> Unit): 
 private fun Screen.lineupText(m: Map<MafiaRole, Int>): String =
     m.filter { it.value > 0 }.entries.joinToString("، ") { (r, c) -> r.faName + if (c > 1) " ×" + kit.n(c) else "" }
 
+data class MafiaGroupSelection(val name: String, val game: MafiaGame)
+
 /** Draft setup from a scenario: its settings, the reference line-up for the chosen players and its cards. */
-fun Screen.startScenario(s: MafiaScenario) {
+fun Screen.startScenario(s: MafiaScenario, group: MafiaGroupSelection? = null) {
     if (Gate.itemLocked("mafia_scenarios", s.id)) { Gate.lockedItem(this, "سناریوی " + s.name); return }
-    val d = host.mafia.draft()
+    val d = group?.let {
+        MafiaCodec.decodeGame(MafiaCodec.encodeGame(it.game, withSnapshots = false))
+    } ?: host.mafia.draft()
     MafiaScenarios.applyTo(d, s)
     if (s.id != MafiaScenarios.FREE) {
         d.roleCounts.clear(); d.options.clear()
@@ -106,13 +110,17 @@ fun Screen.startScenario(s: MafiaScenario) {
     }
     d.players.forEach { it.role = null; it.seen = false }
     host.mafia.saveDraft(d)
-    host.push(MafiaDesignScreen(host, if (d.players.size >= 4) 1 else 0))
+    host.push(MafiaDesignScreen(host))
 }
 
 // ------------------------------------------------------------------ scenario list
 
 /** «انتخاب سناریو»: built-in scenarios (families together), the narrator's own ones and «سناریوی آزاد». */
-class MafiaScenarioListScreen(host: MainActivity, private val browse: Boolean = false) : Screen(host) {
+class MafiaScenarioListScreen(
+    host: MainActivity,
+    private val browse: Boolean = false,
+    private val group: MafiaGroupSelection? = null
+) : Screen(host) {
     override val mafiaArea: Boolean get() = true
     private var query = ""
 
@@ -123,10 +131,17 @@ class MafiaScenarioListScreen(host: MainActivity, private val browse: Boolean = 
         MafiaRoleRegistry.activate(null)
         val saved = host.mafia.scenarios()
         val list = MafiaScenarios.all(saved)
-        return scaffold(if (browse) "سناریوها" else "انتخاب سناریو", "${kit.n(list.size)} سناریو  •  روی هر سناریو بزنید",
+        return scaffold(if (browse) "سناریوها" else "انتخاب سناریو", group?.let { "سناریوی گروه «${it.name}» را انتخاب کنید" }
+            ?: "${kit.n(list.size)} سناریو  •  روی هر سناریو بزنید",
             actions = listOf(kit.iconButton(RoyalIcon.USER, "نقش‌ها و قوانین", ButtonKind.SECONDARY, 44) { host.push(MafiaRolesScreen(host)) }),
             bottom = kit.button("سناریوی خودت را بساز", ButtonKind.PRIMARY, RoyalIcon.PLUS, 52) { host.push(MafiaScenarioEditScreen(host, null)) }) {
             addView(kit.text("ترکیب نقش و کارت هر سناریو فقط پیشنهاد اولیه است و در صفحهٔ طراحی بازی قابل تغییر است.", TextStyle.LABEL, Royal.muted, Gravity.CENTER), kit.spaced(8))
+            if (group != null && group.game.roleCounts.values.any { it > 0 }) {
+                addView(kit.button("استفاده از ترکیب ذخیره‌شدهٔ گروه", ButtonKind.SECONDARY, RoyalIcon.PLAYERS, 44) {
+                    host.mafia.saveDraft(group.game)
+                    host.push(MafiaDesignScreen(host))
+                }, kit.spaced(8))
+            }
             val rows = ArrayList<Pair<View, String>>()
             val headers = ArrayList<View>()
             val searchSlot = FrameLayout(host)
@@ -167,14 +182,15 @@ class MafiaScenarioListScreen(host: MainActivity, private val browse: Boolean = 
         })
         isClickable = true
         contentDescription = s.name
-        setOnClickListener { kit.tap(it); host.push(MafiaScenarioScreen(host, s.id)) }
+        setOnClickListener { kit.tap(it); host.push(MafiaScenarioScreen(host, s.id, group)) }
     }
 }
 
 // ------------------------------------------------------------------ scenario detail
 
-class MafiaScenarioScreen(host: MainActivity, private val id: String) : Screen(host) {
+class MafiaScenarioScreen(host: MainActivity, private val id: String, private val group: MafiaGroupSelection? = null) : Screen(host) {
     override val mafiaArea: Boolean get() = true
+    private var rulesExpanded = false
     override fun build(): View {
         val saved = host.mafia.scenarios()
         val s = MafiaScenarios.find(id, saved) ?: return scaffold("سناریو پیدا نشد") {}
@@ -182,11 +198,21 @@ class MafiaScenarioScreen(host: MainActivity, private val id: String) : Screen(h
         val edited = !s.custom && saved.any { it.id == s.id }
         return scaffold(s.name, s.summary,
             actions = listOf(kit.iconButton(RoyalIcon.EDIT, "ویرایش سناریو", ButtonKind.SECONDARY, 44) { host.push(MafiaScenarioEditScreen(host, s.id)) }),
-            bottom = kit.button("شروع با این سناریو", ButtonKind.PRIMARY, RoyalIcon.PLAY, 52) { startScenario(s) }) {
-            addView(kit.section("قوانین", RoyalIcon.RULES))
+            bottom = kit.button("شروع با این سناریو", ButtonKind.PRIMARY, RoyalIcon.PLAY, 52) { startScenario(s, group) }) {
+            val fullRules = s.rules.trim()
+            val toggle = if (fullRules.isBlank()) null else kit.wordButton(
+                if (rulesExpanded) "▲" else "▼",
+                if (rulesExpanded) "بستن قوانین کامل" else "نمایش قوانین کامل",
+                ButtonKind.SECONDARY, 40
+            ) { rulesExpanded = !rulesExpanded; host.refresh() }
+            addView(kit.section("قوانین", RoyalIcon.RULES, toggle))
             addView(kit.panel(PanelStyle.FLAT, 12).apply {
                 layoutParams = kit.spaced(8)
-                addView(kit.text(s.rules.ifBlank { "قانونی ثبت نشده است" }, TextStyle.BODY, Royal.ivory))
+                val overview = if (s.family == MafiaScenarios.GODFATHER_FAMILY && !s.custom && !edited) {
+                    "سه ساید دارد: شهروند، مافیا و مستقل. مافیا در هر شب فقط یکی از شلیک، حس ششم یا خرید را انجام می‌دهد. خروج با رأی، کارت حرکت آخر دارد."
+                } else fullRules.lineSequence().filter { it.isNotBlank() }.take(2).joinToString("\n")
+                addView(kit.text(if (rulesExpanded) fullRules else overview.ifBlank { "قانونی ثبت نشده است" },
+                    TextStyle.BODY, Royal.ivory, maxLines = if (rulesExpanded) Int.MAX_VALUE else 4))
             })
             if (s.pool.isNotEmpty()) {
                 addView(kit.section("نقش‌های سناریو (${kit.n(s.pool.size)})", RoyalIcon.PLAYERS))
@@ -224,7 +250,7 @@ class MafiaScenarioScreen(host: MainActivity, private val id: String) : Screen(h
                 addView(kit.weight(kit.button("کپی به سناریوی جدید", ButtonKind.SECONDARY, RoyalIcon.PLUS, 44) {
                     val copy = s.copy(id = "u" + System.currentTimeMillis(), name = s.name + " (کپی)", custom = true)
                     host.mafia.saveScenario(copy)
-                    host.replace(MafiaScenarioScreen(host, copy.id))
+                    host.replace(MafiaScenarioScreen(host, copy.id, group))
                 }))
             })
             if (edited) addView(kit.button("بازگردانی سناریوی پیش‌فرض", ButtonKind.GHOST, RoyalIcon.UNDO, 44) {

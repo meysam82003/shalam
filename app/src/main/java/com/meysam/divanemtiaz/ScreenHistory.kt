@@ -120,7 +120,7 @@ class ResultScreen(host: MainActivity, private val session: GameSession) : Scree
             }
             addView(kit.section("دست‌ها", RoyalIcon.HISTORY))
             session.rounds.forEachIndexed { index, round ->
-                addView(roundRow(index, session.sides.indices.map { kit.signed(round.score(it)) }, session.sides.indices.map { scoreColor(round.score(it)) }, describeRound(session, round), null))
+                addView(roundRow(index, session.sides.indices.map { kit.signed(round.score(it)) }, session.sides.indices.map { scoreColor(round.score(it)) }, describeRound(session, round), round.dealerLabel(), null))
             }
             // Only on a finished game, below everything: the play is over, nothing is waiting for input.
             if (session.finished) AdEngine.slot(this@ResultScreen, "result_bottom")?.let { addView(kit.gap(8)); addView(it) }

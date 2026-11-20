@@ -213,7 +213,8 @@ object MafiaNight {
         }
         // Night-specific availability from the source app.
         when (r) {
-            MafiaRole.INHERITOR, MafiaRole.JACK_SPARROW -> if (r == MafiaRole.INHERITOR && n != 0) return null
+            MafiaRole.INHERITOR -> if (n != 0) return null
+            MafiaRole.JACK_SPARROW -> if (holder?.has("jackVoted") == true) return null
             MafiaRole.CHAPLIN -> if (n != 1) return null
             MafiaRole.HACKER -> if (n != 2) return null
             MafiaRole.CAST_AWAY -> if (n > 3 || holder?.has("joined") == true) return null
@@ -262,7 +263,7 @@ object MafiaNight {
                 "شلیک شب" -> if (mode.max == 1) "هدف شلیک شب را انتخاب کنید." else "هدف‌های شلیک امشب را انتخاب کنید."
                 "حس ششم", "ناتو" -> "بازیکن را انتخاب کنید و نقش او را حدس بزنید."
                 "سوداگری" -> "دو بازیکن را برای سوداگری انتخاب کنید."
-                "مرد قوی" -> "بازیکن هدف مرد قوی را انتخاب کنید."
+                "مرد قوی" -> "هدف شلیک ویژهٔ مرد قوی را انتخاب کنید."
                 "سم ساز" -> "یک نفر را برای مسموم کردن انتخاب کنید."
                 "ساول گودمن" -> "یک نفر را برای خرید و پیوستن به مافیا انتخاب کنید."
                 else -> MafiaGeneric.groupAbility(g, mode.label)?.second?.hint ?: mode.label
@@ -275,8 +276,9 @@ object MafiaNight {
             }
             role == MafiaRole.DOCTOR -> if (mode.max == 1) "یک نفر را برای نجات انتخاب کنید." else "تا ${PersianText.digits(mode.max)} نفر را برای نجات انتخاب کنید."
             role == MafiaRole.MATADOR -> "برای بستن توانایی شب، یک شهروند را انتخاب کنید."
-            role == MafiaRole.NOSTRADAMUS -> "${PersianText.digits(mode.min)} نفر را انتخاب کنید، سپس سمت نوستراداموس را تعیین کنید."
-            role == MafiaRole.JIGSAW -> "سه نفر را انتخاب کنید؛ نفر اول صاحب اره است."
+            role == MafiaRole.NOSTRADAMUS -> "${PersianText.digits(mode.min)} نفر را نشان بده. تعداد مافیا را بشنو و سمتت را انتخاب کن."
+            role == MafiaRole.JACK_SPARROW -> "یک نفر را برای طلسم انتخاب کن. اگر او خارج شود، تو هم خارج می‌شوی."
+            role == MafiaRole.JIGSAW -> "سه نفر را نشان بده؛ اره دست نفر اول است."
             role == MafiaRole.ZODIAC -> if (mode.word) "متن نامهٔ زودیاک را وارد کنید." else "هدف شلیک زودیاک را انتخاب کنید."
             role == MafiaRole.COMMANDER -> if (mode.pool == TargetPool.NONE) "شلیک اسنایپر را تأیید یا لغو کنید." else "هدف شلیک فرمانده را انتخاب کنید."
             role == MafiaRole.CLEVER -> if (mode.guessRole) "نقش را انتخاب کنید تا صاحبش مشخص شود." else "بازیکن را انتخاب کنید تا نقشش مشخص شود."
@@ -285,8 +287,12 @@ object MafiaNight {
                 mode.guessRole -> "بازیکن را انتخاب کنید و نقشش را برای حس ششم حدس بزنید."
                 else -> "هدف شلیک چرچیل را انتخاب کنید."
             }
-            role in setOf(MafiaRole.PROFESSIONAL, MafiaRole.SNIPER, MafiaRole.FELON, MafiaRole.KILLER, MafiaRole.COMMANDO) ->
+            role == MafiaRole.PROFESSIONAL -> "هدف شلیک را انتخاب کن. اگر شهروند باشد، خودت خارج می‌شوی."
+            role in setOf(MafiaRole.SNIPER, MafiaRole.FELON, MafiaRole.KILLER, MafiaRole.COMMANDO) ->
                 "بازیکن هدف شلیک را انتخاب کنید."
+            role == MafiaRole.DETECTIVE -> "یک نفر را نشان بده تا راوی استعلام مافیا بودنش را بدهد."
+            role == MafiaRole.CHARLATAN -> "یک نفر را انتخاب کن تا نتیجهٔ استعلامش برعکس شود."
+            role == MafiaRole.VOODOO -> "یک نفر را افسون کن و کلمهٔ ممنوعهٔ او را بگو."
             role == MafiaRole.RESEARCHER -> "بازیکنی را برای پیوند محقق انتخاب کنید."
             role == MafiaRole.SALESMAN -> "بازیکن هدف را برای گرفتن توانایی‌اش انتخاب کنید."
             role == MafiaRole.REPORTER -> "یک بازیکن را برای استعلام خرید شدن انتخاب کنید."
@@ -328,7 +334,7 @@ object MafiaNight {
 
     fun candidates(g: MafiaGame, job: NightJob, mode: JobMode): List<MafiaPlayer> {
         val holders = job.holders.toSet()
-        return when (mode.pool) {
+        val eligible = when (mode.pool) {
             TargetPool.NONE -> emptyList()
             TargetPool.ALIVE -> g.alive.filter { mode.includeSelf || it.id !in holders || job.role == null }.filter { selfAllowed(g, job, it) }
             TargetPool.ALIVE_OTHERS -> g.alive.filter { it.id !in holders }
@@ -338,7 +344,14 @@ object MafiaNight {
             TargetPool.TONIGHT_DEAD -> preview(g).dead.mapNotNull { g.player(it) }.filter { !it.has("noReturn") }
             TargetPool.SELF -> job.holders.mapNotNull { g.player(it) }.filter { it.alive }
         }.filter { p -> !(job.role == MafiaRole.MATADOR || job.role == MafiaRole.ILLUSIONIST) || g.extra["last_${job.role.name}"] != p.id.toString() }
+        if (job.role != MafiaRole.JACK_SPARROW || g.extra["allowRepeatTalisman"] == "1") return eligible
+        val previous = talismanHistory(g)
+        return eligible.filter { it.id !in previous }.ifEmpty { eligible }
     }
+
+    private fun talismanHistory(g: MafiaGame): Set<Int> =
+        g.extra["talismanHistory"]?.split(",")?.mapNotNull { it.toIntOrNull() }?.toSet()
+            ?: setOfNotNull(g.extra["talisman"]?.toIntOrNull())
 
     private fun selfAllowed(g: MafiaGame, job: NightJob, p: MafiaPlayer): Boolean {
         if (p.id !in job.holders) return true
@@ -450,7 +463,6 @@ object MafiaNight {
             job.role?.let { r ->
                 useKey(r)?.let { k -> if (k == "once") holder.counters[k] = 0 else if (holder.counter(k) < 1000) holder.counters[k] = holder.counter(k) - 1 }
                 if ((r == MafiaRole.DOCTOR || r == MafiaRole.DOCTOR_LECTOR) && holder.id in targets) holder.counters["تعداد نجات خود"] = holder.counter("تعداد نجات خود") - 1
-                if (r == MafiaRole.MATADOR || r == MafiaRole.ILLUSIONIST) targets.firstOrNull()?.let { g.extra["last_${r.name}"] = it.toString() }
             }
             result = immediateResult(g, job, mode, targets, guess, holder)
         }
@@ -757,8 +769,7 @@ object MafiaNight {
             }
             if (list.isNotEmpty() || killed != null) dead += p.id
         }
-        // Jack Sparrow leaves with his talisman; the researcher takes his linked mafia along.
-        g.aliveHolder(MafiaRole.JACK_SPARROW)?.let { jack -> g.extra["talisman"]?.toIntOrNull()?.let { if (it in dead) dead += jack.id } }
+        // The researcher takes his linked mafia along.
         g.aliveHolder(MafiaRole.RESEARCHER)?.let { rs -> if (rs.id in dead) g.extra["researcherLink"]?.toIntOrNull()?.let { dead += it } }
 
         // Revivals: Salvation Angel (tonight's dead) and Constantine (earlier dead).
@@ -766,6 +777,10 @@ object MafiaNight {
         rec(MafiaRole.SALVATION_ANGEL)?.targets?.firstOrNull()?.let { if (dead.remove(it)) revived += it }
         rec(MafiaRole.CONSTANTINE)?.targets?.firstOrNull()?.let { revived += it }
         generic.revives.forEach { id -> if (dead.remove(id) || g.player(id)?.alive == false) revived += id }
+
+        val newTalisman = rec(MafiaRole.JACK_SPARROW)?.targets?.firstOrNull()
+        val talisman = newTalisman ?: g.extra["talisman"]?.toIntOrNull()
+        if (talisman != null && talisman in dead) g.aliveHolder(MafiaRole.JACK_SPARROW)?.let { dead += it.id }
 
         if (!apply) return Outcome(dead.toList(), report, revived)
 
@@ -781,7 +796,16 @@ object MafiaNight {
         }
         rec(MafiaRole.ILLUSIONIST)?.targets?.firstOrNull()?.let { g.player(it) }?.let { it.flags += "illusioned"; it.marks["illusionedNight"] = n }
         rec(MafiaRole.CHAPLIN)?.targets?.firstOrNull()?.let { g.player(it)?.flags?.add("chaplin") }
-        rec(MafiaRole.JACK_SPARROW)?.targets?.firstOrNull()?.let { g.extra["talisman"] = it.toString() }
+        if (newTalisman != null) {
+            val history = talismanHistory(g)
+            val jack = g.aliveHolder(MafiaRole.JACK_SPARROW)
+            val remaining = g.alive.any { it.id != jack?.id && it.id !in history }
+            g.extra["talismanHistory"] = ((if (remaining) history else emptySet()) + newTalisman).joinToString(",")
+            g.extra["talisman"] = newTalisman.toString()
+        }
+        listOf(MafiaRole.MATADOR, MafiaRole.ILLUSIONIST).forEach { role ->
+            rec(role)?.targets?.firstOrNull()?.let { g.extra["last_${role.name}"] = it.toString() }
+        }
         rec(MafiaRole.SPIDER)?.targets?.forEach { g.player(it)?.flags?.add("web") }
         rec(MafiaRole.RESEARCHER)?.targets?.firstOrNull()?.let { g.player(it) }?.let { t ->
             if (t.side == MafiaSide.MAFIA && t.role != MafiaRole.GODFATHER) g.extra["researcherLink"] = t.id.toString()

@@ -63,7 +63,7 @@ class RewardActivationSmokeTest {
         onMain { host ->
             ProState.logout()
             val teams = listOf(Side("تیم یک", 0, listOf("رضا", "مصطفی")), Side("تیم دو", 1, listOf("بهروز", "بهزاد")))
-            val deal = MenfiDeal.fromSeats(MenfiDeal.clockwiseSeats, first = 0)
+            val deal = MenfiDeal.fromSeats(MenfiDeal.defaultSeats, first = 0)
             val rules = GameRules(menfi = MenfiRules(hidden = false))
             val session = GameSession(host.repo.newSessionId(), GameType.MENFI, teams,
                 List(7) { Round(RoundKind.FIXED, if (it == 0) listOf(34, 35) else listOf(0, 0)) }, rules, menfiDeal = deal)
@@ -113,6 +113,63 @@ class RewardActivationSmokeTest {
             assertTrue(texts().any { it.text.toString() == "انتخاب یک نفر" })
             host.resetTo(HomeScreen(host))
             host.mafia.delete(game.id)
+        }
+    }
+
+    @Test(timeout = 90000) fun newMafiaGameCanChooseAGroupAfterChoosingItsScenario() {
+        onMain { host ->
+            ProState.applyAccount(response(ProState.now() + 3600))
+            val oldGroups = host.mafia.groups()
+            val oldDraft = host.mafia.draft()
+            try {
+                val group = MafiaGame(0L).apply {
+                    listOf("مصطفی", "بهزاد", "رضا", "بهروز").forEachIndexed { i, name ->
+                        players += MafiaPlayer(i + 1, name, i)
+                    }
+                }
+                host.mafia.saveDraft(MafiaGame(0L))
+                host.mafia.saveGroups(org.json.JSONArray().put(JSONObject().put("name", "گروه تست").put("game", MafiaCodec.encodeGame(group))))
+                fun click(label: String) {
+                    val action = views(host.window.decorView).firstOrNull { it.contentDescription?.toString() == label }
+                    assertNotNull("Missing action $label", action)
+                    assertTrue(action!!.performClick())
+                }
+                host.resetTo(HomeScreen(host), MafiaGroupsScreen(host))
+                click("شروع")
+                assertTrue(host.current is MafiaScenarioListScreen)
+                click("کلاسیک")
+                click("نمایش قوانین کامل")
+                click("بستن قوانین کامل")
+                click("شروع با این سناریو")
+                assertTrue(host.current is MafiaDesignScreen)
+                assertEquals(group.players.map { it.name }, host.mafia.draft().players.map { it.name })
+                assertEquals(4, host.mafia.draft().roleCounts.values.sum())
+                click("انتخاب از گروه بازی")
+                assertTrue(views(host.window.decorView).filterIsInstance<android.widget.TextView>().any { it.text.toString() == "گروه تست" })
+                click("افراد")
+                assertTrue(views(host.window.decorView).any { it.contentDescription?.toString() == "بازیکن جدید" })
+            } finally {
+                host.mafia.saveGroups(oldGroups)
+                host.mafia.saveDraft(oldDraft)
+                host.resetTo(HomeScreen(host))
+            }
+        }
+    }
+
+    @Test(timeout = 90000) fun pendingDoloEliminationDisplacesNextHandAndShowsTiedCandidates() {
+        onMain { host ->
+            val sides = listOf(Side("الف", 0), Side("ب", 1), Side("ج", 2))
+            val session = GameSession(host.repo.newSessionId(), GameType.DOLO, sides,
+                listOf(Round(RoundKind.FIXED, listOf(6, 2, 2))), GameRules(dolo = DoloRules(handsPerRound = 1)))
+            host.resetTo(HomeScreen(host), DoloBoardScreen(host, session))
+            val actions = views(host.window.decorView).mapNotNull { it.contentDescription?.toString() }.toList()
+            val texts = views(host.window.decorView).filterIsInstance<android.widget.TextView>().map { it.text.toString() }.toList()
+            assertTrue(actions.contains("بررسی و حذف"))
+            assertFalse(actions.contains("ثبت دست ${host.kit.n(2)}"))
+            assertTrue(texts.any { it.contains("ب، ج در خطر حذف‌اند") })
+            host.kit.dismissDialogs()
+            host.resetTo(HomeScreen(host))
+            host.repo.delete(session.id)
         }
     }
 

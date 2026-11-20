@@ -128,6 +128,43 @@ class MafiaEngineTest {
     }
 
     @Test
+    fun jackLeavesWithTonightsTalismanInsteadOfThePreviousOne() {
+        val g = game(MafiaRole.GODFATHER, MafiaRole.MAFIA, MafiaRole.JACK_SPARROW, MafiaRole.CITIZEN, MafiaRole.CITIZEN, MafiaRole.CITIZEN)
+        toNightOne(g)
+        val jack = p(g, MafiaRole.JACK_SPARROW)
+        val citizens = g.holders(MafiaRole.CITIZEN)
+        g.extra["talisman"] = citizens[0].id.toString()
+        val spell = job(g, jack.role!!.name)
+        assertFalse(citizens[0] in MafiaNight.candidates(g, spell, spell.modes.first()))
+        g.extra["allowRepeatTalisman"] = "1"
+        assertTrue(citizens[0] in MafiaNight.candidates(g, spell, spell.modes.first()))
+        act(g, spell.key, listOf(citizens[1].id))
+        act(g, MafiaNight.MAFIA_GROUP, listOf(citizens[1].id))
+        assertEquals(setOf(jack.id, citizens[1].id), MafiaNight.preview(g).dead.toSet())
+        assertEquals(citizens[0].id.toString(), g.extra["talisman"])
+        val out = MafiaFlow.endNight(g)
+        assertEquals(setOf(jack.id, citizens[1].id), out.dead.toSet())
+        assertEquals(citizens[1].id.toString(), g.extra["talisman"])
+    }
+
+    @Test
+    fun cancellingMatadorTargetDoesNotConsumeTheNextNightsRestriction() {
+        val g = game(MafiaRole.GODFATHER, MafiaRole.MATADOR, MafiaRole.CITIZEN, MafiaRole.CITIZEN, MafiaRole.DOCTOR, MafiaRole.DETECTIVE)
+        toNightOne(g)
+        val key = MafiaRole.MATADOR.name
+        val matador = job(g, key)
+        val citizens = g.holders(MafiaRole.CITIZEN)
+        g.extra["last_$key"] = citizens[0].id.toString()
+        act(g, key, listOf(citizens[1].id))
+        MafiaNight.cancel(g, matador)
+        assertFalse(citizens[0] in MafiaNight.candidates(g, matador, matador.modes.first()))
+        assertTrue(citizens[1] in MafiaNight.candidates(g, matador, matador.modes.first()))
+        act(g, key, listOf(citizens[1].id))
+        MafiaFlow.endNight(g)
+        assertEquals(citizens[1].id.toString(), g.extra["last_$key"])
+    }
+
+    @Test
     fun voteThresholdsAndTieLottery() {
         val g = game(MafiaRole.GODFATHER, MafiaRole.MAFIA, MafiaRole.DOCTOR, MafiaRole.DETECTIVE, MafiaRole.CITIZEN, MafiaRole.CITIZEN, MafiaRole.CITIZEN)
         act(g, MafiaNight.INTRO, emptyList())

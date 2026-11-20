@@ -5,13 +5,14 @@ import android.view.View
 
 fun MenfiDeal.dealerName(sides: List<Side>, handIndex: Int): String = menfiSeatName(sides, dealer(handIndex))
 
-private fun menfiSeatName(sides: List<Side>, seat: Int): String {
+fun menfiSeatName(sides: List<Side>, seat: Int): String {
     val side = sides[seat / 2]
     return side.members.getOrNull(seat % 2) ?: "نفر ${PersianText.digits(seat % 2 + 1)} از ${side.name}"
 }
 
 fun Screen.chooseMenfiDeal(sides: List<Side>, previous: MenfiDeal?, onDone: (MenfiDeal) -> Unit) {
-    val seats = (previous?.seats ?: MenfiDeal.clockwiseSeats).toMutableList()
+    val seats = (previous?.seats ?: MenfiDeal.defaultSeats).toMutableList()
+    var direction = previous?.direction ?: MenfiDirection.COUNTERCLOCKWISE
     var first = previous?.order?.firstOrNull() ?: seats.first()
     val body = kit.vertical()
     val directions = listOf("چپ", "بالا", "راست", "پایین")
@@ -55,13 +56,20 @@ fun Screen.chooseMenfiDeal(sides: List<Side>, previous: MenfiDeal?, onDone: (Men
             }
         ), 5), kit.spaced(5))
 
-        val order = MenfiDeal.fromSeats(seats, first)
+        body.addView(kit.choiceRow("جهت گردش دست‌دهنده", null, listOf(
+            0 to "خلاف عقربه‌های ساعت",
+            1 to "هم‌جهت عقربه‌های ساعت"
+        ), direction.ordinal) {
+            direction = MenfiDirection.values()[it]
+            rebuild()
+        }, kit.spaced(6))
+        val order = MenfiDeal.fromSeats(seats, first, direction)
         body.addView(kit.text("نوبت دست‌دادن: " + order.order.joinToString(" ← ") { menfiSeatName(sides, it) },
             TextStyle.LABEL, Royal.turquoiseLight, Gravity.CENTER))
     }
     rebuild()
     kit.dialog("چیدمان میز منفی", null, body, listOf(
-        DialogAction("تأیید چیدمان", ButtonKind.PRIMARY) { onDone(MenfiDeal.fromSeats(seats, first)) },
+        DialogAction("تأیید چیدمان", ButtonKind.PRIMARY) { onDone(MenfiDeal.fromSeats(seats, first, direction)) },
         DialogAction("لغو")
     )).show()
 }

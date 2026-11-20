@@ -69,6 +69,13 @@ class NewGamesTest {
         assertEquals(true, DoloEngine.candidates(session).second)
     }
 
+    @Test fun doloSeparatesCertainCandidatesFromTiedPlayers() {
+        val state = DoloState(listOf(0, 1, 2, 3, 4), emptyMap(), 5, 5, listOf(-4, 2, 2, 7, 2), false)
+        val rules = DoloRules(eliminateCount = 2)
+        assertEquals(DoloEliminationCut(listOf(0), listOf(1, 2, 4), 1), DoloEngine.eliminationCut(state, rules))
+        assertEquals(DoloEliminationCut(listOf(0), emptyList(), 0), DoloEngine.eliminationCut(state, rules.copy(eliminateCount = 1)))
+    }
+
     @Test fun deckCalculatorGivesWholeCards() {
         val dolo = DeckCalc.dolo(6, 75, DoloRules())
         assertEquals(12, dolo.perPlayer)

@@ -1,7 +1,9 @@
 package com.meysam.divanemtiaz
 
-/** Players 0–1 belong to team A, 2–3 to team B. Seats run clockwise from the left. */
-data class MenfiDeal private constructor(val order: List<Int>, val seats: List<Int>) {
+enum class MenfiDirection { COUNTERCLOCKWISE, CLOCKWISE }
+
+/** Players 0–1 belong to team A, 2–3 to team B. Seats are stored left, top, right, bottom. */
+data class MenfiDeal private constructor(val order: List<Int>, val seats: List<Int>, val direction: MenfiDirection) {
     fun dealer(handIndex: Int): Int = order[handIndex.coerceAtLeast(0) % order.size]
 
     fun biddingOrder(handIndex: Int): List<Int> {
@@ -10,19 +12,23 @@ data class MenfiDeal private constructor(val order: List<Int>, val seats: List<I
     }
 
     companion object {
-        val clockwiseSeats = listOf(0, 2, 1, 3)
-        val default = fromSeats(clockwiseSeats, first = 0)
+        val defaultSeats = listOf(0, 2, 1, 3)
+        val default = fromSeats(defaultSeats, first = 0)
 
-        fun fromSeats(seats: List<Int>, first: Int): MenfiDeal {
+        fun fromSeats(seats: List<Int>, first: Int, direction: MenfiDirection = MenfiDirection.COUNTERCLOCKWISE): MenfiDeal {
             require(valid(seats) && first in seats)
-            val offset = seats.indexOf(first)
-            return MenfiDeal(seats.drop(offset) + seats.take(offset), seats.toList())
+            // The scorekeeper's counterclockwise order is right → bottom → left → top.
+            val walk = if (direction == MenfiDirection.COUNTERCLOCKWISE) seats else seats.reversed()
+            val offset = walk.indexOf(first)
+            return MenfiDeal(walk.drop(offset) + walk.take(offset), seats.toList(), direction)
         }
 
         fun restore(order: List<Int>, seats: List<Int>): MenfiDeal? {
             if (!valid(order)) return null
             val layout = seats.takeIf(::valid) ?: order
-            return fromSeats(layout, order.first())
+            return MenfiDirection.values().asSequence()
+                .map { fromSeats(layout, order.first(), it) }
+                .firstOrNull { it.order == order }
         }
 
         private fun valid(seats: List<Int>): Boolean =

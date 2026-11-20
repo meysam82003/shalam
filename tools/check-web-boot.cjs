@@ -50,7 +50,7 @@ const server=http.createServer((req,res)=>{
   await touch.close();
 
   const cfg=await page.evaluate(()=>DIVAN_CONFIG);
-  assert.equal(cfg.versionName,'5.6.3');assert.equal(pemRequests,0,'no request for protected Android certificate');
+  assert.equal(cfg.versionName,'5.6.4');assert.equal(pemRequests,0,'no request for protected Android certificate');
   // Persist representative existing game data through the actual host storage, reload it, then boot offline.
   await page.evaluate(()=>{DH.saveFile('/data/data/com.meysam.divanemtiaz.site/files/existing-game.json',new Int8Array([7,11,33,99]),12345);DH.savePrefs('existing-user-settings',JSON.stringify({score11:33,preset:4}));});
   let stored=false;

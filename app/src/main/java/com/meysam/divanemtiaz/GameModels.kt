@@ -85,7 +85,9 @@ data class Round(
     val double: Int = DoubleChoice.AUTO,
     val numbers: List<Int> = emptyList(),
     val outcome: Int = -1,
-    val raw: List<Int> = emptyList()
+    val raw: List<Int> = emptyList(),
+    val dealerName: String = "",
+    val dealerTeam: Int = -1
 ) {
     fun score(side: Int): Int = scores.getOrElse(side) { 0 }
 }
