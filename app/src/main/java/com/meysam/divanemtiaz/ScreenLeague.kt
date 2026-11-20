@@ -63,7 +63,7 @@ class LeagueSetupScreen(host: MainActivity, private val editing: Long? = null) :
     private var presetRules: GameRules? = null
     private var game = existing?.game ?: GameType.MENFI
     private var name = existing?.name ?: "لیگ ${PersianText.digits(host.repo.leagueIndex().size + 1, host.settings.general.persianDigits)}"
-    private val teams = existing?.teams?.toMutableList() ?: MutableList(4) { Side("تیم ${PersianText.digits(it + 1, host.settings.general.persianDigits)}", (it * 3) % Emblems.COUNT) }
+    private val teams = existing?.teams?.toMutableList() ?: mutableListOf()
     private var format = existing?.format ?: settings.league.format
     private var winsNeeded = existing?.config?.winsNeeded ?: settings.league.winsNeeded
     private var doubleRoundRobin = existing?.config?.doubleRoundRobin ?: settings.league.doubleRoundRobin
@@ -131,6 +131,7 @@ class LeagueSetupScreen(host: MainActivity, private val editing: Long? = null) :
             host.refresh()
         }))
         addView(kit.text("ترتیب فهرست، ترتیب رویارویی‌هاست: ۱ با ۲، ۳ با ۴ و …؛ با «قرعه‌کشی» تصادفی چیده می‌شود.", TextStyle.CAPTION, Royal.muted), kit.spaced(6))
+        if (teams.isEmpty()) addView(kit.text("برای شروع، دست‌کم دو تیم اضافه کنید.", TextStyle.BODY, Royal.muted, Gravity.CENTER), kit.spaced(6))
         teams.indices.forEach { i -> addView(teamRow(i)) }
         addView(kit.grid(2, listOf(
             kit.button("افزودن تیم", ButtonKind.GHOST, RoyalIcon.PLUS, 40) {

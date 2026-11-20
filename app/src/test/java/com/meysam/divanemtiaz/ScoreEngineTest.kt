@@ -20,6 +20,8 @@ class ScoreEngineTest {
         assertFalse(ShalamEngine.isValidBid(45, noJoker.mode))
         assertFalse(ShalamEngine.isValidBid(170, noJoker.mode))
         assertFalse(ShalamEngine.isValidTaken(165, noJoker.mode))
+        for (value in listOf(1, 2, 21, 24, 164)) assertFalse(ShalamEngine.isValidTaken(value, noJoker.mode))
+        for (value in listOf(0, 5, 125, 160)) assertTrue(ShalamEngine.isValidTaken(value, noJoker.mode))
     }
 
     @Test fun bid135FailsWhenOpponentTakes35() {

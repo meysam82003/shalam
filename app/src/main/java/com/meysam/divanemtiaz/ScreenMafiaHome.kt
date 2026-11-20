@@ -209,8 +209,7 @@ class MafiaGroupsScreen(host: MainActivity) : Screen(host) {
                 addView(kit.gap(6))
                 addView(kit.horizontal().apply {
                     addView(kit.weight(kit.button("شروع", ButtonKind.SUCCESS, RoyalIcon.PLAY, 44) {
-                        host.mafia.saveDraft(g)
-                        host.push(MafiaDistributeScreen(host))
+                        host.push(MafiaScenarioListScreen(host, group = MafiaGroupSelection(o.optString("name"), g)))
                     }))
                     addView(kit.hgap(6))
                     addView(kit.weight(kit.button("ویرایش", ButtonKind.SECONDARY, RoyalIcon.EDIT, 44) {

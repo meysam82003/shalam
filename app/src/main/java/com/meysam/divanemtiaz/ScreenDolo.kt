@@ -9,6 +9,39 @@ import android.widget.LinearLayout
 class DoloBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(host, session) {
     private val rules get() = session.rules.dolo
 
+    private var promptedAt: Int? = null
+
+    override fun onShow() {
+        super.onShow()
+        if (DoloEngine.state(session).eliminationDue) promptElimination()
+        else promptedAt = null
+    }
+
+    private fun riskText(cut: DoloEliminationCut): String {
+        val named = cut.confirmed.joinToString("، ") { session.sides[it].name }
+        val tied = cut.tied.joinToString("، ") { session.sides[it].name }
+        return listOfNotNull(
+            named.takeIf { it.isNotBlank() }?.let { "در خطر حذف: $it" },
+            tied.takeIf { it.isNotBlank() }?.let { "${kit.n(cut.placesAtTie)} نفر از میان $it در خطر حذف‌اند" }
+        ).joinToString("\n")
+    }
+
+    private fun promptElimination(force: Boolean = false) {
+        val state = DoloEngine.state(session)
+        if (!state.eliminationDue || session.finished || (!force && promptedAt == session.rounds.size)) return
+        promptedAt = session.rounds.size
+        val cut = DoloEngine.eliminationCut(state, rules)
+        val body = kit.vertical().apply {
+            addView(kit.text(riskText(cut), TextStyle.HEADING, Royal.ivory, Gravity.CENTER))
+        }
+        kit.dialog("زمان حذف کم‌امتیازترین‌ها", null, body, listOf(
+            DialogAction("بررسی و حذف", ButtonKind.DANGER) {
+                host.push(DoloEliminationScreen(host, session, manual = false))
+            },
+            DialogAction("بازگشت به جدول", ButtonKind.SECONDARY)
+        )).show()
+    }
+
     override fun build(): View {
         val totals = GameEngine.totals(session)
         val st = DoloEngine.state(session)
@@ -22,15 +55,21 @@ class DoloBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(ho
                 "ماشین‌حساب ورق" to { host.push(DeckCalcScreen(host, GameType.DOLO, st.active.size)) }
             ) + commonMenu())),
             bottom = kit.horizontal().apply {
-                addView(kit.weight(kit.button("ثبت دست ${kit.n(played + 1)}", ButtonKind.PRIMARY, RoyalIcon.PLUS) {
-                    host.push(DoloHandScreen(host, session, null))
-                }))
+                val action = if (st.eliminationDue) {
+                    kit.button("بررسی و حذف", ButtonKind.DANGER, RoyalIcon.FLAG) { promptElimination(force = true) }
+                } else kit.button("ثبت دست ${kit.n(played + 1)}", ButtonKind.PRIMARY, RoyalIcon.PLUS) {
+                    if (DoloEngine.state(session).eliminationDue) promptElimination(force = true)
+                    else host.push(DoloHandScreen(host, session, null))
+                }
+                addView(kit.weight(action))
                 addView(kit.hgap(8))
                 addView(kit.iconButton(RoyalIcon.UNDO, "حذف ردیف آخر", ButtonKind.SECONDARY, 46) {
                     if (session.rounds.isEmpty()) kit.toast("هنوز دستی ثبت نشده است")
                     else kit.confirm("حذف ردیف آخر", "آخرین دست یا حذف ثبت‌شده برداشته شود؟", "حذف", true) {
                         session.rounds.removeAt(session.rounds.lastIndex)
+                        promptedAt = null
                         afterChange()
+                        if (host.current == this@DoloBoardScreen) promptElimination()
                     }
                 })
             }
@@ -48,6 +87,9 @@ class DoloBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(ho
                         addView(kit.text(stageText, TextStyle.LABEL, Royal.muted))
                     }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
                 })
+                if (st.handsInStage > 0 && st.active.size > 1) {
+                    addView(kit.text(riskText(DoloEngine.eliminationCut(st, rules)), TextStyle.LABEL_BOLD, Royal.crimsonLight), kit.spaced(6))
+                }
                 addView(kit.gap(6))
                 addView(kit.progress(if (st.handsDue > 0) st.handsInStage.toFloat() / st.handsDue else 0f, if (st.eliminationDue) Royal.crimson else Royal.turquoise, 6))
             })
@@ -319,6 +361,10 @@ class DoloHandScreen(host: MainActivity, private val session: GameSession, priva
     }
 
     private fun save() {
+        if (editIndex == null && DoloEngine.state(session).eliminationDue) {
+            host.pop()
+            return
+        }
         val numbers = MutableList(session.sides.size) { -1 }
         players.forEach { numbers[it] = declared.getValue(it) }
         val m = manual
@@ -348,8 +394,8 @@ class DoloHandScreen(host: MainActivity, private val session: GameSession, priva
 class DoloEliminationScreen(host: MainActivity, private val session: GameSession, private val manual: Boolean) : Screen(host) {
     private val rules get() = session.rules.dolo
     private val state = DoloEngine.state(session)
-    private val candidates = DoloEngine.candidates(session)
-    private val ticked: MutableSet<Int> = if (manual) mutableSetOf() else candidates.first.toMutableSet()
+    private val cut = DoloEngine.eliminationCut(state, rules)
+    private val ticked = if (manual) mutableSetOf() else cut.confirmed.toMutableSet()
 
     override val sessionId: Long get() = session.id
 
@@ -360,13 +406,12 @@ class DoloEliminationScreen(host: MainActivity, private val session: GameSession
             subtitle = "از کمترین امتیاز به بیشترین؛ کسانی که تیک دارند حذف می‌شوند",
             bottom = kit.button("حذف ${kit.n(ticked.size)} بازیکن انتخاب‌شده", ButtonKind.DANGER, RoyalIcon.FLAG) { confirm() }
         ) {
-            if (!manual && candidates.second) {
-                val cutScore = candidates.first.lastOrNull()?.let { state.stageTotals[it] }
-                val tied = sorted.filter { state.stageTotals[it] == cutScore }
+            if (!manual && cut.tied.isNotEmpty()) {
+                val cutScore = state.stageTotals[cut.tied.first()]
                 addView(kit.panel(PanelStyle.DANGER, 12).apply {
                     layoutParams = kit.spaced(8)
                     addView(kit.text("تساوی در خط حذف", TextStyle.HEADING, Royal.ivory, Gravity.CENTER))
-                    addView(kit.text("${tied.joinToString("، ") { session.sides[it].name }} با امتیاز ${kit.signed(cutScore ?: 0)} مساوی‌اند. طبق قانون ${kit.n(rules.tieExtraHands)} دست دیگر بازی می‌شود؛ داور می‌تواند خودش هم انتخاب کند.", TextStyle.LABEL, Royal.ivory, Gravity.CENTER))
+                    addView(kit.text("${cut.tied.joinToString("، ") { session.sides[it].name }} با امتیاز ${kit.signed(cutScore)} مساوی‌اند. داور می‌تواند ${kit.n(cut.placesAtTie)} نفر را از میان آن‌ها انتخاب کند یا ${kit.n(rules.tieExtraHands)} دست اضافه بدهد.", TextStyle.LABEL, Royal.ivory, Gravity.CENTER))
                     addView(kit.gap(6))
                     addView(kit.button("${kit.n(rules.tieExtraHands)} دست اضافه بازی شود", ButtonKind.PRIMARY, RoyalIcon.PLAY, 40) { extend(rules.tieExtraHands, "تساوی در خط حذف") })
                 })

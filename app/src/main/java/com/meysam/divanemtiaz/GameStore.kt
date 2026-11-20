@@ -414,6 +414,8 @@ object GameCodec {
         if (r.numbers.isNotEmpty()) put("num", ints(r.numbers))
         if (r.outcome >= 0) put("oc", r.outcome)
         if (r.raw.isNotEmpty()) put("raw", ints(r.raw))
+        if (r.dealerName.isNotBlank()) put("dealerName", r.dealerName)
+        if (r.dealerTeam in 0..1) put("dealerTeam", r.dealerTeam)
         put("teamA", r.score(0))
         put("teamB", r.score(1))
     }
@@ -431,7 +433,9 @@ object GameCodec {
             double = o.optInt("db", DoubleChoice.AUTO),
             numbers = o.optJSONArray("num")?.let(::intList) ?: emptyList(),
             outcome = o.optInt("oc", -1),
-            raw = o.optJSONArray("raw")?.let(::intList) ?: emptyList()
+            raw = o.optJSONArray("raw")?.let(::intList) ?: emptyList(),
+            dealerName = o.optString("dealerName", ""),
+            dealerTeam = o.optInt("dealerTeam", -1)
         )
     }
 

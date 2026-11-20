@@ -352,7 +352,7 @@ class ShalamHandScreen(host: MainActivity, private val session: GameSession, pri
         if (kind == RoundKind.SHALAM_HAND) {
             val value = bid
             if (value == null || !ShalamEngine.isValidBid(value, mode)) {
-                kit.toast("امتیاز وارد شده نامعتبر است")
+                kit.toast("تعهد باید مضرب ۵ و در محدودهٔ مجاز بازی باشد")
                 return
             }
             if (mode.maxBidIsShelem && value == mode.maxPoints) kind = RoundKind.SHALAM_SHELEM
@@ -455,11 +455,11 @@ class ShalamHandScreen(host: MainActivity, private val session: GameSession, pri
         box.removeAllViews()
         foot.removeAllViews()
         val value = taken
-        if (value == null || !ShalamEngine.isValidTaken(value, mode)) {
-            if (value != null) box.addView(kit.text("امتیاز وارد شده نامعتبر است", TextStyle.LABEL_BOLD, Royal.crimsonLight, Gravity.CENTER))
-            foot.addView(kit.button("ثبت این دست", ButtonKind.PRIMARY, RoyalIcon.CHECK) {
-                kit.toast("امتیاز حریف را وارد کنید")
-            })
+        if (value == null || !validTaken(value)) {
+            val message = if (takenText.isBlank()) "امتیاز حریف را وارد کنید"
+                else "امتیاز حریف باید مضرب ۵ و بین صفر و ${kit.n(mode.maxPoints - 5)} باشد"
+            if (takenText.isNotBlank()) box.addView(kit.text(message, TextStyle.LABEL_BOLD, Royal.crimsonLight, Gravity.CENTER))
+            foot.addView(kit.button("ثبت این دست", ButtonKind.PRIMARY, RoyalIcon.CHECK) { kit.toast(message) })
             return
         }
         val round = buildRound(DoubleChoice.AUTO)
@@ -509,10 +509,13 @@ class ShalamHandScreen(host: MainActivity, private val session: GameSession, pri
         }
     }
 
+    private fun validTaken(value: Int): Boolean =
+        ShalamEngine.isValidTaken(value, mode) || (editing?.taken == value && value in 0 until mode.maxPoints)
+
     private fun save(double: Int) {
         val value = taken
-        if (value == null || !ShalamEngine.isValidTaken(value, mode)) {
-            kit.toast("امتیاز وارد شده نامعتبر است")
+        if (value == null || !validTaken(value)) {
+            kit.toast("امتیاز حریف باید مضرب ۵ و در محدودهٔ مجاز باشد")
             return
         }
         val round = buildRound(double)

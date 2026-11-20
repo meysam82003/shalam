@@ -23,6 +23,25 @@ class RefereeFlowTest {
         assertNull(MenfiDeal.restore(listOf(0, 1, 2, 3), seats))
     }
 
+    @Test fun mustafaDealsThenBehzadAndEachRecordedDealerSurvivesChangingDirection() {
+        val seats = MenfiDeal.defaultSeats
+        val default = MenfiDeal.fromSeats(seats, first = 1)
+        val reverse = MenfiDeal.fromSeats(seats, first = 1, direction = MenfiDirection.CLOCKWISE)
+        assertEquals(MenfiDirection.COUNTERCLOCKWISE, default.direction)
+        assertEquals(listOf(1, 3, 0, 2, 1), (0..4).map(default::dealer))
+        assertEquals(listOf(1, 2, 0, 3, 1), (0..4).map(reverse::dealer))
+        val hand = Round(RoundKind.MENFI_HAND, emptyList(), numbers = listOf(7, 6), outcome = MenfiEngine.A_ONLY,
+            dealerName = "مصطفی", dealerTeam = 0)
+        val session = GameSession(36L, GameType.MENFI, listOf(a, b), listOf(hand), GameRules(), menfiDeal = reverse)
+        val restored = GameCodec.decodeSession(GameCodec.encodeSession(session))
+        GameEngine.recompute(restored)
+        assertEquals(reverse, restored.menfiDeal)
+        assertEquals("مصطفی", restored.rounds.single().dealerName)
+        assertEquals(0, restored.rounds.single().dealerTeam)
+        assertEquals(listOf(7, -6), restored.rounds.single().scores)
+        assertTrue(GameCodec.decodeRound(org.json.JSONObject().put("teamA", 7)).dealerName.isBlank())
+    }
+
     @Test fun previewUsesActualRulesAndNeverChangesTheSavedHands() {
         val game = GameSession(1L, GameType.MENFI, listOf(a, b),
             List(7) { if (it == 0) Round(RoundKind.FIXED, listOf(34, 35)) else Round(RoundKind.FIXED, listOf(0, 0)) }, GameRules())

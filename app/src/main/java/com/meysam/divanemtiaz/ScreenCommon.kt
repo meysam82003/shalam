@@ -297,6 +297,7 @@ fun Screen.roundRow(
     scores: List<String>,
     scoreColors: List<Int>,
     detail: String,
+    handLabel: String = "",
     onClick: (() -> Unit)?
 ): View = kit.horizontal().apply {
     background = PanelDrawable(kit.density, PanelStyle.FLAT, 14f)
@@ -308,6 +309,7 @@ fun Screen.roundRow(
     }, LinearLayout.LayoutParams(kit.dp(28), kit.dp(28)))
     addView(kit.hgap(8))
     addView(kit.vertical().apply {
+        if (handLabel.isNotBlank()) addView(kit.text(handLabel, TextStyle.BODY_BOLD, Royal.goldLight))
         addView(kit.horizontal().apply {
             scores.forEachIndexed { i, s ->
                 if (i > 0) addView(kit.text("|", TextStyle.LABEL, Royal.dim, Gravity.CENTER).apply { setPadding(kit.dp(6), 0, kit.dp(6), 0) })

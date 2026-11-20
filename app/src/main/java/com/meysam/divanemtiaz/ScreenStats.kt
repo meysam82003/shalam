@@ -98,6 +98,9 @@ fun Screen.shareRound(session: GameSession, index: Int) {
     val round = session.rounds.getOrNull(index) ?: return
     val hidden = session.game == GameType.MENFI && session.rules.menfi.hidden && !session.finished
     val card = shareFrame(session.game, "دست ${kit.n(index + 1)} • ${session.game.title}", session.sides.joinToString(" • ") { it.name }) {
+        round.dealerLabel().takeIf { it.isNotBlank() }?.let {
+            addView(kit.text(it, TextStyle.BODY_BOLD, Royal.goldLight, Gravity.CENTER), kit.spaced(8))
+        }
         val detail = describeRound(session, round)
         if (detail.isNotBlank() && !hidden) addView(kit.text(detail, TextStyle.LABEL, Royal.ivory, Gravity.CENTER), kit.spaced(8))
         session.sides.indices.filter { round.score(it) != 0 || session.game.isTeamGame || round.numbers.getOrElse(it) { -1 } >= 0 }.forEach { i ->

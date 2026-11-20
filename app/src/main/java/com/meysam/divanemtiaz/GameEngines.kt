@@ -37,7 +37,7 @@ object ShalamEngine {
     fun isValidBid(bid: Int, mode: ShalamModeRules): Boolean =
         bid >= MIN_TYPED_BID && bid <= mode.maxPoints && bid % 5 == 0
 
-    fun isValidTaken(taken: Int, mode: ShalamModeRules): Boolean = taken >= 0 && taken < mode.maxPoints
+    fun isValidTaken(taken: Int, mode: ShalamModeRules): Boolean = taken in 0 until mode.maxPoints && taken % 5 == 0
 
     fun isDoubleHand(bid: Int, taken: Int, rules: ShalamRules): Boolean =
         !isPositiveOnly(rules) && bid + taken > rules.mode.maxPoints && taken >= rules.mode.doubleLimit && rules.doubleType != DoubleType.DISABLED
@@ -426,6 +426,8 @@ data class DoloState(
     val eliminationDue: Boolean get() = active.size > 1 && handsDue > 0 && handsInStage >= handsDue
 }
 
+data class DoloEliminationCut(val confirmed: List<Int>, val tied: List<Int>, val placesAtTie: Int)
+
 object DoloEngine {
     fun minimum(players: Int, rules: DoloRules): Int = rules.minimumFor(players)
 
@@ -476,16 +478,24 @@ object DoloEngine {
         return DoloState(active, eliminatedAt, handsInStage, handsDue, stageTotals, extension)
     }
 
-    /** Lowest players for the cut, and whether a tie crosses the cut line. */
-    fun candidates(session: GameSession): Pair<List<Int>, Boolean> {
-        val st = state(session)
-        val count = session.rules.dolo.eliminateCount.coerceIn(1, (st.active.size - 1).coerceAtLeast(1))
-        val sorted = st.active.sortedWith(compareBy<Int> { st.stageTotals[it] }.thenBy { it })
+    /** Separate the players below the cutoff from those competing for the last elimination places. */
+    fun eliminationCut(state: DoloState, rules: DoloRules): DoloEliminationCut {
+        val count = rules.eliminateCount.coerceIn(1, (state.active.size - 1).coerceAtLeast(1))
+        val sorted = state.active.sortedWith(compareBy<Int> { state.stageTotals[it] }.thenBy { it })
         val cut = sorted.take(count)
         val next = sorted.getOrNull(count)
-        val tie = next != null && cut.isNotEmpty() && st.stageTotals[next] == st.stageTotals[cut.last()]
-        return cut to tie
+        if (next == null || state.stageTotals[next] != state.stageTotals[cut.last()]) {
+            return DoloEliminationCut(cut, emptyList(), 0)
+        }
+        val threshold = state.stageTotals[next]
+        val confirmed = cut.filter { state.stageTotals[it] < threshold }
+        return DoloEliminationCut(confirmed, sorted.filter { state.stageTotals[it] == threshold }, count - confirmed.size)
     }
+
+    fun candidates(session: GameSession): Pair<List<Int>, Boolean> =
+        eliminationCut(state(session), session.rules.dolo).let { cut ->
+            (cut.confirmed + cut.tied.take(cut.placesAtTie)) to cut.tied.isNotEmpty()
+        }
 
     fun isComplete(session: GameSession): Boolean = session.sides.size > 1 && state(session).active.size <= 1
 }

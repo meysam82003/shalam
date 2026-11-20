@@ -26,6 +26,7 @@ class MafiaDesignScreen(host: MainActivity, private var tab: Int = 0) : Screen(h
     private var emptyRoles: TextView? = null
     private var roleQuery = ""
     private var rosterQuery = ""
+    private var groupSource = false
     private var cardQuery = ""
     /** One cell per role / card for the life of the page (stable keys). */
     private val roleCells = HashMap<MafiaRole, RoleCell>()
@@ -136,7 +137,7 @@ class MafiaDesignScreen(host: MainActivity, private var tab: Int = 0) : Screen(h
     private fun playersTab(parent: LinearLayout) {
         val roster = host.repo.roster().filter { !it.isTeam }
         parent.addView(kit.section("بازیکنان این بازی (${kit.n(draft.players.size)})", RoyalIcon.PLAYERS))
-        if (draft.players.isEmpty()) parent.addView(kit.text("از فهرست پایین بازیکنان را انتخاب کنید. ترتیب این فهرست، ترتیب نشستن و صحبت است.", TextStyle.LABEL, Royal.muted, Gravity.CENTER), kit.spaced(8))
+        if (draft.players.isEmpty()) parent.addView(kit.text("گروه یا افراد را انتخاب کنید. ترتیب فهرست، ترتیب نشستن و صحبت است.", TextStyle.LABEL, Royal.muted, Gravity.CENTER), kit.spaced(8))
         draft.players.forEachIndexed { i, p ->
             parent.addView(kit.horizontal().apply {
                 background = PanelDrawable(kit.density, PanelStyle.FLAT, 14f)
@@ -153,6 +154,14 @@ class MafiaDesignScreen(host: MainActivity, private var tab: Int = 0) : Screen(h
                 addView(kit.hgap(4))
                 addView(kit.iconButton(RoyalIcon.CLOSE, "حذف از بازی", ButtonKind.CHIP, 36) { draft.players.removeAt(i); save() })
             })
+        }
+        parent.addView(SlidingTabs(host, kit, listOf("انتخاب از گروه بازی", "افراد"), if (groupSource) 0 else 1) { choice ->
+            groupSource = choice == 0
+            showTab(false)
+        }, kit.spaced(8))
+        if (groupSource) {
+            addGroups(parent)
+            return
         }
         parent.addView(kit.section("فهرست بازیکنان", RoyalIcon.USER, kit.iconButton(RoyalIcon.PLUS, "بازیکن جدید", ButtonKind.CHIP_GOLD, 40) { addPlayer() }))
         if (roster.isEmpty()) parent.addView(kit.text("هنوز بازیکنی ثبت نشده است؛ با + اضافه کنید.", TextStyle.LABEL, Royal.muted, Gravity.CENTER))
@@ -175,6 +184,39 @@ class MafiaDesignScreen(host: MainActivity, private var tab: Int = 0) : Screen(h
         }
         kit.searchFilter("جست‌وجوی بازیکن", tiles.zip(roster.map { it.name }), rosterQuery, minItems = 7) { rosterQuery = it }?.let { parent.addView(it, kit.spaced(8)) }
         parent.addView(kit.grid(3, tiles, 6))
+    }
+
+    private fun addGroups(parent: LinearLayout) {
+        val groups = host.mafia.groups()
+        for (i in 0 until groups.length()) {
+            val entry = groups.optJSONObject(i) ?: continue
+            val game = entry.optJSONObject("game")?.let { runCatching { MafiaCodec.decodeGame(it) }.getOrNull() } ?: continue
+            if (game.players.isEmpty()) continue
+            val name = entry.optString("name")
+            parent.addView(kit.listRow(kit.avatar(entry.optInt("avatar", (i * 5 + 2) % Emblems.COUNT), 40),
+                name, game.players.joinToString("، ") { it.name }) {
+                val apply = {
+                    val suggest = draft.roleCounts.isEmpty() || draft.roleCounts == scenario?.lineup(draft.players.size)
+                    draft.players.clear()
+                    game.players.forEach { p -> draft.players += MafiaPlayer(p.id, p.name, p.avatar) }
+                    if (suggest && draft.options.isEmpty()) scenario?.lineup(draft.players.size)?.let { roles ->
+                        draft.roleCounts.clear()
+                        draft.roleCounts.putAll(roles)
+                        draft.deck.clear()
+                        scenario?.takeUnless { it.setup.noCards }?.let { sc ->
+                            MafiaScenarios.matchMind(sc.cards, roles.keys).filter(MafiaCardRules::usable)
+                                .forEach { draft.deck += MafiaCardState(it) }
+                        }
+                    }
+                    save()
+                }
+                if (draft.players.isEmpty()) apply()
+                else kit.confirm("انتخاب گروه بازی", "بازیکنان فعلی با اعضای گروه «$name» جایگزین شوند؟", "انتخاب گروه", onConfirm = apply)
+            })
+        }
+        parent.addView(kit.button("مدیریت گروه‌ها", ButtonKind.SECONDARY, RoyalIcon.PLAYERS, 44) {
+            host.push(MafiaGroupsScreen(host))
+        }, kit.spaced(8))
     }
 
     private fun addPlayer() {

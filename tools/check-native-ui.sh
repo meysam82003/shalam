@@ -10,7 +10,7 @@ import glob, xml.etree.ElementTree as ET
 files=glob.glob('app/build/outputs/androidTest-results/**/TEST-*.xml',recursive=True)
 count=sum(int(ET.parse(path).getroot().get('tests',0)) for path in files)
 print('Native instrumentation tests actually executed:', count)
-if count<10: raise SystemExit('Expected all ten native tests, not an empty instrumentation run')
+if count<12: raise SystemExit('Expected twelve native tests, not an empty instrumentation run')
 PY
 coverage=$?
 if [ "$result" != 0 ]; then exit "$result"; fi

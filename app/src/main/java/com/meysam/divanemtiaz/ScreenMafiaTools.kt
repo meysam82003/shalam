@@ -78,6 +78,18 @@ class MafiaToolsScreen(host: MainActivity, gameId: Long) : MafiaScreen(host, gam
             flow += big("ترتیب نشستن", "جابه‌جایی صندلی‌ها و سر صحبت", ButtonKind.SECONDARY, RoyalIcon.SWAP) { host.push(MafiaSeatingScreen(host, gameId)) }
             if (!g.finished) flow += big("جایگزینی بازیکن", "یک نفر می‌رود و دیگری با نقش او می‌نشیند", ButtonKind.SECONDARY, RoyalIcon.USER) { substitute() }
             addView(kit.grid(2, flow, 8), kit.spaced(10))
+            if (!g.finished) {
+                addView(kit.switchRow("خودزنی مافیا در این بازی", "مافیا بتواند اعضای گروه خودش را هم برای شلیک انتخاب کند", g.extra["selfKill"] != "0") { enabled ->
+                    g.extra["selfKill"] = if (enabled) "1" else "0"
+                    store()
+                })
+                if (g.aliveHolder(MafiaRole.JACK_SPARROW) != null) {
+                    addView(kit.switchRow("اجازهٔ تکرار طلسم", "راوی در این بازی می‌تواند طلسم بازیکن قبلی را دوباره ثبت کند", g.extra["allowRepeatTalisman"] == "1") { enabled ->
+                        g.extra["allowRepeatTalisman"] = if (enabled) "1" else "0"
+                        store()
+                    })
+                }
+            }
 
             addView(kit.section("بازیکنان", RoyalIcon.PLAYERS))
             g.players.forEach { p -> addView(row(p)) }
