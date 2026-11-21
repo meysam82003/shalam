@@ -51,9 +51,12 @@ final class AdminMobile
         if ($s===null || Clock::now()>(int)$s['expires_at'] || Clock::now()-(int)$s['seen_at']>2592000) throw new ApiError('admin_unauthorized','دوباره وارد برنامهٔ مدیریت شوید.',401);
         $a=Db::one('SELECT * FROM {admins} WHERE id = ? AND active = 1',[$s['admin_id']]);
         if($a!==null && !hash_equals($s['password_stamp'],Crypto::hash($a['password_hash'])))throw new ApiError('admin_unauthorized','رمز مدیر تغییر کرده؛ دوباره وارد شوید.',401);
-        if($write && Clock::now()-(int)$s['created_at']>43200)throw new ApiError('admin_unauthorized','برای تغییر تنظیمات دوباره ورود دومرحله‌ای انجام دهید.',401);
+        if ($a===null) throw new ApiError('admin_unauthorized','دسترسی این حساب غیرفعال است.',401);
         Admin::$me=$a;
         if ($a===null || !Admin::can($page) || ($write && (($page!=='account' && !Admin::writable()) || (in_array($page,['adnetwork','ads','notices','features','plans','site'],true) && !in_array($a['role'],['owner','manager'],true))))) throw new ApiError('admin_forbidden','دسترسی مجاز نیست.',403);
+        if ($write && in_array($page,['admins','backups'],true) && Clock::now()-(int)$s['created_at']>43200) {
+            throw new ApiError('admin_reauth','برای تغییر مدیران یا نسخهٔ پشتیبان، یک بار دوباره وارد شوید.',403);
+        }
         if (!RateLimit::hit('mobile-admin:'.$a['id'],300,3600)) throw new ApiError('rate_limited','درخواست زیاد است.',429);
         Db::update('admin_mobile_sessions',['seen_at'=>Clock::now()],'token_hash = ?',[$s['token_hash']]);
         return $a;

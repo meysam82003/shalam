@@ -254,80 +254,129 @@ object MafiaNight {
         MafiaRoleText.explain(r)
     ).filter { it.isNotBlank() }.distinct().joinToString("\n")
 
-    /** Lead with the action, not the long role description or wake announcement. */
+    /** Short lines spoken directly to the waking player, specific to the selected action. */
     fun brief(g: MafiaGame, job: NightJob, mode: JobMode): String {
         val role = job.role
-        val custom = role?.let { MafiaRoleRegistry.user[it]?.prompt }
-        val action = when {
-            job.key == MAFIA_GROUP -> when (mode.label) {
-                "شلیک شب" -> if (mode.max == 1) "هدف شلیک شب را انتخاب کنید." else "هدف‌های شلیک امشب را انتخاب کنید."
-                "حس ششم", "ناتو" -> "بازیکن را انتخاب کنید و نقش او را حدس بزنید."
-                "سوداگری" -> "دو بازیکن را برای سوداگری انتخاب کنید."
-                "مرد قوی" -> "هدف شلیک ویژهٔ مرد قوی را انتخاب کنید."
-                "سم ساز" -> "یک نفر را برای مسموم کردن انتخاب کنید."
-                "ساول گودمن" -> "یک نفر را برای خرید و پیوستن به مافیا انتخاب کنید."
-                else -> MafiaGeneric.groupAbility(g, mode.label)?.second?.hint ?: mode.label
+        val custom = role?.let { MafiaRoleRegistry.user[it]?.prompt }?.trim()
+        if (!custom.isNullOrBlank()) return custom.lineSequence().map { it.trim() }.filter { it.isNotBlank() }.take(2).joinToString("\n")
+        if (job.key == INTRO) return "همه چشم‌ها بسته؛ هر نقشی که اسمش را می‌گویم، خودش را به من معرفی کند."
+
+        fun n(value: Int) = PersianText.digits(value)
+        val people = when {
+            mode.min == mode.max && mode.max == 1 -> "یک نفر"
+            mode.min == mode.max -> "${n(mode.max)} نفر"
+            mode.min <= 1 -> "تا ${n(mode.max)} نفر"
+            else -> "${n(mode.min)} تا ${n(mode.max)} نفر"
+        }
+        fun ability(a: MafiaAbility?): String {
+            if (mode.pool == TargetPool.SELF) return when (a) {
+                MafiaAbility.SAVE -> "اگر می‌خواهی خودت را از شلیک امشب نجات بدهی، اعلام کن."
+                MafiaAbility.ARMOR -> "اگر می‌خواهی برای خودت زره بگیری، اعلام کن."
+                else -> "اگر می‌خواهی از توانایی‌ات روی خودت استفاده کنی، علامت بده."
             }
-            job.key == ATTAR_ANTIDOTE -> "عطار تصمیم بگیرد پادزهر می‌دهد یا نه."
-            !custom.isNullOrBlank() -> custom.lineSequence().firstOrNull { it.isNotBlank() && !it.trim().endsWith("بیدار شود") }.orEmpty()
-            role != null && role.isGeneric -> {
-                val def = MafiaGeneric.def(role)
-                (if (mode.label == def?.altAbility?.title) def?.altAbility?.hint else def?.ability?.hint).orEmpty()
+            return when (a) {
+                MafiaAbility.SHOT -> "$people را برای شلیک نشان بده."
+                MafiaAbility.KILL -> "$people را برای خروج قطعی نشان بده."
+                MafiaAbility.SAVE -> "$people را برای نجات از تیر امشب نشان بده."
+                MafiaAbility.INQUIRY -> "$people را نشان بده تا بگویم استعلامشان مثبت است یا منفی."
+                MafiaAbility.COMPARE -> "دو نفر را نشان بده تا بگویم هم‌ساید هستند یا نه."
+                MafiaAbility.SILENCE -> "$people را نشان بده تا فردا حق صحبت نداشته باشند."
+                MafiaAbility.BLOCK -> "$people را نشان بده تا توانایی شبشان بسته شود."
+                MafiaAbility.GUESS_KILL -> "$people را نشان بده و نقششان را حدس بزن. حدس درست، باعث خروج می‌شود."
+                MafiaAbility.CONVERT -> "$people را نشان بده که فکر می‌کنی شهروند ساده‌اند و می‌توانند به مافیا بپیوندند."
+                MafiaAbility.REVIVE -> "از بین بازیکنان خارج‌شده $people را برای برگشت به بازی نشان بده."
+                MafiaAbility.ARMOR -> "$people را نشان بده تا زره بگیرند."
+                MafiaAbility.FRAME -> "$people را انتخاب کن تا استعلامشان امشب مثبت شود."
+                MafiaAbility.INVERT -> "$people را نشان بده تا جواب استعلامشان برعکس شود."
+                MafiaAbility.RECORD -> "$people را برای اجرای «${role?.tagline ?: mode.label}» نشان بده."
+                else -> "اگر می‌خواهی از توانایی‌ات استفاده کنی، علامت بده."
             }
-            role == MafiaRole.DOCTOR -> if (mode.max == 1) "یک نفر را برای نجات انتخاب کنید." else "تا ${PersianText.digits(mode.max)} نفر را برای نجات انتخاب کنید."
-            role == MafiaRole.MATADOR -> "برای بستن توانایی شب، یک شهروند را انتخاب کنید."
-            role == MafiaRole.NOSTRADAMUS -> "${PersianText.digits(mode.min)} نفر را نشان بده. تعداد مافیا را بشنو و سمتت را انتخاب کن."
-            role == MafiaRole.JACK_SPARROW -> "یک نفر را برای طلسم انتخاب کن. اگر او خارج شود، تو هم خارج می‌شوی."
-            role == MafiaRole.JIGSAW -> "سه نفر را نشان بده؛ اره دست نفر اول است."
-            role == MafiaRole.ZODIAC -> if (mode.word) "متن نامهٔ زودیاک را وارد کنید." else "هدف شلیک زودیاک را انتخاب کنید."
-            role == MafiaRole.COMMANDER -> if (mode.pool == TargetPool.NONE) "شلیک اسنایپر را تأیید یا لغو کنید." else "هدف شلیک فرمانده را انتخاب کنید."
-            role == MafiaRole.CLEVER -> if (mode.guessRole) "نقش را انتخاب کنید تا صاحبش مشخص شود." else "بازیکن را انتخاب کنید تا نقشش مشخص شود."
-            role == MafiaRole.CHURCHILL -> when {
-                g.night == 0 -> "بازیکنی را برای شرط خروج چرچیل انتخاب کنید."
-                mode.guessRole -> "بازیکن را انتخاب کنید و نقشش را برای حس ششم حدس بزنید."
-                else -> "هدف شلیک چرچیل را انتخاب کنید."
+        }
+        if (job.key == MAFIA_GROUP) {
+            return when (mode.label) {
+                "شلیک شب" -> "گروه مافیا، بیدار شوید. صاحب تیر، $people را برای شلیک امشب نشان بده."
+                "حس ششم" -> "پدرخوانده، یک نفر را نشان بده و نقش دقیقش را حدس بزن. امشب این کار جای شلیک است."
+                "ناتو" -> "ناتو، یک بازیکن را نشان بده و نقش دقیقش را حدس بزن."
+                "سوداگری" -> "پدرخوانده، اول کسی را نشان بده که باید حذف شود؛ بعد شهروند ساده‌ای را که برای خرید می‌خواهی."
+                "مرد قوی" -> "مرد قوی، یک نفر را برای حذف با توانایی ویژه‌ات نشان بده."
+                "سم ساز" -> "سم‌ساز، یک نفر را نشان بده تا سم را به او بدهی."
+                "ساول گودمن" -> "ساول گودمن، یک نفر را که فکر می‌کنی شهروند ساده است برای خرید نشان بده."
+                else -> MafiaGeneric.groupAbility(g, mode.label)?.let { (actor, action) -> "${actor.faName}، ${ability(action)}" }
+                    ?: "گروه مافیا، گزینهٔ امشب را اعلام کنید."
             }
-            role == MafiaRole.PROFESSIONAL -> "هدف شلیک را انتخاب کن. اگر شهروند باشد، خودت خارج می‌شوی."
-            role in setOf(MafiaRole.SNIPER, MafiaRole.FELON, MafiaRole.KILLER, MafiaRole.COMMANDO) ->
-                "بازیکن هدف شلیک را انتخاب کنید."
-            role == MafiaRole.DETECTIVE -> "یک نفر را نشان بده تا راوی استعلام مافیا بودنش را بدهد."
-            role == MafiaRole.CHARLATAN -> "یک نفر را انتخاب کن تا نتیجهٔ استعلامش برعکس شود."
-            role == MafiaRole.VOODOO -> "یک نفر را افسون کن و کلمهٔ ممنوعهٔ او را بگو."
-            role == MafiaRole.RESEARCHER -> "بازیکنی را برای پیوند محقق انتخاب کنید."
-            role == MafiaRole.SALESMAN -> "بازیکن هدف را برای گرفتن توانایی‌اش انتخاب کنید."
-            role == MafiaRole.REPORTER -> "یک بازیکن را برای استعلام خرید شدن انتخاب کنید."
-            role == MafiaRole.SABA -> "بازیکن هدف را برای گرفتن نقشش انتخاب کنید."
-            role == MafiaRole.CITIZEN_KANE -> "بازیکنی را که گمان می‌کنید مافیاست انتخاب کنید."
-            role == MafiaRole.JUPITER -> "یک نفر را برای محافظت در برابر یاکوزا انتخاب کنید."
-            role == MafiaRole.OCEAN || role == MafiaRole.MASON -> "یک شهروند را برای پیوستن به گروه انتخاب کنید."
-            role == MafiaRole.SMITH -> "بازیکنی را برای دریافت زره انتخاب کنید."
-            role == MafiaRole.SPECIAL_DETECTIVE -> "یک نفر را برای استعلام نقش مستقل انتخاب کنید."
-            role == MafiaRole.CAST_AWAY -> "بازیکنی را که گمان می‌کنید مافیاست انتخاب کنید."
-            role == MafiaRole.INHERITOR -> "بازیکنی را برای ارث بردن از او انتخاب کنید."
-            role == MafiaRole.CHAPLIN -> "بازیکنی را برای محافظت در برابر خرید انتخاب کنید."
-            role == MafiaRole.SNOWMAN -> "هدف گلولهٔ برفی را انتخاب کنید."
-            role == MafiaRole.HACKER -> "سه بازیکن را برای بررسی هکر انتخاب کنید."
-            role == MafiaRole.SALVATION_ANGEL -> "یکی از کشته‌شده‌های امشب را برای نجات انتخاب کنید."
-            role == MafiaRole.THIEF -> "دو نفر را به‌ترتیب انتخاب کنید؛ توانایی نفر اول روی نفر دوم اجرا می‌شود."
-            role == MafiaRole.GUARD -> "بازیکنانی را برای محافظت در برابر بازجو انتخاب کنید."
-            role == MafiaRole.GUARDIAN -> "بازیکنانی را برای محافظت در برابر بستن توانایی انتخاب کنید."
-            role == MafiaRole.INVESTIGATOR -> "یک شهروند را برای دیدن نقش و کار امشبش انتخاب کنید."
-            role == MafiaRole.FRAUD -> "بازیکنی را که گمان می‌کنید کارآگاه است انتخاب کنید."
-            role == MafiaRole.YAKUZA -> "یک بازیکن را برای پیوستن به مافیا انتخاب کنید."
-            role == MafiaRole.WITCHER -> "بازیکنی را انتخاب کنید تا اثر کارش به خودش برگردد."
-            role == MafiaRole.CORONA -> "بازیکنانی را برای آلوده‌کردن در شب معارفه انتخاب کنید."
-            role == MafiaRole.CONSTANTINE -> "یکی از بازیکنان خارج‌شده را برای بازگشت انتخاب کنید."
-            role == MafiaRole.WRECKER -> "بازیکنان هدف خرابکاری در تفنگ را انتخاب کنید."
-            role == MafiaRole.SHERLOCK_HOLMES -> "یک بازیکن را انتخاب کنید و نقش او را حدس بزنید."
-            role == MafiaRole.PRIEST -> "بازیکنان دارای حق صحبت اضافهٔ فردا را انتخاب کنید."
-            role == MafiaRole.SAINT -> "بازیکنان را برای محافظت در برابر افسون انتخاب کنید."
-            role == MafiaRole.SPIDER -> "بازیکنانی را برای پیوند عنکبوت انتخاب کنید."
-            role == MafiaRole.ATTAR -> "یک نفر را برای زهر دادن انتخاب کنید."
-            role == MafiaRole.PABLO -> "یک نفر را برای جابه‌جایی نقش با پدرخوانده انتخاب کنید."
-            role != null -> roleTask(g, role)
+        }
+        if (job.key == ATTAR_ANTIDOTE) return "عطار، به بازیکن مسموم پادزهر می‌دهی؟ با دست بله یا نه بگو."
+        if (job.key.startsWith("CARD_")) return when (job.key) {
+            cardKey(MafiaLastCard.VERTIGO) -> "دارندهٔ سرگیجه، یک نفر را نشان بده تا توانایی‌اش تا فردا بی‌اثر شود."
+            cardKey(MafiaLastCard.CARD_EXCHANGE) -> "دارندهٔ کارت‌به‌کارت، دو نفر را نشان بده تا نقش‌هایشان عوض شود."
+            cardKey(MafiaLastCard.FACE_OFF) -> "دارندهٔ تغییر چهره، یک نفر را نشان بده تا نقش تو و او جابه‌جا شود."
+            cardKey(MafiaLastCard.FINAL_SHOT) -> "دارندهٔ شلیک نهایی، یک نفر را برای شلیک امشب نشان بده."
+            cardKey(MafiaLastCard.LAST_VENOM) -> "دارندهٔ زهر آخر، یک نفر را برای خروج قطعی نشان بده."
             else -> job.prompt
         }
-        return action.lineSequence().firstOrNull { it.isNotBlank() }?.trim()?.ifBlank { job.title } ?: job.title
+
+        val line = when (role) {
+            MafiaRole.DOCTOR -> "$people را نشان بده تا از شلیک امشب نجات پیدا کنند."
+            MafiaRole.DOCTOR_LECTOR -> "یک نفر از مافیا را نشان بده تا امشب نجاتش بدهی."
+            MafiaRole.PSYCHOLOGIST, MafiaRole.NATASHA -> "یک نفر را نشان بده تا فردا حق صحبت نداشته باشد."
+            MafiaRole.MATADOR -> "یک شهروند را نشان بده تا توانایی شبش بسته شود."
+            MafiaRole.ILLUSIONIST -> "یک نفر را نشان بده تا توانایی‌اش تا شب بعد گرفته شود."
+            MafiaRole.NOSTRADAMUS -> "$people را نشان بده. بعد از شنیدن تعداد مافیا، سمتت را اعلام کن."
+            MafiaRole.JACK_SPARROW -> "یک نفر را طلسم کن. اگر او امشب یا فردا از بازی بیرون برود، تو هم بیرون می‌روی."
+            MafiaRole.JIGSAW -> "سه نفر را به ترتیب نشان بده. اره به نفر اول می‌رسد."
+            MafiaRole.ZODIAC -> if (mode.word) "پیامی را که فردا باید برای همه خوانده شود به من بده." else "یک نفر را برای شلیک امشب نشان بده."
+            MafiaRole.COMMANDER -> if (mode.pool == TargetPool.NONE) "می‌خواهی تیر اسنایپر شلیک شود؟ بله یا نه را نشان بده." else "یک نفر را برای شلیک امشب نشان بده."
+            MafiaRole.CLEVER -> if (mode.guessRole) "یک نقش بگو تا صاحب آن نقش را نشانت بدهم." else "یک نفر را نشان بده تا نقشش را به تو بگویم."
+            MafiaRole.CHURCHILL -> when {
+                g.night == 0 -> "یک نفر را نشان بده؛ خروج او از روز دوم به بعد تو را نامیرا می‌کند."
+                mode.guessRole -> "یک نفر را نشان بده و نقش دقیقش را حدس بزن."
+                else -> "یک نفر را برای شلیک امشب نشان بده."
+            }
+            MafiaRole.PROFESSIONAL -> "یک نفر را برای شلیک نشان بده؛ اگر شهروند باشد، خودت خارج می‌شوی."
+            MafiaRole.SNIPER, MafiaRole.FELON, MafiaRole.KILLER, MafiaRole.COMMANDO -> "یک نفر را برای شلیک امشب نشان بده."
+            MafiaRole.DETECTIVE -> "یک نفر را نشان بده تا بگویم استعلامش مثبت است یا منفی."
+            MafiaRole.CHARLATAN -> "یک نفر را نشان بده تا جواب استعلامش امشب برعکس شود."
+            MafiaRole.VOODOO -> "یک نفر را نشان بده و کلمه‌ای را بگو که فردا نباید به زبان بیاورد."
+            MafiaRole.DIE_HARD -> "می‌خواهی وضعیت بازیکنان خارج‌شده اعلام شود؟ با دست بله یا نه بگو."
+            MafiaRole.SLEEP_WALKER -> "می‌خواهی کار امشب مافیا را خنثی کنی؟ در این صورت خودت از بازی خارج می‌شوی."
+            MafiaRole.GUNMAN -> "$people را نشان بده و برای هر نفر بگو تفنگ جنگی می‌دهی یا مشقی."
+            MafiaRole.RUSSIAN_ROULETTE -> "یک نفر را برای تفنگ نشان بده و یک عدد از ۳ تا ۷ اعلام کن."
+            MafiaRole.BOMBER -> "یک نفر را برای بمب نشان بده و کد خنثی‌سازی از ۱ تا ۴ را بگو."
+            MafiaRole.INTERROGATOR -> "دو نفر را نشان بده تا فردا به بازپرسی بیایند."
+            MafiaRole.RESEARCHER -> "یک نفر را برای پیوند نشان بده. اگر مافیا باشد و تو خارج شوی، او هم خارج می‌شود."
+            MafiaRole.SALESMAN -> "یک نفر را نشان بده تا توانایی نقشش را از او بگیری."
+            MafiaRole.REPORTER -> "یک نفر را نشان بده تا بگویم آیا امشب مافیا او را خریده است."
+            MafiaRole.SABA -> "یک نفر را نشان بده تا نقشش را بگیری."
+            MafiaRole.CITIZEN_KANE -> "یک نفر را که به مافیا بودنش شک داری نشان بده. اگر درست باشد، فردا سایدش اعلام می‌شود."
+            MafiaRole.JUPITER -> "یک نفر را نشان بده تا یاکوزا نتواند امشب او را به مافیا تبدیل کند."
+            MafiaRole.OCEAN, MafiaRole.MASON -> "یک نفر را که فکر می‌کنی شهروند است برای پیوستن به گروه نشان بده."
+            MafiaRole.SMITH -> "یک نفر را نشان بده تا برای محافظت زره بگیرد."
+            MafiaRole.SPECIAL_DETECTIVE -> "یک نفر را نشان بده تا بگویم نقش مستقل دارد یا نه."
+            MafiaRole.CAST_AWAY -> "یک نفر را که فکر می‌کنی مافیاست نشان بده. اگر درست باشد، مافیا تو را می‌شناسد."
+            MafiaRole.INHERITOR -> "یک نفر را نشان بده تا اگر از بازی خارج شد، نقشش را به ارث ببری."
+            MafiaRole.CHAPLIN -> "یک نفر را نشان بده تا از خرید مافیا در امان باشد."
+            MafiaRole.SNOWMAN -> "یک نفر را برای گرفتن گلولهٔ برفی نشان بده."
+            MafiaRole.HACKER -> "سه نفر را نشان بده. اگر هر سه مافیا حساب شوند، هر سه از بازی خارج می‌شوند."
+            MafiaRole.SALVATION_ANGEL -> "اگر می‌خواهی کسی را نجات بدهی، یکی از بازیکنان کشته‌شدهٔ امشب را نشان بده."
+            MafiaRole.THIEF -> "دو نفر را به ترتیب نشان بده. توانایی نفر اول روی نفر دوم اجرا می‌شود."
+            MafiaRole.GUARD -> "$people را نشان بده تا بازجو نتواند از آن‌ها استعلام بگیرد."
+            MafiaRole.GUARDIAN -> "$people را نشان بده تا ماتادور یا شعبده‌باز توانایی‌شان را نبندد."
+            MafiaRole.INVESTIGATOR -> "یک شهروند را نشان بده تا نقش و کاری را که امشب کرده به تو بگویم."
+            MafiaRole.FRAUD -> "یک نفر را که فکر می‌کنی کارآگاه است نشان بده."
+            MafiaRole.YAKUZA -> "یک نفر را که فکر می‌کنی قابل خرید است برای پیوستن به مافیا نشان بده."
+            MafiaRole.WITCHER -> "یک نفر را نشان بده تا اثر کاری که امشب انجام می‌دهد به خودش برگردد."
+            MafiaRole.CORONA -> "$people را برای آلوده‌کردن در شب معارفه نشان بده."
+            MafiaRole.CONSTANTINE -> "یکی از بازیکنان خارج‌شده را نشان بده تا به بازی برگردد."
+            MafiaRole.WRECKER -> "$people را نشان بده تا تفنگشان از کار بیفتد."
+            MafiaRole.SHERLOCK_HOLMES -> "یک نفر را نشان بده و نقش دقیقش را حدس بزن."
+            MafiaRole.PRIEST -> "$people را نشان بده تا فردا فرصت صحبت اضافه داشته باشند."
+            MafiaRole.SAINT -> "$people را نشان بده تا افسونگر نتواند روی آن‌ها اثر بگذارد."
+            MafiaRole.SPIDER -> "$people را به هم بباف. اگر یکی فردا خارج شود، بقیه هم خارج می‌شوند."
+            MafiaRole.ATTAR -> "یک نفر را برای زهر دادن نشان بده."
+            MafiaRole.PABLO -> "یک نفر را نشان بده تا جای پدرخواندهٔ خارج‌شده را بگیرد."
+            else -> ability(MafiaGeneric.abilityOf(job, mode))
+        }
+        return "${job.title}، بیدار شو. $line"
     }
 
     // ------------------------------------------------------------------ who may be chosen

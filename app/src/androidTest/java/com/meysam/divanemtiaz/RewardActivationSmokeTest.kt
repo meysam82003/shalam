@@ -102,9 +102,9 @@ class RewardActivationSmokeTest {
             host.mafia.save(game)
             fun texts() = views(host.window.decorView).filterIsInstance<android.widget.TextView>()
             host.resetTo(HomeScreen(host), MafiaJobScreen(host, game.id, MafiaRole.MATADOR.name))
-            val short = texts().firstOrNull { it.text.toString().contains("برای بستن توانایی شب") }
+            val short = texts().firstOrNull { it.text.toString().contains("تا توانایی شبش بسته شود") }
             assertNotNull(short)
-            assertEquals(2, short!!.maxLines)
+            assertNull(short!!.ellipsize)
             assertTrue(texts().none { it.text.toString().contains("انجام کار منع خواهد شد") })
             assertTrue(texts().any { it.text.toString() == "انتخاب یک نفر" })
             val arrow = views(host.window.decorView).first { it.contentDescription?.toString() == "نمایش شرح کامل راوی" }

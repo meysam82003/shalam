@@ -1176,6 +1176,7 @@ final class ConfigPages
             $media = (int)self::post('media_id', '0');
             $sendAt = isset($_POST['send_now']) ? null : Admin::dtParse(self::post('send_at'));
             $endsAt = Admin::dtParse(self::post('ends_at'));
+            if (!isset($_POST['send_now']) && $sendAt === null) throw new ApiError('date', 'زمان شروع ارسال را انتخاب کنید.');
             $row = [
                 'title' => $title, 'body' => $body, 'target' => $target ?: null,
                 'media_id' => $media > 0 && Db::value("SELECT id FROM {media} WHERE id = ? AND kind = 'image'", [$media]) !== null ? $media : null,
@@ -1212,7 +1213,7 @@ final class ConfigPages
                   <div><label>نسخه‌ها</label><?php foreach (Notices::STORES as $k => $l) echo '<label class="check"><input type="checkbox" name="stores[]" value="' . $k . '"' . ($k !== 'direct' ? ' checked' : '') . '> ' . e($l) . '</label>'; ?></div>
                 </div>
                 <label class="check"><input type="checkbox" name="send_now" checked onchange="document.getElementById('nt-when').style.display=this.checked?'none':''"> ارسال از همین حالا</label>
-                <div class="row" id="nt-when" style="display:none"><div><label>شروع ارسال (به وقت تهران)</label><input type="datetime-local" name="send_at"></div></div>
+                <div class="row" id="nt-when" style="display:none"><div><label>شروع ارسال (به وقت تهران)</label><input type="datetime-local" name="send_at" data-hide-if-checked="send_now"></div></div>
                 <div class="row"><div><label>پایان (اختیاری)</label><input type="datetime-local" name="ends_at"></div></div>
                 <div class="row"><div style="flex:3"><input type="text" name="reason" placeholder="یادداشت (اختیاری)"></div><div style="flex:0"><button class="btn gold">ثبت اعلان</button></div></div>
               </form>
@@ -1567,7 +1568,11 @@ final class ConfigPages
                 elseif ($action === 'role' && isset(Admin::ROLES[self::post('role')]) && self::post('role') !== 'owner') Db::update('admins', ['role' => self::post('role')], 'id = ?', [$a['id']]);
                 elseif ($action === 'reset_totp') {
                     $secret = Totp::secret();
-                    Db::update('admins', ['totp_enc' => Crypto::encrypt($secret), 'totp_last_step' => 0], 'id = ?', [$a['id']]);
+                    Db::tx(function () use ($secret, $a) {
+                        Db::update('admins', ['totp_enc' => Crypto::encrypt($secret), 'totp_last_step' => 0], 'id = ?', [$a['id']]);
+                        Db::update('admin_mobile_sessions', ['revoked_at' => Clock::now()], 'admin_id = ? AND revoked_at IS NULL', [$a['id']]);
+                        Db::run('DELETE FROM {admin_mobile_challenges} WHERE admin_id = ?', [$a['id']]);
+                    });
                     $_SESSION['new_admin'] = [$a['username'], $secret];
                 } else throw new ApiError('action', 'اقدام نامعتبر است.');
                 Admin::audit('admin_' . $action, 'admin', $a['id'], $reason);
@@ -1636,7 +1641,11 @@ final class ConfigPages
                 Admin::flash('رمز عوض شد.');
             } else {
                 $secret = Totp::secret();
-                Db::update('admins', ['totp_enc' => Crypto::encrypt($secret), 'totp_last_step' => 0], 'id = ?', [$me['id']]);
+                Db::tx(function () use ($secret, $me) {
+                    Db::update('admins', ['totp_enc' => Crypto::encrypt($secret), 'totp_last_step' => 0], 'id = ?', [$me['id']]);
+                    Db::update('admin_mobile_sessions', ['revoked_at' => Clock::now()], 'admin_id = ? AND revoked_at IS NULL', [$me['id']]);
+                    Db::run('DELETE FROM {admin_mobile_challenges} WHERE admin_id = ?', [$me['id']]);
+                });
                 $_SESSION['new_admin'] = [$me['username'], $secret];
                 Admin::audit('admin_totp_reset', 'admin', $me['id'], 'self');
             }

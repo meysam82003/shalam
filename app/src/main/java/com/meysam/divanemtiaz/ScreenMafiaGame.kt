@@ -602,8 +602,12 @@ class MafiaJobScreen(host: MainActivity, gameId: Long, private val key: String) 
                     })
                 })
                 addView(kit.gap(6))
-                addView(kit.text(MafiaNight.brief(g, job, mode), TextStyle.BODY_BOLD, Royal.ivory, Gravity.CENTER, 2))
-                if (detailsExpanded) addView(kit.text(job.prompt, TextStyle.BODY, Royal.muted))
+                addView(kit.text(MafiaNight.brief(g, job, mode), TextStyle.LABEL_BOLD, Royal.ivory, Gravity.CENTER))
+                if (detailsExpanded) {
+                    addView(kit.divider())
+                    addView(kit.text("شرح کامل نقش", TextStyle.CAPTION, Royal.gold))
+                    addView(kit.text(job.prompt, TextStyle.BODY, Royal.muted))
+                }
             })
             if (record != null) {
                 addView(kit.panel(PanelStyle.SUCCESS, 12).apply {

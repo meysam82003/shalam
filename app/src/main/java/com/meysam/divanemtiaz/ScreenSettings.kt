@@ -96,6 +96,7 @@ class SettingsScreen(host: MainActivity, private var tab: Int = TAB_GENERAL) : S
         parent.addView(kit.choiceRow("نوع زمان", "خودکار: نسبت به سختی کلمه و نوع مسابقه", listOf(0 to "خودکار", 1 to "دستی"), if (d.manualTime) 1 else 0) { v -> save({ it.copy(manualTime = v == 1) }, redraw = true) })
         if (d.manualTime) parent.addView(kit.stepperRow("زمان دستی", "از ${kit.n(PantoEngine.MIN_TIME)} تا ${kit.n(PantoEngine.MAX_TIME)} ثانیه", d.seconds, PantoEngine.MIN_TIME, PantoEngine.MAX_TIME, PantoEngine.TIME_STEP,
             format = { "${kit.n(it)} ث" }) { v -> save({ it.copy(seconds = v) }) })
+        parent.addView(pantoExtraTimeSetting(d.extraTimeSeconds) { v -> save({ it.copy(extraTimeSeconds = v) }, redraw = true) })
         parent.addView(kit.section("صدا", RoyalIcon.PLAY))
         parent.addView(kit.switchRow("صدای بازی", "صدای پاسخ درست و نادرست، ثانیه‌های آخر و زنگ پایان (مشترک با جاسوس)", host.spy.sound()) { host.spy.setSound(it) })
         parent.addView(kit.section("واژه‌ها", RoyalIcon.CARDS))
@@ -119,6 +120,7 @@ class SettingsScreen(host: MainActivity, private var tab: Int = TAB_GENERAL) : S
         parent.addView(kit.stepperRow("زمان بازی", null, s.minutes, SpyEngine.MIN_MINUTES, SpyEngine.MAX_MINUTES, 1, format = { "${kit.n(it)} دقیقه" }) { v -> save({ it.copy(minutes = v) }) })
         parent.addView(kit.section("گزینه‌ها", RoyalIcon.SETTINGS))
         parent.addView(kit.switchRow("راهنمای دسته برای جاسوس", "جاسوس فقط دستهٔ کلمه (مثلاً «مکان») را می‌بیند؛ مناسب تازه‌کارها", s.spyHint) { v -> save({ it.copy(spyHint = v) }) })
+        parent.addView(kit.switchRow("نمایش نوبت پرسش", "در زمان بازی، سؤال‌کننده و نفر بعدی مشخص‌اند", s.questionTurns) { v -> save({ it.copy(questionTurns = v) }) })
         parent.addView(kit.switchRow("صدای بازی", "زنگ پایان زمان (مشترک با پانتومیم)", host.spy.sound()) { host.spy.setSound(it) })
         parent.addView(kit.section("کلمات", RoyalIcon.CARDS))
         val enabled = spyEnabledWords()

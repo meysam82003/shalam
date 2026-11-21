@@ -76,6 +76,7 @@ class PantoSetupScreen(host: MainActivity) : Screen(host) {
     private var rounds = defaults.rounds
     private var manual = defaults.manualTime
     private var seconds = defaults.seconds
+    private var extraTime = defaults.extraTimeSeconds
     private var referee = ""
 
     init {
@@ -90,10 +91,10 @@ class PantoSetupScreen(host: MainActivity) : Screen(host) {
     override fun build(): View = scaffold("مسابقهٔ جدید", "پانتومیم • ${mode.title}",
         bottom = kit.button("شروع مسابقه", ButtonKind.PRIMARY, RoyalIcon.PLAY, 54) { start() }) {
         addView(rulePresetButton("panto", capture = {
-            org.json.JSONObject().put("rounds", rounds).put("manual", manual).put("seconds", seconds).put("mode", mode.name)
+            org.json.JSONObject().put("rounds", rounds).put("manual", manual).put("seconds", seconds).put("extraTime", extraTime).put("mode", mode.name)
         }, apply = { data ->
             applyRulePreset("panto", data); val defaults = host.panto.defaults()
-            rounds = defaults.rounds; manual = defaults.manualTime; seconds = defaults.seconds
+            rounds = defaults.rounds; manual = defaults.manualTime; seconds = defaults.seconds; extraTime = defaults.extraTimeSeconds
             mode = runCatching { PantoMode.valueOf(data.optString("mode", "NORMAL")) }.getOrDefault(PantoMode.NORMAL)
             host.refresh()
         }), kit.spaced(10))
@@ -154,6 +155,7 @@ class PantoSetupScreen(host: MainActivity) : Screen(host) {
             if (manual) addView(kit.stepperRow("زمان دستی", "از ${kit.n(45)} تا ${kit.n(345)} ثانیه", seconds, PantoEngine.MIN_TIME, PantoEngine.MAX_TIME, PantoEngine.TIME_STEP,
                 format = { "${kit.n(it)} ث" }) { seconds = it })
         }
+        if (mode != PantoMode.FIVE) addView(pantoExtraTimeSetting(extraTime) { extraTime = it; host.refresh() })
         addView(kit.section("ناظر بی‌طرف (اختیاری)", RoyalIcon.EYE))
         addView(kit.settingRow(referee.ifBlank { "بدون ناظر" }, "یک نفر بی‌طرف برای داوری خطاها و پاسخ‌ها", kit.icon(RoyalIcon.EDIT, Royal.gold, 20)) {
             memberPicker(listOfNotNull(referee.takeIf { it.isNotBlank() }), 1, "ناظر بی‌طرف") { referee = it.firstOrNull() ?: ""; host.refresh() }
@@ -227,6 +229,7 @@ class PantoSetupScreen(host: MainActivity) : Screen(host) {
         val id = System.currentTimeMillis()
         val m = PantoEngine.create(id, mode, teams.map { PantoTeam(it.name.trim(), it.avatar, ArrayList(it.members), size = if (mode.individual) 1 else it.people) }, rounds, if (manual && mode != PantoMode.FIVE) seconds else null)
         m.referee = referee
+        m.extraTimeSeconds = if (mode == PantoMode.FIVE) 0 else extraTime
         host.panto.save(m)
         host.replace(PantoBoardScreen(host, id))
     }
@@ -508,7 +511,7 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
         setPadding(kit.dp(10), kit.dp(10), kit.dp(10), kit.dp(12))
         layoutParams = kit.spaced(10)
         ring = RingTimerView(host).apply {
-            totalMs = t.seconds * 1000L
+            totalMs = (t.seconds + if (t.extraTimeUsed) m.extraTimeSeconds else 0) * 1000L
             alertSeconds = if (m.mode == PantoMode.FIVE) 2 else 10
             label = if (phase == 2 && !wantRunning && !ended) "زمان متوقف است" else "زمان باقی‌مانده"
             runningSource = { timer?.running == true }
@@ -563,6 +566,17 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
                 if (phase == 2) addView(actionRow(t), kit.spaced(0).apply { topMargin = kit.dp(6) })
             }
             else -> addView(actionRow(t))
+        }
+        if (phase == 2 && m.mode != PantoMode.FIVE && m.extraTimeSeconds > 0 && !t.extraTimeUsed && t.remainingMs > 0) {
+            addView(kit.button("${kit.n(m.extraTimeSeconds)} ثانیه وقت اضافه", ButtonKind.GHOST, RoyalIcon.TIMER, 46) {
+                timer?.pause()
+                val remaining = timer?.remaining ?: t.remainingMs
+                if (PantoEngine.extendTurn(m, remaining)) {
+                    timer?.reset(t.remainingMs)
+                    store()
+                    host.refresh()
+                } else if (remaining <= 0) onTimeUp()
+            }, kit.spaced(6))
         }
     }
 
@@ -1006,3 +1020,7 @@ fun Screen.pantoCard(m: PantoMatch): View = kit.vertical().apply {
     contentDescription = "مسابقهٔ پانتومیم"
     setOnClickListener { kit.tap(it); host.push(if (m.finished) PantoResultScreen(host, m.id) else PantoBoardScreen(host, m.id)) }
 }
+
+fun Screen.pantoExtraTimeSetting(seconds: Int, onChange: (Int) -> Unit): View =
+    kit.choiceRow("وقت اضافه", "داور می‌تواند در هر نوبت یک بار زمان اضافه کند",
+        PantoEngine.extraTimeOptions.map { it to if (it == 0) "خاموش" else "${kit.n(it)} ثانیه" }, seconds, onChange)

@@ -164,6 +164,7 @@ class PantoTurn(
     /** Battle mode: position of the team acting now among the teams still in. */
     var jangiPos: Int = 0
 ) {
+    var extraTimeUsed = false
     val word: PantoWord? get() = words.getOrNull(index)
     val correct: Int get() = answers.count { it == true }
 }
@@ -176,6 +177,7 @@ class PantoMatch(val id: Long) {
     var rounds: Int = 3
     /** Manual time in seconds, or null for the automatic time of each mode. */
     var manualSeconds: Int? = null
+    var extraTimeSeconds: Int = 0
     var round: Int = 1
     /** Index of the team whose turn it is. */
     var current: Int = 0
@@ -219,6 +221,17 @@ object PantoEngine {
     /** The players' own words appear as a category once there are this many. */
     const val USER_WORDS_MIN = 10
     private const val LETTERS = "ضصثقفغعهخحجچشسیبلاتنمکگپظطزرذدئوژ"
+
+    val extraTimeOptions = listOf(0, 15, 30)
+
+    fun extendTurn(match: PantoMatch, remainingMs: Long): Boolean {
+        val turn = match.turn ?: return false
+        val bonus = match.extraTimeSeconds
+        if (match.mode == PantoMode.FIVE || bonus !in extraTimeOptions || bonus == 0 || turn.extraTimeUsed || remainingMs <= 0) return false
+        turn.remainingMs = remainingMs + bonus * 1000L
+        turn.extraTimeUsed = true
+        return true
+    }
 
     fun create(id: Long, mode: PantoMode, teams: List<PantoTeam>, rounds: Int, manualSeconds: Int?): PantoMatch {
         require(teams.size in MIN_TEAMS..MAX_TEAMS) { "teams" }
@@ -579,7 +592,7 @@ object PantoCodec {
     private fun word(o: JSONObject) = PantoWord(o.optInt("i"), o.optInt("c"), o.optInt("p"), o.optString("t"))
 
     fun encode(m: PantoMatch): JSONObject = JSONObject().apply {
-        put("id", m.id); put("mode", m.mode.code); put("rounds", m.rounds); m.manualSeconds?.let { put("manual", it) }
+        put("id", m.id); put("mode", m.mode.code); put("rounds", m.rounds); put("extraTime", m.extraTimeSeconds); m.manualSeconds?.let { put("manual", it) }
         put("round", m.round); put("current", m.current); put("golden", m.golden); put("goldenShown", m.goldenShown); put("referee", m.referee)
         put("finished", m.finished); put("created", m.createdAt); put("updated", m.updatedAt)
         put("used", JSONArray(m.usedSubjects.toList()))
@@ -595,7 +608,7 @@ object PantoCodec {
                 t.previousWord?.let { put("previousWord", word(it)) }
                 put("answers", JSONArray(t.answers.map { if (it == null) 0 else if (it) 1 else -1 }))
                 put("index", t.index); put("faults", t.faults); put("changed", t.wordChanged); put("sec", t.seconds)
-                put("rem", t.remainingMs); put("jpos", t.jangiPos)
+                put("rem", t.remainingMs); put("jpos", t.jangiPos); put("extraUsed", t.extraTimeUsed)
             })
         }
     }
@@ -603,6 +616,7 @@ object PantoCodec {
     fun decode(o: JSONObject): PantoMatch = PantoMatch(o.optLong("id")).apply {
         mode = PantoMode.of(o.optInt("mode", 1)); rounds = o.optInt("rounds", 3)
         manualSeconds = if (o.has("manual")) o.optInt("manual") else null
+        extraTimeSeconds = o.optInt("extraTime").takeIf { it in PantoEngine.extraTimeOptions } ?: 0
         round = o.optInt("round", 1); current = o.optInt("current"); golden = o.optBoolean("golden"); goldenShown = o.optBoolean("goldenShown"); referee = o.optString("referee")
         finished = o.optBoolean("finished"); createdAt = o.optLong("created"); updatedAt = o.optLong("updated", createdAt)
         o.optJSONArray("used")?.let { a -> for (i in 0 until a.length()) usedSubjects += a.optString(i) }
@@ -622,6 +636,7 @@ object PantoCodec {
                 t.optJSONArray("words")?.let { a -> for (i in 0 until a.length()) a.optJSONObject(i)?.let { words += word(it) } }
                 t.optJSONArray("answers")?.let { a -> for (i in 0 until a.length()) answers += when (a.optInt(i)) { 1 -> true; -1 -> false; else -> null } }
                 previousWord = t.optJSONObject("previousWord")?.let { word(it) }
+                extraTimeUsed = t.optBoolean("extraUsed")
                 index = t.optInt("index"); faults = t.optInt("faults"); wordChanged = t.optBoolean("changed"); jangiPos = t.optInt("jpos")
             }
         }
@@ -637,8 +652,10 @@ object PantoCodec {
 
 /** Matches, the used-word list (no repeats across matches) and the players' own words, in the app's store. */
 /** Starting values of the «مسابقهٔ جدید» page: rounds, and automatic or manual time. */
-data class PantoDefaults(val rounds: Int = 3, val manualTime: Boolean = false, val seconds: Int = 45) {
-    fun sane() = copy(rounds = rounds.coerceIn(PantoEngine.MIN_ROUNDS, PantoEngine.MAX_ROUNDS), seconds = seconds.coerceIn(PantoEngine.MIN_TIME, PantoEngine.MAX_TIME))
+data class PantoDefaults(val rounds: Int = 3, val manualTime: Boolean = false, val seconds: Int = 45, val extraTimeSeconds: Int = 0) {
+    fun sane() = copy(rounds = rounds.coerceIn(PantoEngine.MIN_ROUNDS, PantoEngine.MAX_ROUNDS),
+        seconds = seconds.coerceIn(PantoEngine.MIN_TIME, PantoEngine.MAX_TIME),
+        extraTimeSeconds = extraTimeSeconds.takeIf { it in PantoEngine.extraTimeOptions } ?: 0)
 }
 
 class PantoRepository(private val kv: KeyValueStore) {
@@ -669,10 +686,10 @@ class PantoRepository(private val kv: KeyValueStore) {
 
     /** Defaults of a new match, set in the app settings («پانتومیم»). */
     fun defaults(): PantoDefaults = kv.get(KEY_DEFAULTS)?.let { raw ->
-        runCatching { JSONObject(raw).let { PantoDefaults(it.optInt("r", 3), it.optBoolean("m"), it.optInt("s", 45)) } }.getOrNull()
+        runCatching { JSONObject(raw).let { PantoDefaults(it.optInt("r", 3), it.optBoolean("m"), it.optInt("s", 45), it.optInt("extra")) } }.getOrNull()
     }?.sane() ?: PantoDefaults()
 
-    fun saveDefaults(d: PantoDefaults) = kv.write(mapOf(KEY_DEFAULTS to JSONObject().put("r", d.rounds).put("m", d.manualTime).put("s", d.seconds).toString()))
+    fun saveDefaults(d: PantoDefaults) = kv.write(mapOf(KEY_DEFAULTS to JSONObject().put("r", d.rounds).put("m", d.manualTime).put("s", d.seconds).put("extra", d.extraTimeSeconds).toString()))
 
     /** Next id for an own word (kept above the bank's ids). */
     fun nextUserWordId(): Int = (userWords().maxOfOrNull { it.id } ?: USER_ID_BASE).coerceAtLeast(USER_ID_BASE) + 1

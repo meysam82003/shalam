@@ -105,13 +105,28 @@ class RefereeFlowTest {
         }
     }
 
+    @Test fun groupReadAloudTextNeverUsesTheShootersRealName() {
+        val game = MafiaGame(1L).apply {
+            night = 1
+            players += MafiaPlayer(1, "نام محرمانه", 0).apply { role = MafiaRole.GODFATHER }
+            repeat(4) { players += MafiaPlayer(it + 2, "شهروند", 0).apply { role = MafiaRole.CITIZEN } }
+        }
+        val job = MafiaNight.jobs(game).first { it.key == MafiaNight.MAFIA_GROUP }
+        val said = MafiaNight.brief(game, job, job.modes.first())
+        assertTrue(said.contains("صاحب تیر"))
+        assertFalse(said.contains("نام محرمانه"))
+        val sixth = MafiaNight.brief(game, job, job.modes.first { it.label == "حس ششم" })
+        assertTrue(sixth.contains("نقش دقیقش را حدس بزن"))
+        assertTrue(sixth.contains("جای شلیک"))
+    }
+
     @Test fun matadorSummaryLeadsWithTheTaskAndFullTextIsKept() {
         val game = MafiaGame(1L)
         val role = MafiaRole.MATADOR
         val mode = JobMode("", TargetPool.NON_MAFIA, 1, 1)
         val prompt = MafiaNight.rolePrompt(game, role)
         val job = NightJob(role.name, role.faName, role, role.side, role.glyph, prompt, listOf(mode), emptyList())
-        assertEquals("برای بستن توانایی شب، یک شهروند را انتخاب کنید.", MafiaNight.brief(game, job, mode))
+        assertEquals("ماتادور، بیدار شو. یک شهروند را نشان بده تا توانایی شبش بسته شود.", MafiaNight.brief(game, job, mode))
         assertTrue(prompt.contains("انجام کار منع خواهد شد"))
         assertTrue(prompt.lines().size > 2)
     }

@@ -61,6 +61,18 @@ scenario('native admin: TOTP, same permissions, all panel forms and genuine even
     foreach(['plans','features','gifts','ads','placements','notices','site','stores','paymethods','backups','admins','account','iranads','push'] as $page){$doc=NativePanel::handle(['query'=>'p='.$page,'verb'=>'GET']);check(count($doc['nodes'])>0,'native widgets generated from real '.$page.' controller');}
     $doc=NativePanel::document('<main><form method="post"><label>تعداد</label><input name="data[amount]" value="100"><input type="checkbox" name="pages[]" value="home" checked><button name="action" value="save">ذخیره</button></form></main>');
     check($doc[0]['fields'][0]['name']==='data[amount]'&&$doc[0]['fields'][1]['checked']&&$doc[0]['buttons'][0]['value']==='save','typed names, arrays and submit actions preserved');
+    $sessionHash=Crypto::hash($session['token']);
+    Db::update('admin_mobile_sessions',['created_at'=>Clock::now()-86400],'token_hash=?',[$sessionHash]);
+    check(AdminMobile::auth('notices',true)['username']===$name,'scheduled messages can be saved on the next day without re-login');
+    throws(fn()=>AdminMobile::auth('admins',true),'admin_reauth','aged token still requires fresh verification for administrator changes');
+    check(AdminMobile::auth('dashboard')['username']===$name,'sensitive action refusal keeps the normal session');
+    check(Admin::dtParse('2026-11-21T00:15')==='2026-11-20 20:45:00','Tehran scheduling crosses midnight correctly');
+    check(Admin::dtInput('2026-11-20 20:45:00')==='2026-11-21T00:15','stored UTC schedule restores Tehran time');
+    throws(fn()=>Admin::dtParse('2026-02-31T10:00'),'date','invalid calendar date rejected');
+    $notice=NativePanel::handle(['query'=>'p=notices','verb'=>'GET']);
+    check($notice['title']==='اعلان‌ها' || $notice['title']!=='','native page has the own section title');
+    $schedule=array_values(array_filter(array_merge(...array_map(fn($node)=>$node['fields']??[],$notice['nodes'])),fn($f)=>$f['name']==='send_at'));
+    check(count($schedule)===1&&$schedule[0]['type']==='datetime-local'&&$schedule[0]['hide_if_checked']==='send_now','native notice form uses a conditional date picker');
     $admin=AdminMobile::auth('dashboard');$events=AdminInbox::list($admin);check(count($events['items'])>=3,'real registrations appear in inbox');
     $reg=(int)Db::value('SELECT COUNT(*) FROM {admin_inbox} WHERE source_key=?',['registration:'.Users::byName('iran_ads_user')['id']]);AdminInbox::registration((int)Users::byName('iran_ads_user')['id']);check($reg===1&&(int)Db::value('SELECT COUNT(*) FROM {admin_inbox} WHERE source_key=?',['registration:'.Users::byName('iran_ads_user')['id']])===1,'registration event is not duplicated');
     $purchase=Db::one("SELECT id FROM {purchases} WHERE status='verified' LIMIT 1");if($purchase!==null){AdminInbox::purchase((int)$purchase['id']);AdminInbox::purchase((int)$purchase['id']);check((int)Db::value('SELECT COUNT(*) FROM {admin_inbox} WHERE source_key=?',['purchase:'.$purchase['id']])===1,'verified purchase notification is idempotent');}
