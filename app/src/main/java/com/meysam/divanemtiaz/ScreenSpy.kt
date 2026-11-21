@@ -91,6 +91,9 @@ class SpyHomeScreen(host: MainActivity) : Screen(host) {
             addView(kit.switchRow("راهنمای دسته برای جاسوس", "جاسوس فقط دستهٔ کلمه (مثلاً «مکان») را می‌بیند؛ مناسب تازه‌کارها", s.spyHint) { v ->
                 host.spy.saveSettings(host.spy.settings().copy(spyHint = v))
             })
+            addView(kit.switchRow("نمایش نوبت پرسش", "نام سؤال‌کننده و پاسخ‌دهنده مشخص می‌شود", s.questionTurns) { v ->
+                host.spy.saveSettings(host.spy.settings().copy(questionTurns = v))
+            })
             addView(kit.switchRow("صدای بازی", "زنگ پایان زمان", host.spy.sound()) { host.spy.setSound(it) })
             val games = host.spy.games().filter { it.finished }
             if (games.isNotEmpty()) {
@@ -220,6 +223,19 @@ class SpyTimerScreen(host: MainActivity, private val gameId: Long) : Screen(host
                 addView(ring, LinearLayout.LayoutParams(kit.dp(236), kit.dp(236)))
                 addView(kit.text(if (over) "زمان تمام شد" else "بازیکنان به نوبت از یکدیگر سؤال بپرسند", TextStyle.BODY_BOLD, Royal.ivory, Gravity.CENTER))
             })
+            if (game.questionTurns && !over && game.players.isNotEmpty()) {
+                val next = SpyEngine.nextAsker(game)
+                addView(kit.panel(PanelStyle.SELECTED, 14).apply {
+                    addView(kit.text("نوبت پرسش", TextStyle.CAPTION, Royal.muted))
+                    addView(kit.text("${game.players.getOrElse(game.asker) { "" }} از ${game.players[next]} می‌پرسد", TextStyle.HEADING, Royal.ivory))
+                    addView(kit.button("نوبت بعدی", ButtonKind.SECONDARY, RoyalIcon.NEXT, 46) {
+                        game.asker = next
+                        game.remainingMs = timer?.remaining ?: game.remainingMs
+                        host.spy.save(game)
+                        host.refresh()
+                    }, kit.spaced(6))
+                }, kit.spaced(10))
+            }
             addView(kit.settingRow("سؤال اول را ${game.players.getOrElse(game.starter) { "" }} می‌پرسد", "بعد هر نفر از نفر کناری‌اش می‌پرسد",
                 kit.iconButton(RoyalIcon.SWAP, "قرعهٔ دوباره", ButtonKind.CHIP, 40) {
                     host.spy.game(gameId)?.let { st -> SpyEngine.newStarter(st, Random.Default); st.remainingMs = timer?.remaining ?: st.remainingMs; host.spy.save(st) }

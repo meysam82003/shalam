@@ -374,8 +374,8 @@ final class SalesPages
         if ($status !== '') { $where[] = 'p.status = ?'; $params[] = $status; }
         if (in_array($store, Plans::STORES, true)) { $where[] = 'p.store = ?'; $params[] = $store; }
         if ($q !== '') { $where[] = '(u.username_norm LIKE ? OR p.order_id = ? OR p.sku = ?)'; $params[] = '%' . strtolower($q) . '%'; $params[] = $q; $params[] = $q; }
-        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $from)) { $where[] = 'p.created_at >= ?'; $params[] = $from . ' 00:00:00'; }
-        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $to)) { $where[] = 'p.created_at <= ?'; $params[] = $to . ' 23:59:59'; }
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $from)) { $where[] = 'p.created_at >= ?'; $params[] = Admin::dtParse($from . 'T00:00'); }
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $to)) { $where[] = 'p.created_at <= ?'; $params[] = Clock::sql(Clock::ts(Admin::dtParse($to . 'T23:59')) + 59); }
         $w = implode(' AND ', $where);
         $sql = "FROM {purchases} p JOIN {users} u ON u.id = p.user_id LEFT JOIN {plans} pl ON pl.id = p.plan_id WHERE $w";
         if (isset($_GET['csv'])) {
@@ -392,7 +392,7 @@ final class SalesPages
               <div><label>وضعیت</label><select name="status"><option value="">همه</option><?php foreach (['verified', 'signature_verified', 'pending', 'rejected', 'refunded', 'revoked'] as $s) echo '<option value="' . $s . '"' . ($status === $s ? ' selected' : '') . '>' . strip_tags(Admin::statusBadge($s)) . '</option>'; ?></select></div>
               <div><label>فروشگاه</label><select name="store"><option value="">همه</option><option value="bazaar"<?= $store === 'bazaar' ? ' selected' : '' ?>>بازار</option><option value="myket"<?= $store === 'myket' ? ' selected' : '' ?>>مایکت</option></select></div>
               <div><label>کاربر / سفارش / SKU</label><input type="search" name="q" value="<?= e($q) ?>"></div>
-              <div><label>از تاریخ (میلادی)</label><input type="date" name="from" value="<?= e($from) ?>"></div>
+              <div><label>از تاریخ</label><input type="date" name="from" value="<?= e($from) ?>"></div>
               <div><label>تا تاریخ</label><input type="date" name="to" value="<?= e($to) ?>"></div>
               <div><button class="btn">اعمال</button> <a class="btn ghost" href="index.php?<?= e($qs) ?>&csv=1">خروجی CSV</a></div>
             </form>
@@ -775,7 +775,7 @@ final class SalesPages
 
             <div class="card"><h3>درآمد تبلیغات و اسپانسر</h3>
               <form method="post" class="row"><?= Admin::csrfField() ?>
-                <div><label>تاریخ (میلادی)</label><input type="date" name="day" value="<?= gmdate('Y-m-d') ?>" required></div>
+                <div><label>تاریخ</label><input type="date" name="day" value="<?= (new DateTimeImmutable('now', new DateTimeZone('Asia/Tehran')))->format('Y-m-d') ?>" required></div>
                 <div><label>منبع</label><select name="source"><option value="tapsell">تپسل</option><option value="direct">تبلیغ مستقیم</option><option value="sponsor">اسپانسر</option><option value="other">سایر</option></select></div>
                 <div><label>مبلغ (تومان)</label><input type="number" name="amount" min="0" required></div>
                 <div><label>برچسب</label><select name="label"><option value="real">واقعی (از صورتحساب)</option><option value="estimated">تخمینی</option><option value="manual">ثبت دستی</option></select></div>

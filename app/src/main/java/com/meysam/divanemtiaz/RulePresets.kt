@@ -92,21 +92,21 @@ object RulePresetPolicy {
 
 fun Screen.captureRulePreset(scope: String): JSONObject = when (scope) {
     "mafia" -> RulePresetPolicy.captureMafia(host.mafia.settings())
-    "panto" -> host.panto.defaults().let { JSONObject().put("rounds", it.rounds).put("manual", it.manualTime).put("seconds", it.seconds) }
-    "spy" -> host.spy.settings().let { JSONObject().put("players", it.players).put("spies", it.spies).put("minutes", it.minutes).put("hint", it.spyHint) }
+    "panto" -> host.panto.defaults().let { JSONObject().put("rounds", it.rounds).put("manual", it.manualTime).put("seconds", it.seconds).put("extraTime", it.extraTimeSeconds) }
+    "spy" -> host.spy.settings().let { JSONObject().put("players", it.players).put("spies", it.spies).put("minutes", it.minutes).put("hint", it.spyHint).put("questionTurns", it.questionTurns) }
     else -> RulePresetPolicy.capture(settings, scope)
 }
 fun Screen.defaultRulePreset(scope: String): JSONObject = when (scope) {
     "mafia" -> RulePresetPolicy.captureMafia(MafiaSettings())
-    "panto" -> PantoDefaults().let { JSONObject().put("rounds", it.rounds).put("manual", it.manualTime).put("seconds", it.seconds) }
-    "spy" -> SpySettings().let { JSONObject().put("players", it.players).put("spies", it.spies).put("minutes", it.minutes).put("hint", it.spyHint) }
+    "panto" -> PantoDefaults().let { JSONObject().put("rounds", it.rounds).put("manual", it.manualTime).put("seconds", it.seconds).put("extraTime", it.extraTimeSeconds) }
+    "spy" -> SpySettings().let { JSONObject().put("players", it.players).put("spies", it.spies).put("minutes", it.minutes).put("hint", it.spyHint).put("questionTurns", it.questionTurns) }
     else -> RulePresetPolicy.capture(AppSettings(), scope).apply { if (scope == "league") put("_factory", true) }
 }
 fun Screen.applyRulePreset(scope: String, rules: JSONObject) {
     when (scope) {
         "mafia" -> host.mafia.saveSettings(RulePresetPolicy.applyMafia(host.mafia.settings(),rules))
-        "panto" -> host.panto.saveDefaults(PantoDefaults(rules.optInt("rounds", 3), rules.optBoolean("manual"), rules.optInt("seconds", 45)).sane())
-        "spy" -> host.spy.saveSettings(SpySettings(rules.optInt("players", 6).coerceIn(SpyEngine.MIN_PLAYERS, SpyEngine.MAX_PLAYERS), rules.optInt("spies", 1).coerceAtLeast(1).coerceAtMost(rules.optInt("players", 6).coerceAtLeast(2) - 1), rules.optInt("minutes", 5).coerceIn(SpyEngine.MIN_MINUTES, SpyEngine.MAX_MINUTES), rules.optBoolean("hint")))
+        "panto" -> host.panto.saveDefaults(PantoDefaults(rules.optInt("rounds", 3), rules.optBoolean("manual"), rules.optInt("seconds", 45), rules.optInt("extraTime")).sane())
+        "spy" -> host.spy.saveSettings(SpySettings(rules.optInt("players", 6).coerceIn(SpyEngine.MIN_PLAYERS, SpyEngine.MAX_PLAYERS), rules.optInt("spies", 1).coerceAtLeast(1).coerceAtMost(rules.optInt("players", 6).coerceAtLeast(2) - 1), rules.optInt("minutes", 5).coerceIn(SpyEngine.MIN_MINUTES, SpyEngine.MAX_MINUTES), rules.optBoolean("hint"), rules.optBoolean("questionTurns")))
         else -> host.updateSettings { RulePresetPolicy.apply(it, scope, rules) }
     }
 }

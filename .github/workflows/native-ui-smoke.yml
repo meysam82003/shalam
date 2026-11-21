@@ -45,6 +45,8 @@ jobs:
           path: |
             app/build/outputs/androidTest-results/
             app/build/reports/androidTests/
+            admin-app/build/outputs/androidTest-results/
+            admin-app/build/reports/androidTests/
             ui-screenshots/
             native-ui-tests.log
             native-ui-crashes.log

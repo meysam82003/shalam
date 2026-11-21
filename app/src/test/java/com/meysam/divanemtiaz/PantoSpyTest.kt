@@ -219,6 +219,33 @@ class PantoSpyTest {
         assertEquals(true, g.spiesWin)
     }
 
+    @Test fun extraTimeCanOnlyBeUsedOnceAndSurvivesReload() {
+        val m = match(PantoMode.NORMAL).apply {
+            extraTimeSeconds = 15
+            turn = PantoTurn(0, null, seconds = 45, remainingMs = 21_000L)
+        }
+        assertFalse(PantoEngine.extendTurn(m, 0))
+        assertTrue(PantoEngine.extendTurn(m, 21_000L))
+        val restored = PantoCodec.decode(PantoCodec.encode(m))
+        assertEquals(36_000L, restored.turn?.remainingMs)
+        assertFalse(PantoEngine.extendTurn(restored, 31_000L))
+        restored.mode = PantoMode.FIVE
+        restored.turn!!.extraTimeUsed = false
+        assertFalse(PantoEngine.extendTurn(restored, 3_000L))
+    }
+
+    @Test fun guidedSpyQuestionsFollowSeatingAndPersistWithoutRevealingTheRole() {
+        val g = SpyEngine.start(1, SpySettings(questionTurns = true), emptyList(), spyWords, Random(11))
+        assertEquals(g.starter, g.asker)
+        g.asker = g.players.lastIndex
+        assertEquals(0, SpyEngine.nextAsker(g))
+        val back = SpyCodec.decode(SpyCodec.encode(g))
+        assertTrue(back.questionTurns)
+        assertEquals(g.asker, back.asker)
+        assertEquals(g.spies, back.spies)
+        assertFalse(SpyCodec.decode(org.json.JSONObject()).questionTurns)
+    }
+
     @Test fun teamsOfAnySizeRotateThePerformer() {
         val big = PantoTeam("بزرگ", members = ArrayList((1..50).map { "نفر$it" }))
         val m = PantoEngine.create(9, PantoMode.NORMAL, listOf(big, PantoTeam("کوچک", size = 12)), 3, null)

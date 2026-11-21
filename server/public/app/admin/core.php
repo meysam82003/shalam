@@ -235,6 +235,7 @@ final class Admin
           <?php $body(); ?>
         </main></div>
         <script src="../assets/js/admin.js"></script>
+        <script src="../assets/js/admin-calendar.js?v=1"></script>
         </body></html><?php
     }
 
@@ -327,7 +328,8 @@ final class Admin
 
     public static function dtInput(?string $sql): string
     {
-        return $sql === null ? '' : gmdate('Y-m-d\TH:i', (int)Clock::ts($sql) + 12600);
+        return $sql === null ? '' : (new DateTimeImmutable('@' . Clock::ts($sql)))
+            ->setTimezone(new DateTimeZone('Asia/Tehran'))->format('Y-m-d\TH:i');
     }
 
     /** datetime-local (Tehran time) → UTC SQL. */
@@ -335,7 +337,8 @@ final class Admin
     {
         $v = trim((string)$v);
         if ($v === '') return null;
-        $ts = strtotime($v . ' UTC');
-        return $ts === false ? null : Clock::sql($ts - 12600);
+        $date = DateTimeImmutable::createFromFormat('!Y-m-d\TH:i', $v, new DateTimeZone('Asia/Tehran'));
+        if ($date === false || $date->format('Y-m-d\TH:i') !== $v) throw new ApiError('date', 'تاریخ یا ساعت انتخاب‌شده معتبر نیست.');
+        return Clock::sql($date->getTimestamp());
     }
 }
