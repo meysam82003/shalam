@@ -1,0 +1,93 @@
+name: Publish the verified Divan 5.6.5 release
+on:
+  push:
+    branches: [codex/publish-5.6.5]
+    paths: [.github/workflows/publish-5.6.5.yml]
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    if: github.repository == 'meysam82003/shalam'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: meysam82003/shalam
+      RELEASE_SHA: e0ca4496a66e7e9a48c05d9c90c132dceea3f9f2
+      RELEASE_TAG: v5.6.5
+      VALIDATION_RUN: '44900856600'
+      NATIVE_RUN: '44900856620'
+      SIGNER: bdf49332de48f6e06e3d55c380a11479243ab404291151df8de1f9f4bf25d0aa
+    steps:
+      - name: Package the exact validated artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          for run in "$VALIDATION_RUN" "$NATIVE_RUN"; do
+            gh api "repos/$GH_REPO/actions/runs/$run" |
+              jq -e --arg sha "$RELEASE_SHA" '.head_sha == $sha and .conclusion == "success"' >/dev/null
+          done
+          mkdir -p release-assets
+          apk() {
+            local id="$1" archive_entry="$2" asset="$3"
+            gh api "repos/$GH_REPO/actions/artifacts/$id" |
+              jq -e --arg sha "$RELEASE_SHA" --argjson run "$VALIDATION_RUN"                 '.expired == false and .workflow_run.id == $run and .workflow_run.head_sha == $sha' >/dev/null
+            gh api "repos/$GH_REPO/actions/artifacts/$id/zip" > "$RUNNER_TEMP/$id.zip"
+            unzip -p "$RUNNER_TEMP/$id.zip" "$archive_entry" > "release-assets/$asset"
+          }
+          apk 14706565200 app-bazaar-release.apk Divan-Emtiaz-Bazaar-v5.6.5.apk
+          apk 14706172099 app-myket-release.apk Divan-Emtiaz-Myket-v5.6.5.apk
+          apk 14706241701 app-direct-release.apk Divan-Emtiaz-Site-v5.6.5.apk
+          apk 14706330913 admin-app-release.apk Divan-Admin-v1.1.0.apk
+          gh api repos/$GH_REPO/actions/artifacts/14706305417 |
+            jq -e --arg sha "$RELEASE_SHA" --argjson run "$VALIDATION_RUN"               '.expired == false and .workflow_run.id == $run and .workflow_run.head_sha == $sha' >/dev/null
+          gh api repos/$GH_REPO/actions/artifacts/14706305417/zip > release-assets/Divan-Emtiaz-Web-Server-v5.6.5.zip
+          unzip -tq release-assets/Divan-Emtiaz-Web-Server-v5.6.5.zip
+          unzip -l release-assets/Divan-Emtiaz-Web-Server-v5.6.5.zip > "$RUNNER_TEMP/bundle-list.txt"
+          grep -Fq 'server/public/assets/calendar/iran-years.json' "$RUNNER_TEMP/bundle-list.txt"
+          grep -Fq 'webapp/build/play/index.html' "$RUNNER_TEMP/bundle-list.txt"
+          SDK="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          for file in release-assets/*.apk; do
+            result="$("$SDK/apksigner" verify --print-certs "$file")"
+            [[ "$result" == *"$SIGNER"* ]]
+            info="$("$SDK/aapt" dump badging "$file")"
+            package="$(sed -n '/^package: /{p;q;}' <<< "$info")"
+            case "$file" in
+              *Admin*) [[ "$package" == *"name='com.meysam.divanadmin' versionCode='2' versionName='1.1.0'"* ]] ;;
+              *Site*) [[ "$package" == *"name='com.meysam.divanemtiaz.site' versionCode='32' versionName='5.6.5'"* ]] ;;
+              *) [[ "$package" == *"name='com.meysam.divanemtiaz' versionCode='32' versionName='5.6.5'"* ]] ;;
+            esac
+            printf '%s — %s\n' "$file" "$package"
+          done
+          (cd release-assets && sha256sum *.apk *.zip > SHA256SUMS.txt)
+
+      - name: Publish GitHub Release v5.6.5
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/divan-release.md" <<'EOF'
+          ## دیوان امتیاز ۵.۶.۵ و مدیریت دیوان ۱.۱.۰
+
+          - **بازار و مایکت** — APK هر فروشگاه برای به‌روزرسانی همان نسخه آماده است. کد ساخت ۳۲ و شناسهٔ برنامه `com.meysam.divanemtiaz` است.
+          - **مافیا** — متن کوتاه راوی با نقش و کار انتخابی عوض می‌شود. شرح کامل با فلش باز می‌شود.
+          - **مدیریت** — ورود ماندگار برای کارهای روزمره، دسته‌بندی و جست‌وجوی بخش‌ها، انتخاب تاریخ شمسی و ساعت تهران در سایت پنل و اپ.
+          - **پانتومیم و جاسوس** — وقت اضافهٔ یک‌باره در هر نوبت پانتومیم و گزینهٔ نمایش سؤال‌کننده و پاسخ‌دهنده در جاسوس.
+          - **وب و سرور** — فایل ZIP شامل نسخهٔ وب و سرور است. تغییرات پنل روی دامنه با جایگزینی این بسته فعال می‌شوند.
+
+          هر چهار APK با گواهی رسمی دیوان امتیاز امضا شده‌اند.
+
+          [گزارش کامل نسخه](https://github.com/meysam82003/shalam/blob/e0ca4496a66e7e9a48c05d9c90c132dceea3f9f2/docs/admin-narrator-5.6.5.md) · [تست ساخت و وب](https://github.com/meysam82003/shalam/actions/runs/44900856600) · [تست Android 5 و Android 15](https://github.com/meysam82003/shalam/actions/runs/44900856620)
+          EOF
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            if ! gh api "repos/$GH_REPO/git/ref/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+              gh api --method POST "repos/$GH_REPO/git/refs" -f "ref=refs/tags/$RELEASE_TAG" -f "sha=$RELEASE_SHA" >/dev/null
+            fi
+            [[ "$(gh api "repos/$GH_REPO/git/ref/tags/$RELEASE_TAG" --jq .object.sha)" == "$RELEASE_SHA" ]]
+            gh release create "$RELEASE_TAG" --verify-tag --latest --title 'دیوان امتیاز ۵.۶.۵'               --notes-file "$RUNNER_TEMP/divan-release.md" release-assets/*
+          fi
+          [[ "$(gh api "repos/$GH_REPO/git/ref/tags/$RELEASE_TAG" --jq .object.sha)" == "$RELEASE_SHA" ]]
+          gh release view "$RELEASE_TAG" --json url,isDraft,assets |
+            jq -e '.isDraft == false and (.assets | length) == 6'
