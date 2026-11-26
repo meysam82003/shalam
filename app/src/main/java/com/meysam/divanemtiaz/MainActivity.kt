@@ -708,9 +708,7 @@ class MainActivity : Activity() {
             val canvas = Canvas(bitmap)
             BackdropDrawable(resources.displayMetrics.density).apply { setBounds(0, 0, bitmap.width, bitmap.height) }.draw(canvas)
             view.draw(canvas)
-            val dir = java.io.File(cacheDir, ShareProvider.DIR).apply { mkdirs() }
-            dir.listFiles()?.forEach { it.delete() }
-            val file = java.io.File(dir, "divan-${System.currentTimeMillis()}.png")
+            val file = java.io.File(shareDirectory(), "divan-${System.currentTimeMillis()}.png")
             file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
             bitmap.recycle()
             val uri = Uri.parse("content://${ShareProvider.authority(packageName)}/${file.name}")
@@ -730,10 +728,7 @@ class MainActivity : Activity() {
     /** Sends a text file (a backup) to any app the user picks, e.g. a messenger or cloud drive. */
     fun shareFile(name: String, text: String, mime: String) {
         try {
-            val dir = java.io.File(cacheDir, ShareProvider.DIR).apply { mkdirs() }
-            val cutoff = System.currentTimeMillis() - 24 * 60 * 60 * 1000
-            dir.listFiles()?.filter { it.lastModified() < cutoff }?.forEach { it.delete() }
-            val file = java.io.File(dir, name)
+            val file = java.io.File(shareDirectory(), name)
             file.writeText(text, Charsets.UTF_8)
             val uri = Uri.parse("content://${ShareProvider.authority(packageName)}/${file.name}")
             val send = Intent(Intent.ACTION_SEND).apply {
@@ -746,6 +741,12 @@ class MainActivity : Activity() {
         } catch (e: Exception) {
             kit.toast("ارسال فایل ممکن نشد")
         }
+    }
+
+    private fun shareDirectory() = java.io.File(cacheDir, ShareProvider.DIR).apply {
+        mkdirs()
+        val cutoff = System.currentTimeMillis() - 24 * 60 * 60 * 1000L
+        listFiles()?.filter { it.lastModified() < cutoff }?.forEach { it.delete() }
     }
 
     /** Reads settings again after a backup replaced them. */

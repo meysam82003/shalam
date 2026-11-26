@@ -20,6 +20,7 @@ class GameTransferTest {
         val deal = MenfiDeal.fromSeats(MenfiDeal.defaultSeats, first = 1)
         val fixture = league.matches.single()
         val game = GameSession(42L, GameType.MENFI, listOf(a, b), rules = rules, menfiDeal = deal)
+        league.pastGames += 99L // An old game was deleted from history independently of its league.
         game.rounds += Round(RoundKind.MENFI_HAND, listOf(4, 6), numbers = listOf(4, 6), outcome = MenfiEngine.BOTH,
             dealerName = "مصطفی", dealerTeam = 0)
         assertTrue(LeagueEngine.attach(league, fixture.id, game, false, src::session))
@@ -35,6 +36,8 @@ class GameTransferTest {
         val text = GameTransfer(source).export(TransferTarget(TransferKind.LEAGUE, league.id), false)
         val target = transfer.import(text, false)
         val imported = destRepo.league(target.id)!!
+        assertTrue(imported.pastGames.isEmpty())
+        assertEquals(listOf(99L), src.league(league.id)!!.pastGames)
         val match = imported.matches.single()
         val resumed = destRepo.session(match.games.single())!!
         assertTrue(GameTransfer.importedLeague(dest, imported.id))

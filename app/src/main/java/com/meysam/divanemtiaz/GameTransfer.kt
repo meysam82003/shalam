@@ -25,10 +25,14 @@ class GameTransfer(private val store: KeyValueStore) {
             TransferKind.GAME -> GameCodec.encodeSession(requireNotNull(games.session(target.id)))
             TransferKind.LEAGUE -> {
                 val league = requireNotNull(games.league(target.id))
-                val sessions = references(league).map { id ->
-                    GameCodec.encodeSession(requireNotNull(games.session(id)))
+                val sessions = references(league).mapNotNull(games::session).associateBy { it.id }
+                // History can be cleared independently of the league. Export the games that still exist.
+                for (i in league.matches.indices) {
+                    val match = league.matches[i]
+                    league.matches[i] = match.copy(games = match.games.filter(sessions::containsKey))
                 }
-                out.put("sessions", JSONArray(sessions))
+                league.pastGames.retainAll(sessions.keys)
+                out.put("sessions", JSONArray(sessions.values.map(GameCodec::encodeSession)))
                 GameCodec.encodeLeague(league)
             }
             TransferKind.PANTO -> PantoCodec.encode(requireNotNull(panto.match(target.id)))
