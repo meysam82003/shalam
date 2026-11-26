@@ -8,7 +8,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 
 const val APP_VERSION_NAME = "5.6.3"
-const val APP_VERSION_LABEL = "نسخهٔ ۵.۶.۱"
+const val APP_VERSION_LABEL = "نسخهٔ ۵.۶.۶"
 
 class SplashScreen(host: MainActivity) : Screen(host) {
     /**
@@ -138,6 +138,9 @@ class HomeScreen(host: MainActivity) : Screen(host) {
         )
         column.addView(kit.grid(2, tiles, 10), kit.spaced(10))
         column.addView(spyTile(), kit.spaced(6))
+        column.addView(kit.button("انتقال بازی و لیگ", ButtonKind.SECONDARY, RoyalIcon.SHARE, 48) {
+            host.push(TransferScreen(host))
+        }, kit.spaced(8))
         column.addView(kit.section("دیوان", RoyalIcon.CROWN))
         column.addView(kit.vertical().apply {
             background = PanelDrawable(kit.density, PanelStyle.NORMAL, 22f)

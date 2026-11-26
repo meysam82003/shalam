@@ -294,7 +294,12 @@ class PantoBoardScreen(host: MainActivity, matchId: Long) : PantoScreen(host, ma
             else -> "نوبت ${cur.name}"
         }
         return scaffold("پانتومیم • ${m.mode.title}", roundTitle(),
-            actions = listOf(kit.iconButton(RoyalIcon.RULES, "قوانین", ButtonKind.SECONDARY, 44) { rulesDialog() }),
+            actions = listOf(
+                kit.iconButton(RoyalIcon.SHARE, "انتقال مسابقه", ButtonKind.SECONDARY, 44) {
+                    transferGame(TransferKind.PANTO, matchId)
+                },
+                kit.iconButton(RoyalIcon.RULES, "قوانین", ButtonKind.SECONDARY, 44) { rulesDialog() }
+            ),
             bottom = kit.vertical().apply {
                 addView(kit.button(startLabel, ButtonKind.PRIMARY, RoyalIcon.PLAY, 54) { startTurn() })
                 if (m.turn == null && m.mode != PantoMode.JANGI) {
@@ -480,7 +485,14 @@ class PantoPlayScreen(host: MainActivity, matchId: Long) : PantoScreen(host, mat
         timer = Countdown(t.remainingMs, { ms -> onTick(ms) }, { onTimeUp() })
         if (wantRunning && !ended) host.post(0) { if (wantRunning && !ended) timer?.start() }
         return scaffold(if (m.mode == PantoMode.JANGI) roundTitle() else team.name, "${m.mode.title} • ${roundTitle()}" + (t.choice?.let { " • ${it.title}" } ?: ""),
-            actions = listOf(kit.iconButton(RoyalIcon.RULES, "قوانین", ButtonKind.SECONDARY, 44) { rulesDialog() }),
+            actions = listOf(
+                kit.iconButton(RoyalIcon.SHARE, "انتقال مسابقه", ButtonKind.SECONDARY, 44) {
+                    t.remainingMs = timer?.remaining ?: t.remainingMs
+                    store()
+                    transferGame(TransferKind.PANTO, matchId)
+                },
+                kit.iconButton(RoyalIcon.RULES, "قوانین", ButtonKind.SECONDARY, 44) { rulesDialog() }
+            ),
             bottom = controls(t)) {
             if (m.mode == PantoMode.JANGI || m.mode == PantoMode.FIVE) {
                 val active = if (m.mode == PantoMode.JANGI) m.inside.getOrNull(t.jangiPos) else t.team

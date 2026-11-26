@@ -25,7 +25,11 @@ class ShareProvider : ContentProvider() {
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor =
         ParcelFileDescriptor.open(fileFor(uri), ParcelFileDescriptor.MODE_READ_ONLY)
 
-    override fun getType(uri: Uri): String = if (uri.lastPathSegment?.endsWith(".json") == true) "application/json" else "image/png"
+    override fun getType(uri: Uri): String = when {
+        uri.lastPathSegment?.endsWith(".divan.json") == true -> GameTransfer.MIME
+        uri.lastPathSegment?.endsWith(".json") == true -> "application/json"
+        else -> "image/png"
+    }
 
     override fun query(uri: Uri, projection: Array<out String>?, selection: String?, selectionArgs: Array<out String>?, sortOrder: String?): Cursor {
         val file = fileFor(uri)

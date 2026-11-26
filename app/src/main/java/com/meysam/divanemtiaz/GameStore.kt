@@ -349,6 +349,7 @@ object GameCodec {
         session.endedAt?.let { put("endedAt", it) }
         put("label", session.label)
         if (session.leagueId != 0L) put("league", session.leagueId)
+        session.leagueSideA?.let { put("leagueSideA", it) }
         session.menfiDeal?.let {
             put("menfiDeal", JSONArray(it.order))
             put("menfiSeats", JSONArray(it.seats))
@@ -394,6 +395,7 @@ object GameCodec {
             endedAt = if (o.has("endedAt")) o.optLong("endedAt") else null,
             label = o.optString("label", ""),
             leagueId = o.optLong("league", 0L),
+            leagueSideA = o.optInt("leagueSideA", -1).takeIf { it in 0..1 },
             menfiDeal = o.optJSONArray("menfiDeal")?.let { a ->
                 val seats = o.optJSONArray("menfiSeats")
                 MenfiDeal.restore(List(a.length().coerceAtMost(5)) { a.optInt(it, -1) },

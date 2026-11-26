@@ -21,7 +21,10 @@ abstract class MafiaScreen(host: MainActivity, val gameId: Long) : Screen(host) 
 
     fun load(): Boolean {
         g = host.mafia.game(gameId) ?: return false
-        MafiaRoleRegistry.activate(host.mafia.scenario(g.extra["scenario"]))
+        val transfer = GameTransfer.mafiaContext(host.repo.store, gameId)
+        val scenario = if (transfer == null) host.mafia.scenario(g.extra["scenario"])
+            else transfer.optJSONObject("scenario")?.let { MafiaScenario.fromJson(it) }
+        MafiaRoleRegistry.activate(scenario, transfer?.let { MafiaRoleRegistry.decode(it.optJSONObject("roles")?.toString()) })
         return true
     }
 
@@ -432,6 +435,7 @@ class MafiaGameScreen(host: MainActivity, gameId: Long) : MafiaScreen(host, game
                 pickPlayers("لیست نفرات خروج انضباطی", sent, 1, sent.size, false) { ids -> ids.forEach { MafiaFlow.returnPlayer(g, it) }; store(); host.refresh() }
             }
         }
+        items += DialogAction("انتقال بازی به گوشی دیگر") { transferGame(TransferKind.MAFIA, gameId) }
         items += DialogAction("گزارش بازی") { host.push(MafiaReportScreen(host, gameId)) }
         if (g.snapshots.size > 1) items += DialogAction("بازگشت به گذشته") { host.push(MafiaPastScreen(host, gameId)) }
         items += DialogAction("یادداشت گرداننده") { note() }

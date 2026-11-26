@@ -14,7 +14,7 @@ import kotlin.math.abs
 abstract class BoardScreen(host: MainActivity, val session: GameSession) : Screen(host) {
     override val audioScope: String? get() = if (session.game == GameType.SHALAM) "shalam" else null
     override val sessionId: Long get() = session.id
-    override val featureKey: String? get() = if (session.leagueId != 0L) "leagues" else null
+    override val featureKey: String? get() = if (session.leagueId != 0L && !GameTransfer.importedLeague(host.repo.store, session.leagueId)) "leagues" else null
     private var shownAt = 0L
     private var active = false
     protected var timerLabel: TextView? = null
@@ -80,6 +80,12 @@ abstract class BoardScreen(host: MainActivity, val session: GameSession) : Scree
         "نمودار بازی" to { gameChartDialog(session) },
         if (session.game.isTeamGame && (session.leagueId == 0L || host.repo.league(session.leagueId) == null))
             "افزودن این بازی به لیگ" to { addToLeague(session) { host.refresh() } } else null,
+        "انتقال بازی به گوشی دیگر" to {
+            host.repo.save(session.copy().apply {
+                if (active) elapsedMs += System.currentTimeMillis() - shownAt
+            })
+            transferGame(TransferKind.GAME, session.id)
+        },
         "اشتراک تصویر وضعیت بازی" to { shareSession(session) },
         "ثبت تقلب / جریمه" to { penaltyDialog(session) { afterChange() } },
         "ویرایش جمع امتیازها" to { adjustTotalsDialog(session) { afterChange() } },

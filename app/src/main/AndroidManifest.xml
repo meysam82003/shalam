@@ -10,6 +10,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Keeps the few-times-a-day notification check scheduled after the phone restarts. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
     <application android:name="com.meysam.divanpush.DivanPushApplication"
         android:allowBackup="true"
         android:fullBackupContent="@xml/backup_rules"
@@ -27,6 +29,11 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/vnd.divan.game+json" />
             </intent-filter>
             <!-- «Back to the app» after a web payment: only opens the app and asks the server; never proof of payment. -->
             <intent-filter>

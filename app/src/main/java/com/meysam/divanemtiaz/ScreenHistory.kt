@@ -17,6 +17,9 @@ class ResultScreen(host: MainActivity, private val session: GameSession) : Scree
         return scaffold(
             title = "نتیجهٔ بازی ${session.game.title}",
             subtitle = sessionSubtitle(session),
+            actions = listOf(kit.iconButton(RoyalIcon.SHARE, "انتقال بازی به گوشی دیگر", ButtonKind.SECONDARY, 44) {
+                transferGame(TransferKind.GAME, session.id)
+            }),
             bottom = kit.vertical().apply {
                 val league = session.leagueId.takeIf { it != 0L }?.let { host.repo.league(it) }
                 if (league != null) {
@@ -24,7 +27,9 @@ class ResultScreen(host: MainActivity, private val session: GameSession) : Scree
                     val st = match?.let { LeagueEngine.state(league, it) { id -> host.repo.session(id) } }
                     if (match != null && st != null && st.ready && !st.decided && st.openGame == null) {
                         addView(kit.button("بازی بعدی همین تیم‌ها در لیگ", ButtonKind.PRIMARY, RoyalIcon.PLAY) {
-                            host.resetTo(HomeScreen(host), LeagueListScreen(host), LeagueScreen(host, league.id))
+                            host.resetTo(HomeScreen(host),
+                                if (GameTransfer.importedLeague(host.repo.store, league.id)) TransferScreen(host) else LeagueListScreen(host),
+                                LeagueScreen(host, league.id))
                             val fresh = host.repo.league(league.id)
                             val freshMatch = fresh?.matches?.firstOrNull { it.id == match.id }
                             if (fresh != null && freshMatch != null) host.current?.startLeagueGame(fresh, freshMatch)
@@ -57,6 +62,10 @@ class ResultScreen(host: MainActivity, private val session: GameSession) : Scree
                 addView(kit.text(winnerText, TextStyle.TITLE, Royal.goldLight, Gravity.CENTER))
                 addView(kit.text(reason(totals), TextStyle.LABEL, Royal.muted, Gravity.CENTER))
             })
+            if (session.game == GameType.MENFI) {
+                addView(kit.text("اختلاف امتیاز · ${kit.n(abs(totals[0].toLong() - totals[1].toLong()))}",
+                    TextStyle.BODY_BOLD, Royal.turquoiseLight, Gravity.CENTER), kit.spaced(6))
+            }
             if (session.game.isTeamGame) {
                 addView(kit.horizontal(Gravity.TOP).apply {
                     layoutParams = kit.spaced(10)
@@ -165,7 +174,9 @@ class ResultScreen(host: MainActivity, private val session: GameSession) : Scree
 
     private fun backToLeague() {
         val league = host.repo.league(session.leagueId) ?: return
-        host.resetTo(HomeScreen(host), LeagueListScreen(host), LeagueScreen(host, league.id))
+        host.resetTo(HomeScreen(host),
+                                if (GameTransfer.importedLeague(host.repo.store, league.id)) TransferScreen(host) else LeagueListScreen(host),
+                                LeagueScreen(host, league.id))
     }
 
     private fun rematch() {

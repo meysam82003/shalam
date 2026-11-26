@@ -254,7 +254,7 @@ class MainActivity : Activity() {
         if (Notices.offersWanted(this) || Notices.reminders(this)) Notices.schedule(this)
         // Opened from a notification or a payment page: act once the first page is on screen.
         // (Behind the logo screen it waits for the logo to hand over to home; that hand-over clears pending posts.)
-        if (intent?.data != null || intent?.hasExtra(Notices.EXTRA_TARGET) == true) {
+        if (intent?.data != null || intent?.hasExtra(Notices.EXTRA_TARGET) == true || TransferPlatform.receivedFile(intent) != null) {
             if (stack.lastOrNull() is SplashScreen) openAfterSplash = intent else post(500) { openFromIntent(intent) }
         }
     }
@@ -267,6 +267,11 @@ class MainActivity : Activity() {
     }
 
     fun openFromIntent(intent: android.content.Intent?) {
+        TransferPlatform.receivedFile(intent)?.let { file ->
+            if (stack.lastOrNull() is SplashScreen) openAfterSplash = intent
+            else current?.readTransferFile(file)
+            return
+        }
         val data = intent?.data
         if (data != null && data.scheme == "divan" && data.host == "pay" && ProState.pendingOrder != null) {
             if (current !is ProScreen) push(ProScreen(this)) else current?.onShow()
@@ -592,9 +597,26 @@ class MainActivity : Activity() {
     }
 
     @Deprecated("Deprecated in Java")
+    private var pendingTransferScan: ((String?) -> Unit)? = null
+
+    fun scanTransfer(onResult: (String?) -> Unit) {
+        if (!TransferPlatform.available() || pendingTransferScan != null) return
+        pendingTransferScan = onResult
+        if (runCatching { TransferPlatform.startScan(this) }.isFailure) {
+            pendingTransferScan = null
+            kit.toast("دوربین برای اسکن باز نشد")
+        }
+    }
+
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         @Suppress("DEPRECATION")
         super.onActivityResult(requestCode, resultCode, data)
+        if (TransferPlatform.isScan(requestCode)) {
+            val callback = pendingTransferScan
+            pendingTransferScan = null
+            callback?.invoke(TransferPlatform.result(requestCode, resultCode, data))
+            return
+        }
         if (requestCode != REQUEST_DOCUMENT) return
         val callback = pendingResult ?: return
         pendingResult = null
@@ -637,7 +659,8 @@ class MainActivity : Activity() {
     fun shareFile(name: String, text: String, mime: String) {
         try {
             val dir = java.io.File(cacheDir, ShareProvider.DIR).apply { mkdirs() }
-            dir.listFiles()?.forEach { it.delete() }
+            val cutoff = System.currentTimeMillis() - 24 * 60 * 60 * 1000
+            dir.listFiles()?.filter { it.lastModified() < cutoff }?.forEach { it.delete() }
             val file = java.io.File(dir, name)
             file.writeText(text, Charsets.UTF_8)
             val uri = Uri.parse("content://${ShareProvider.authority(packageName)}/${file.name}")
@@ -647,7 +670,7 @@ class MainActivity : Activity() {
                 clipData = android.content.ClipData.newRawUri(name, uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            startActivity(Intent.createChooser(send, "ارسال فایل پشتیبان").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+            startActivity(Intent.createChooser(send, if (mime == GameTransfer.MIME) "ارسال بازی یا لیگ" else "ارسال فایل پشتیبان").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
         } catch (e: Exception) {
             kit.toast("ارسال فایل ممکن نشد")
         }

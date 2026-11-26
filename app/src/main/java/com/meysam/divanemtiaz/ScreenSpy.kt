@@ -189,6 +189,10 @@ class SpyTimerScreen(host: MainActivity, private val gameId: Long) : Screen(host
         if (over) wantRunning = false
         if (wantRunning) host.post(0) { if (wantRunning) timer?.start() }
         return scaffold("زمان‌سنج", "${kit.n(game.players.size)} بازیکن، ${kit.n(game.spies.size)} جاسوس",
+            actions = listOf(kit.iconButton(RoyalIcon.SHARE, "انتقال بازی", ButtonKind.SECONDARY, 44) {
+                save()
+                transferGame(TransferKind.SPY, gameId)
+            }),
             bottom = kit.vertical().apply {
                 if (spySounds.alarmPlaying) {
                     addView(kit.button("قطع زنگ", ButtonKind.DANGER, RoyalIcon.CLOSE, 54) { spySounds.stopAlarm(); host.refresh() }, kit.spaced(6))
