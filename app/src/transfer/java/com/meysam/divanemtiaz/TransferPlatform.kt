@@ -47,11 +47,15 @@ object TransferPlatform {
         IntentIntegrator.parseActivityResult(request, code, intent)?.contents
 
     @JvmStatic @Suppress("DEPRECATION")
-    fun receivedFile(intent: Intent?): Uri? =
-        if (intent?.action == Intent.ACTION_SEND && intent.type == GameTransfer.MIME) {
-            runCatching { intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM) }.getOrNull()
-                ?.takeIf { it.scheme == "content" }
-        } else null
+    fun receivedFile(intent: Intent?): Uri? {
+        if (intent?.type != GameTransfer.MIME) return null
+        val file = when (intent.action) {
+            Intent.ACTION_SEND -> runCatching { intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM) }.getOrNull()
+            Intent.ACTION_VIEW -> intent.data
+            else -> null
+        }
+        return file?.takeIf { it.scheme == "content" }
+    }
 
     private const val PREFIX = "DIVAN1"
     private const val FLAGS = Base64.NO_WRAP or Base64.URL_SAFE or Base64.NO_PADDING

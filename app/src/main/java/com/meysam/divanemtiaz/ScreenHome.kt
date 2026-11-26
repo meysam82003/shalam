@@ -7,7 +7,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 
-const val APP_VERSION_NAME = "5.6.3"
+const val APP_VERSION_NAME = "5.6.6"
 const val APP_VERSION_LABEL = "نسخهٔ ۵.۶.۶"
 
 class SplashScreen(host: MainActivity) : Screen(host) {
@@ -24,13 +24,13 @@ class SplashScreen(host: MainActivity) : Screen(host) {
         addView(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
             addView(fan, LinearLayout.LayoutParams(kit.dp(280), kit.dp(215)))
             addView(kit.gap(6))
-            addView(stage(kit.text("دیوان امتیاز", TextStyle.DISPLAY, Royal.goldLight, Gravity.CENTER).apply { textSize = kit.textSize(34f) }, 880))
-            addView(stage(kit.text("داور و دفتر امتیاز شاهانه", TextStyle.BODY, Royal.muted, Gravity.CENTER), 1000))
+            addView(stage(kit.text("دیوان امتیاز", TextStyle.DISPLAY, Royal.goldLight, Gravity.CENTER).apply { textSize = kit.textSize(34f) }, 940))
+            addView(stage(kit.text("داور و دفتر امتیاز شاهانه", TextStyle.BODY, Royal.muted, Gravity.CENTER), 1080))
             addView(kit.gap(10))
-            addView(stage(kit.divider(), 1090), LinearLayout.LayoutParams(kit.dp(220), kit.dp(18)))
-            addView(stage(kit.text(gameNames(), TextStyle.LABEL_BOLD, Royal.gold, Gravity.CENTER).apply { setLineSpacing(kit.dpf(4f), 1f) }, 1180))
+            addView(stage(kit.divider(), 1190), LinearLayout.LayoutParams(kit.dp(220), kit.dp(18)))
+            addView(stage(kit.text(gameNames(), TextStyle.LABEL_BOLD, Royal.gold, Gravity.CENTER).apply { setLineSpacing(kit.dpf(4f), 1f) }, 1300))
         }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
-        addView(stage(kit.text("$APP_VERSION_LABEL  •  آفلاین", TextStyle.CAPTION, Royal.dim, Gravity.CENTER), 1280),
+        addView(stage(kit.text("$APP_VERSION_LABEL  •  آفلاین", TextStyle.CAPTION, Royal.dim, Gravity.CENTER), 1450),
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply { bottomMargin = kit.dp(28) })
         isClickable = true
         setOnClickListener { goHome() }
@@ -39,9 +39,6 @@ class SplashScreen(host: MainActivity) : Screen(host) {
             staged.forEach { (v, delay) -> rise(v, delay) }
         } else {
             fan.still()
-            // The window already shows the same emerald, so the logo only needs a short fade.
-            alpha = 0f
-            animate().alpha(1f).setDuration(180).start()
         }
     }
 
@@ -53,12 +50,7 @@ class SplashScreen(host: MainActivity) : Screen(host) {
 
     /** One line of text coming up into place on the spring while it fades in. */
     private fun rise(v: View, delay: Long) {
-        v.animate().translationY(0f).setStartDelay(delay).setDuration(Motion.SPRING_ITEM).setInterpolator(Motion.SPRING).start()
-        android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
-            startDelay = delay; duration = 300; interpolator = Motion.EASE_OUT
-            addUpdateListener { v.alpha = it.animatedValue as Float }
-            start()
-        }
+        v.animate().alpha(1f).translationY(0f).setStartDelay(delay).setDuration(340).setInterpolator(Motion.EASE_OUT).start()
     }
 
     private var done = false
@@ -85,7 +77,7 @@ class SplashScreen(host: MainActivity) : Screen(host) {
     companion object {
         const val LOGO_MS = 650L
         /** The whole entrance plus a short look at the finished logo (a touch skips it). */
-        const val ENTRANCE_MS = 1900L
+        const val ENTRANCE_MS = 2050L
         @Volatile var askedThisRun = false
     }
 
@@ -100,7 +92,7 @@ class HomeScreen(host: MainActivity) : Screen(host) {
         if (Notices.asked(host) || ProState.isPro || SplashScreen.askedThisRun) return
         SplashScreen.askedThisRun = true
         host.post(900) {
-            if (host.current !== this) return@post
+            if (host.current !== this || kit.hasOpenDialogs()) return@post
             kit.dialog("اعلان پیشنهادها",
                 "دیوان می‌تواند پیشنهادها و تخفیف‌های خودش را (حداکثر یکی در روز) در نوار اعلان گوشی نشان دهد. هر وقت خواستید از «تنظیمات ← اعلان‌ها» خاموشش کنید.",
                 null, listOf(
@@ -124,6 +116,9 @@ class HomeScreen(host: MainActivity) : Screen(host) {
             layoutDirection = View.LAYOUT_DIRECTION_RTL
         }
         column.addView(topBar())
+        if (AppUpdates.available(host) != null) {
+            column.addView(kit.button("به‌روزرسانی برنامه", ButtonKind.PRIMARY, height = 44) { host.showUpdate(manual = true) }, kit.spaced(8))
+        }
         column.addView(banner())
         resume()?.let { column.addView(it) }
         AdEngine.slot(this, "home_inline")?.let { column.addView(it) }
@@ -146,7 +141,7 @@ class HomeScreen(host: MainActivity) : Screen(host) {
             background = PanelDrawable(kit.density, PanelStyle.NORMAL, 22f)
             setPadding(kit.dp(6), kit.dp(10), kit.dp(6), kit.dp(12))
             addView(kit.grid(5, listOf(
-                kit.toolTile(RoyalIcon.TROPHY, "لیگ‌ها") { Gate.open(this@HomeScreen, "leagues") { host.push(LeagueListScreen(host)) } },
+                kit.toolTile(RoyalIcon.TROPHY, "لیگ‌ها") { host.push(LeagueListScreen(host)) },
                 kit.toolTile(RoyalIcon.HISTORY, "تاریخچه") { Gate.open(this@HomeScreen, "history") { host.push(HistoryScreen(host)) } },
                 kit.toolTile(RoyalIcon.PLAYERS, "افراد و تیم‌ها") { host.push(PlayersScreen(host)) },
                 kit.toolTile(RoyalIcon.CROWN, "رنک‌بندی") { Gate.open(this@HomeScreen, "rankings") { host.push(RankingScreen(host)) } },

@@ -105,11 +105,11 @@ android {
 }
 
 dependencies {
-    // ZXing core 3.3.0 keeps scanning compatible with Android 5 and 6.
+    // The 3.3.x core supports Android 5 and correctly detects dense QR frames.
     implementation('com.journeyapps:zxing-android-embedded:4.3.0') {
         exclude group: 'com.google.zxing', module: 'core'
     }
-    implementation 'com.google.zxing:core:3.3.0'
+    implementation 'com.google.zxing:core:3.3.3'
     implementation 'com.google.firebase:firebase-messaging:24.1.2'
     bazaarImplementation 'com.github.cafebazaar.Poolakey:poolakey:2.2.0'
     myketImplementation 'com.github.myketstore:myket-billing-client:1.19'

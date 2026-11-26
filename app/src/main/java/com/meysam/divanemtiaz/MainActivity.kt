@@ -162,10 +162,23 @@ class MainActivity : Activity() {
     private var resumed = false
     private val accessHandler = Handler(Looper.getMainLooper())
     private var lastNoticeCheck = 0L
+    private var lastUpdate: AppUpdate? = null
+    private var promptedUpdateCode = 0
+    private var updateDialog: android.app.Dialog? = null
+    private val updateLocked: Boolean get() = current is RequiredUpdateScreen
     private val accessTick = object : Runnable {
         override fun run() {
             if (!resumed) return
-            if (android.os.SystemClock.uptimeMillis() - lastNoticeCheck >= 60_000) { lastNoticeCheck = android.os.SystemClock.uptimeMillis(); Notices.check(this@MainActivity); AdsManager.refresh(this@MainActivity) }
+            if (android.os.SystemClock.uptimeMillis() - lastNoticeCheck >= 60_000) {
+                lastNoticeCheck = android.os.SystemClock.uptimeMillis()
+                Notices.check(this@MainActivity)
+                if (!updateLocked) AdsManager.refresh(this@MainActivity)
+            }
+            reconcileAppUpdate()
+            if (updateLocked) {
+                accessHandler.postDelayed(this, 1000)
+                return
+            }
             if(ProState.consumeExpiredReward()) {
                 gameAudio.pause()
                 if(audioUsed){audio.stopCue();audio.stopMusic()}
@@ -242,16 +255,14 @@ class MainActivity : Activity() {
         if (restored != null) {
             stack += HomeScreen(this)
             stack += if (restored.finished) ResultScreen(this, restored) else boardFor(restored)
-            render(animate = false)
         } else if (savedInstanceState != null) {
             stack += HomeScreen(this)
-            render(animate = false)
         } else {
             stack += SplashScreen(this)
-            render(animate = false)
         }
+        if (!reconcileAppUpdate()) render(animate = false)
         Notices.channels(this)
-        if (Notices.offersWanted(this) || Notices.reminders(this)) Notices.schedule(this)
+        Notices.schedule(this)
         // Opened from a notification or a payment page: act once the first page is on screen.
         // (Behind the logo screen it waits for the logo to hand over to home; that hand-over clears pending posts.)
         if (intent?.data != null || intent?.hasExtra(Notices.EXTRA_TARGET) == true || TransferPlatform.receivedFile(intent) != null) {
@@ -267,6 +278,7 @@ class MainActivity : Activity() {
     }
 
     fun openFromIntent(intent: android.content.Intent?) {
+        if (updateLocked) return
         TransferPlatform.receivedFile(intent)?.let { file ->
             if (stack.lastOrNull() is SplashScreen) openAfterSplash = intent
             else current?.readTransferFile(file)
@@ -279,6 +291,60 @@ class MainActivity : Activity() {
         }
         // A tapped notification: opens an allowed in-app page only.
         Notices.opened(this, intent)
+    }
+
+    fun showUpdateFromNotice() = showUpdate(manual = true)
+
+    fun showUpdate(manual: Boolean = false) {
+        if (!resumed || current is SplashScreen || updateLocked || kit.hasOpenDialogs()) return
+        val update = AppUpdates.available(this)?.takeUnless { it.required } ?: return
+        if (!manual && promptedUpdateCode == update.versionCode) return
+        promptedUpdateCode = update.versionCode
+        updateDialog = AppUpdates.showOptional(this, update)
+    }
+
+    /** Keeps the navigation stack intact while showing the mandatory update instead of the current page. */
+    private fun reconcileAppUpdate(): Boolean {
+        val update = AppUpdates.available(this)
+        val changed = update != lastUpdate
+        if (changed) {
+            updateDialog?.dismiss()
+            lastUpdate = update
+        }
+        val lock = current as? RequiredUpdateScreen
+        if (update?.required == true) {
+            if (lock == null) {
+                saveScroll()
+                current?.onHide()
+                cancelPosts()
+                kit.dismissDialogs()
+                gameAudio.pause()
+                if (audioUsed) {
+                    audio.stopCue()
+                    audio.stopMusic()
+                    if (audio.isRecording) audio.stopRecording(discard = true)
+                }
+                pendingTransferScan = null
+                pendingResult = null
+                pendingPermission = null
+                stack += RequiredUpdateScreen(this, update)
+                render(animate = false)
+                return true
+            }
+            if (changed) {
+                lock.update = update
+                refresh()
+            }
+            return false
+        }
+        if (lock != null) {
+            stack.removeAt(stack.lastIndex)
+            render(animate = false)
+            return true
+        }
+        if (changed && resumed && current is HomeScreen) refresh()
+        showUpdate()
+        return false
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -298,8 +364,10 @@ class MainActivity : Activity() {
         Notices.check(this)
         // Native-only bridge: the web build has no Firebase dependency.
         runCatching { Class.forName("com.meysam.divanpush.PushRuntime").getField("INSTANCE").get(null).let { runtime -> runtime.javaClass.getMethod("connect", android.content.Context::class.java, String::class.java, String::class.java).invoke(runtime, this, StoreInfo.apiBase, StoreInfo.storeId) } }
-        AdsManager.refresh(this)
-        AdsManager.recover(this)
+        if (!updateLocked) {
+            AdsManager.refresh(this)
+            AdsManager.recover(this)
+        }
     }
 
     override fun onPause() {
@@ -400,6 +468,7 @@ class MainActivity : Activity() {
     }
 
     fun push(screen: Screen) {
+        if (updateLocked) return
         if (!Gate.allows(this, screen)) return
         saveScroll()
         current?.onHide()
@@ -409,6 +478,7 @@ class MainActivity : Activity() {
 
     /** Replaces the top screen (for example board → result) without growing the back stack. */
     fun replace(screen: Screen) {
+        if (updateLocked) return
         if (!Gate.allows(this, screen)) return
         current?.onHide()
         if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex)
@@ -417,6 +487,7 @@ class MainActivity : Activity() {
     }
 
     fun resetTo(vararg screens: Screen) {
+        if (updateLocked) return
         screens.lastOrNull()?.let { if (!Gate.allows(this, it)) return }
         current?.onHide()
         stack.clear()
@@ -425,6 +496,7 @@ class MainActivity : Activity() {
     }
 
     fun pop() {
+        if (updateLocked) return
         if (stack.size <= 1) {
             finish()
             return

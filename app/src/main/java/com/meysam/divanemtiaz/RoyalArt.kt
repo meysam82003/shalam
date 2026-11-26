@@ -944,9 +944,9 @@ class SplashFanView(context: Context) : View(context) {
         if (t <= start) 0f else if (t >= start + length) 1f else curve.getInterpolation((t - start) / length)
 
     private fun at(t: Float) {
-        for (i in 0 until 4) cards[i] = phase(t, 60f + i * 110f, 760f, Motion.JELLY)
-        crown = phase(t, 640f, 700f, Motion.JELLY)
-        glow = phase(t, 0f, 900f, Motion.EASE_OUT)
+        for (i in 0 until 4) cards[i] = phase(t, 40f + i * 65f, 350f, Motion.SPRING)
+        crown = phase(t, 590f, 340f, Motion.SPRING)
+        glow = phase(t, 660f, 550f, Motion.EASE_OUT)
     }
 
     override fun onDraw(canvas: Canvas) = HeroCrestArt.draw(canvas, width, height, paint, cards, crown, glow)

@@ -27,9 +27,7 @@ class ResultScreen(host: MainActivity, private val session: GameSession) : Scree
                     val st = match?.let { LeagueEngine.state(league, it) { id -> host.repo.session(id) } }
                     if (match != null && st != null && st.ready && !st.decided && st.openGame == null) {
                         addView(kit.button("بازی بعدی همین تیم‌ها در لیگ", ButtonKind.PRIMARY, RoyalIcon.PLAY) {
-                            host.resetTo(HomeScreen(host),
-                                if (GameTransfer.importedLeague(host.repo.store, league.id)) TransferScreen(host) else LeagueListScreen(host),
-                                LeagueScreen(host, league.id))
+                            host.resetTo(HomeScreen(host), LeagueListScreen(host), LeagueScreen(host, league.id))
                             val fresh = host.repo.league(league.id)
                             val freshMatch = fresh?.matches?.firstOrNull { it.id == match.id }
                             if (fresh != null && freshMatch != null) host.current?.startLeagueGame(fresh, freshMatch)
@@ -63,7 +61,7 @@ class ResultScreen(host: MainActivity, private val session: GameSession) : Scree
                 addView(kit.text(reason(totals), TextStyle.LABEL, Royal.muted, Gravity.CENTER))
             })
             if (session.game == GameType.MENFI) {
-                addView(kit.text("اختلاف امتیاز · ${kit.n(abs(totals[0].toLong() - totals[1].toLong()))}",
+                addView(kit.text(menfiScoreGap(totals[0], totals[1]),
                     TextStyle.BODY_BOLD, Royal.turquoiseLight, Gravity.CENTER), kit.spaced(6))
             }
             if (session.game.isTeamGame) {
@@ -174,15 +172,14 @@ class ResultScreen(host: MainActivity, private val session: GameSession) : Scree
 
     private fun backToLeague() {
         val league = host.repo.league(session.leagueId) ?: return
-        host.resetTo(HomeScreen(host),
-                                if (GameTransfer.importedLeague(host.repo.store, league.id)) TransferScreen(host) else LeagueListScreen(host),
-                                LeagueScreen(host, league.id))
+        host.resetTo(HomeScreen(host), LeagueListScreen(host), LeagueScreen(host, league.id))
     }
 
     private fun rematch() {
         val id = host.repo.newSessionId()
         val rules = session.rules.copy(menfi = session.rules.menfi.copy(extraHands = 0))
-        val fresh = GameSession(id, session.game, session.sides.toList(), rules = rules, updatedAt = id, label = session.label)
+        val fresh = GameSession(id, session.game, session.sides.toList(), rules = rules, updatedAt = id,
+            label = session.label, menfiDeal = session.menfiDeal)
         host.resetTo(HomeScreen(host), host.boardFor(fresh))
     }
 }
@@ -199,7 +196,8 @@ fun Screen.describeRound(session: GameSession, round: Round): String {
         RoundKind.SHALAM_PASS -> "پاس"
         RoundKind.MENFI_HAND -> listOfNotNull(
             if (round.numbers.size == 2) "اعداد ${kit.n(round.numbers[0])} و ${kit.n(round.numbers[1])}" else null,
-            menfiOutcomeTitle(session, round.outcome).ifBlank { null }
+            menfiOutcomeTitle(session, round.outcome).ifBlank { null },
+            menfiScoreGap(round.score(0), round.score(1))
         ).joinToString(" • ")
         RoundKind.HEZAR_ROUND -> round.raw.mapIndexed { i, v -> "${session.sides.getOrNull(i)?.name ?: ""} ${kit.n(v)}" }.joinToString(" • ")
         RoundKind.DOLO_HAND -> {

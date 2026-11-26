@@ -112,12 +112,14 @@ class GameRepository(private val kv: KeyValueStore, private val legacy: () -> Le
 
     fun save(session: GameSession) {
         migrateIfNeeded()
+        kv.write(sessionChanges(session))
+    }
+
+    private fun sessionChanges(session: GameSession): Map<String, String?> {
         val ids = index().filterNot { it == session.id }
-        kv.write(
-            mapOf(
-                gameKey(session.id) to GameCodec.encodeSession(session).toString(),
-                KEY_INDEX to JSONArray(listOf(session.id) + ids).toString()
-            )
+        return mapOf(
+            gameKey(session.id) to GameCodec.encodeSession(session).toString(),
+            KEY_INDEX to JSONArray(listOf(session.id) + ids).toString()
         )
     }
 
@@ -156,13 +158,14 @@ class GameRepository(private val kv: KeyValueStore, private val legacy: () -> Le
 
     fun leagues(): List<League> = leagueIndex().mapNotNull { league(it) }.sortedByDescending { it.updatedAt }
 
-    fun saveLeague(league: League) {
+    fun saveLeague(league: League, session: GameSession? = null) {
+        if (session != null) migrateIfNeeded()
         val ids = leagueIndex().filterNot { it == league.id }
         kv.write(
             mapOf(
                 leagueKey(league.id) to GameCodec.encodeLeague(league).toString(),
                 KEY_LEAGUES to JSONArray(listOf(league.id) + ids).toString()
-            )
+            ) + (session?.let(::sessionChanges) ?: emptyMap())
         )
     }
 

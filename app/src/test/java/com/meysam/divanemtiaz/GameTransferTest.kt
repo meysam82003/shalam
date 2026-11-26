@@ -45,7 +45,7 @@ class GameTransferTest {
         assertEquals(deal, resumed.menfiDeal)
         assertEquals(game.rounds, resumed.rounds)
         assertEquals(resumed.id, LeagueEngine.state(imported, match, destRepo::session).openGame)
-        assertEquals("بهروز", LeagueEngine.menfiArrangement(imported, match, imported.teams, destRepo::session)!!
+        assertEquals("بهزاد", LeagueEngine.menfiArrangement(imported, match, imported.teams, destRepo::session)!!
             .let { arrangement -> imported.teams[arrangement.dealer(1) / 2].members[arrangement.dealer(1) % 2] })
         assertEquals(6, destRepo.roster().size)
         assertEquals(target, transfer.import(text, false))

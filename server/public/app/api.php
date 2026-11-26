@@ -85,6 +85,7 @@ final class Api
         $in = $method === 'GET' ? $_GET : Http::body();
         $normalized = preg_replace('#^v1/#', '', $route);
         if (strpos($normalized, 'admin/') === 0) return AdminMobile::handle($normalized, $method, $in);
+        if ($normalized === 'app-update' && $method === 'GET') return AppUpdates::forStore((string)($in['store'] ?? ''));
         if ($normalized === 'ads/config') return Monetization::publicConfig(($u = self::optionalUser()) !== null && Entitlements::summary((int)$u['id'], self::store($in))['pro']);
         if (in_array($normalized, ['ads/reward/start','ads/reward/claim','ads/events','coins/wallet'], true) && $route !== 'v1/ads/events') {
             $u = self::user();

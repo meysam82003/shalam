@@ -72,7 +72,10 @@ class MenfiBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(h
                     addView(kit.weight(sideScoreCard(side, total, if (hiddenNow) "جمع پنهان است" else null, leader == i, null)))
                 }
             })
-            if (!hiddenNow) addView(kit.text(menfiGap(totals[0], totals[1], leader), TextStyle.BODY_BOLD, Royal.turquoiseLight, Gravity.CENTER))
+            if (!hiddenNow) {
+                addView(kit.text(menfiScoreGap(totals[0], totals[1], leader?.let { session.sides[it].name }),
+                    TextStyle.BODY_BOLD, Royal.turquoiseLight, Gravity.CENTER))
+            }
             addView(statusRow("دست ${kit.n(played)} از ${menfiHandsText(rules)}"))
             if (played < rules.totalHands) session.menfiDeal?.let { deal ->
                 val first = session.sides[deal.biddingOrder(played).first()].name
@@ -138,13 +141,6 @@ class MenfiBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(h
         }
     }
 
-    private fun menfiGap(a: Int, b: Int, leader: Int?): String {
-        val difference = kotlin.math.abs(a.toLong() - b.toLong())
-        if (difference == 0L) return "اختلاف امتیاز · ۰"
-        val label = "اختلاف امتیاز · ${PersianText.digits(difference.toString())}"
-        return leader?.let { "$label • ${session.sides[it].name} جلوتر است" } ?: label
-    }
-
     private fun handRow(number: Int, round: Round, actions: () -> Unit): View =
         kit.panel(PanelStyle.NORMAL, 12).apply {
             layoutParams = kit.spaced(6)
@@ -166,12 +162,18 @@ class MenfiBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(h
                         }
                     }
                 }, 8), kit.spaced(4))
-                addView(kit.text(menfiGap(round.score(0), round.score(1), null), TextStyle.LABEL, Royal.turquoiseLight, Gravity.CENTER))
+                addView(kit.text(menfiScoreGap(round.score(0), round.score(1)), TextStyle.LABEL, Royal.turquoiseLight, Gravity.CENTER))
                 val outcome = menfiOutcomeTitle(session, round.outcome).ifBlank { round.note }
                 if (outcome.isNotBlank()) addView(kit.text(outcome, TextStyle.CAPTION, Royal.muted, Gravity.CENTER))
             }
         }
 
+}
+
+fun Screen.menfiScoreGap(a: Int, b: Int, leader: String? = null): String {
+    val difference = kotlin.math.abs(a.toLong() - b.toLong())
+    val label = "اختلاف امتیاز · ${kit.n(difference)}"
+    return if (difference > 0 && leader != null) "$label • $leader جلوتر است" else label
 }
 
 fun Round.dealerLabel(): String = dealerName.takeIf { it.isNotBlank() }?.let { "$it دست داد" }.orEmpty()
@@ -336,6 +338,7 @@ class MenfiHandScreen(host: MainActivity, private val session: GameSession, priv
         return kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
             addView(kit.text("جمع نهایی اگر این حالت رخ دهد", TextStyle.CAPTION, Royal.muted, Gravity.CENTER))
             addView(kit.text(totals, TextStyle.LABEL_BOLD, Royal.ivory, Gravity.CENTER))
+            addView(kit.text(menfiScoreGap(result.totals[0], result.totals[1]), TextStyle.LABEL, Royal.muted, Gravity.CENTER))
             addView(kit.text(verdict, TextStyle.LABEL_BOLD, Royal.turquoiseLight, Gravity.CENTER))
         }
     }

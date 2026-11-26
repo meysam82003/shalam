@@ -48,7 +48,11 @@ object PushRuntime {
             runCatching {
                 val cfg=request(base,"GET","push/config&client=$client",null,null)?.optJSONObject("data")
                 if(cfg!=null)prefs(ctx).edit().putString("config",cfg.toString()).apply()
-                if(restore(ctx))FirebaseMessaging.getInstance().token.addOnSuccessListener { token->io.execute{runCatching{hooks(ctx)?.register(ctx,token)}} }
+                if (restore(ctx)) {
+                    val messaging = FirebaseMessaging.getInstance()
+                    if (client in setOf("bazaar", "myket", "direct")) messaging.subscribeToTopic("divan_android_updates_$client")
+                    messaging.token.addOnSuccessListener { token -> io.execute { runCatching { hooks(ctx)?.register(ctx, token) } } }
+                }
             }
         }
     }
@@ -74,6 +78,6 @@ object PushRuntime {
 class DivanPushApplication:Application(){override fun onCreate(){super.onCreate();PushRuntime.restore(this)}}
 class DivanMessagingService:FirebaseMessagingService(){
     override fun onNewToken(token:String){PushRuntime.token(applicationContext,token)}
-    override fun onMessageReceived(message:RemoteMessage){if(message.data["kind"] in setOf("notices","inbox"))runCatching{PushRuntime.receive(applicationContext)}}
+    override fun onMessageReceived(message:RemoteMessage){if(message.data["kind"] in setOf("notices","inbox","app_update"))runCatching{PushRuntime.receive(applicationContext)}}
     override fun onDeletedMessages(){runCatching{PushRuntime.receive(applicationContext)}}
 }

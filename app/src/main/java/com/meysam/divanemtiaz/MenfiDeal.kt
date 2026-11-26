@@ -17,8 +17,8 @@ data class MenfiDeal private constructor(val order: List<Int>, val seats: List<I
 
         fun fromSeats(seats: List<Int>, first: Int, direction: MenfiDirection = MenfiDirection.CLOCKWISE): MenfiDeal {
             require(valid(seats) && first in seats)
-            // The scorekeeper's counterclockwise order is right → bottom → left → top.
-            val walk = if (direction == MenfiDirection.COUNTERCLOCKWISE) seats else seats.reversed()
+            // Physical clockwise movement is left → top → right → bottom.
+            val walk = if (direction == MenfiDirection.CLOCKWISE) seats else seats.reversed()
             val offset = walk.indexOf(first)
             return MenfiDeal(walk.drop(offset) + walk.take(offset), seats.toList(), direction)
         }

@@ -140,6 +140,11 @@ class SettingsScreen(host: MainActivity, private var tab: Int = TAB_GENERAL) : S
         parent.addView(kit.listGroup(rows))
         if(ProState.isPro&&!ProState.license.lifetime)parent.addView(proTimeView(),kit.spaced(10))
         parent.addView(kit.section("اعلان‌ها", RoyalIcon.STAR))
+        if (android.os.Build.DEVICE != "web" && !Notices.canPost(host)) {
+            parent.addView(kit.listRow(kit.iconChip(RoyalIcon.STAR), "اعلان نسخه‌های تازه", "برای دریافت اعلان، اجازهٔ اندروید را فعال کنید") {
+                Notices.requestPermission(host)
+            })
+        }
         parent.addView(kit.switchRow("پیشنهادها و تخفیف‌ها", if (ProState.isPro) "با وجود Pro هم پیشنهادها در نوار اعلان بیاید (پیش‌فرض خاموش)" else "حداکثر یکی در روز در نوار اعلان گوشی",
             if (ProState.isPro) Notices.offersPro(host) else Notices.offers(host)) { v ->
             Notices.setOffers(host, v)

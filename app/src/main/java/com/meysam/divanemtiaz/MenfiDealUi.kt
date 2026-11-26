@@ -30,8 +30,9 @@ fun Screen.chooseMenfiDeal(sides: List<Side>, previous: MenfiDeal?, onDone: (Men
                 rebuild()
             }
         }
-        body.addView(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
-            addView(seat(1))
+        body.addView(kit.panel(PanelStyle.FLAT, 8).apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+            addView(seat(1), kit.fill())
             // Physical left/right positions must stay in place in the RTL app.
             addView(kit.horizontal(Gravity.CENTER).apply {
                 layoutDirection = View.LAYOUT_DIRECTION_LTR
@@ -39,7 +40,7 @@ fun Screen.chooseMenfiDeal(sides: List<Side>, previous: MenfiDeal?, onDone: (Men
                 addView(kit.hgap(7))
                 addView(kit.weight(seat(2)))
             }, kit.spaced(6))
-            addView(seat(3))
+            addView(seat(3), kit.fill())
         }, kit.spaced(8))
 
         fun swap(a: Int, b: Int) {
@@ -57,13 +58,16 @@ fun Screen.chooseMenfiDeal(sides: List<Side>, previous: MenfiDeal?, onDone: (Men
             }
         ), 5), kit.spaced(5))
 
-        body.addView(kit.choiceRow("جهت گردش دست‌دهنده", null, listOf(
-            0 to "خلاف عقربه‌های ساعت",
-            1 to "هم‌جهت عقربه‌های ساعت"
-        ), direction.ordinal) {
-            direction = MenfiDirection.values()[it]
-            rebuild()
-        }, kit.spaced(6))
+        body.addView(kit.text("جهت گردش دست‌دهنده", TextStyle.LABEL_BOLD, Royal.muted, Gravity.CENTER))
+        body.addView(kit.grid(2, listOf(
+            MenfiDirection.CLOCKWISE to "↻  ساعت‌گرد",
+            MenfiDirection.COUNTERCLOCKWISE to "↺  پادساعت‌گرد"
+        ).map { (item, label) ->
+            kit.button(label, if (direction == item) ButtonKind.SUCCESS else ButtonKind.SECONDARY, height = 44) {
+                direction = item
+                rebuild()
+            }
+        }, 6), kit.spaced(6))
         val order = MenfiDeal.fromSeats(seats, first, direction)
         body.addView(kit.panel(PanelStyle.SELECTED, 9).apply {
             addView(kit.text("نوبت دست‌دادن", TextStyle.HEADING, Royal.turquoiseLight, Gravity.CENTER))

@@ -24,6 +24,7 @@ fun Screen.transferGame(kind: TransferKind, id: Long) {
         host.shareFile("Divan-${kind.key}-$id.divan.json", text, GameTransfer.MIME)
     })
     if (TransferPlatform.available()) actions += DialogAction("نمایش کد QR") { showTransferQr(text) }
+    actions += DialogAction("دریافت بازی یا لیگ") { host.push(TransferScreen(host, scanOnOpen = true)) }
     actions += DialogAction("بستن")
     kit.dialog("انتقال ${kind.title}", "گیرنده می‌تواند فایل یا کد را در بخش «انتقال بازی و لیگ» وارد کند. در بازی‌های نقش مخفی، فقط برای گرداننده بفرستید.",
         null, actions).show()
@@ -109,8 +110,15 @@ private fun Screen.openTransferTarget(target: TransferTarget) {
     }
 }
 
-class TransferScreen(host: MainActivity) : Screen(host) {
+class TransferScreen(host: MainActivity, private var scanOnOpen: Boolean = false) : Screen(host) {
     private var scan = TransferPlatform.Scan()
+
+    override fun onShow() {
+        if (scanOnOpen) {
+            scanOnOpen = false
+            if (TransferPlatform.available()) scanNext()
+        }
+    }
 
     private fun scanNext() {
         host.scanTransfer { result ->

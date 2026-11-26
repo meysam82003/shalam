@@ -55,6 +55,7 @@ $pages = [
     'iranads' => [IranAdsPage::class, 'show'],
     'notices' => [ConfigPages::class, 'notices'],
     'push' => [PushPage::class, 'show'],
+    'appupdates' => [AppUpdates::class, 'panel'],
     'site' => [ConfigPages::class, 'site'],
     'stores' => [ConfigPages::class, 'stores'],
     'bridge' => [ConfigPages::class, 'bridge'],

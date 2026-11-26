@@ -33,6 +33,7 @@ final class NativePanel
     'iranads' => [IranAdsPage::class, 'show'],
     'notices' => [ConfigPages::class, 'notices'],
     'push' => [PushPage::class, 'show'],
+    'appupdates' => [AppUpdates::class, 'panel'],
     'site' => [ConfigPages::class, 'site'],
     'stores' => [ConfigPages::class, 'stores'],
     'bridge' => [ConfigPages::class, 'bridge'],
@@ -45,6 +46,7 @@ final class NativePanel
     public static function menu(): array {
         AdminMobile::auth('dashboard');
         $labels=['push'=>'اعلان بدون باز کردن اپ','dashboard'=>'داشبورد','users'=>'کاربران','subscriptions'=>'اشتراک‌ها','transactions'=>'تراکنش‌ها','support'=>'پشتیبانی','gifts'=>'هدیهٔ کاربران','promos'=>'کد تخفیف و هدیه','reports'=>'گزارش‌ها','plans'=>'پلن‌ها و قیمت‌ها','campaigns'=>'کمپین‌ها','features'=>'قابلیت‌ها','ads'=>'تبلیغات مستقیم','placements'=>'جایگاه‌ها','media'=>'رسانه‌ها','adnetwork'=>'تنظیمات تبلیغات مستقیم','iranads'=>'تبلیغات ایرانی و سکه','notices'=>'اعلان‌ها','site'=>'مدیریت سایت','stores'=>'بازار و مایکت','bridge'=>'تنظیمات پرداخت قدیمی','paymethods'=>'روش‌های پرداخت','backups'=>'پشتیبان و بازیابی','audit'=>'گزارش امنیتی','admins'=>'مدیران','account'=>'حساب و ورود دومرحله‌ای'];
+        $labels = ['appupdates' => 'به‌روزرسانی برنامه'] + $labels;
         $items=[];foreach($labels as $key=>$title)if(Admin::can($key)&&($key!=='bridge'||!App::directPayments()))$items[]=['key'=>$key,'title'=>$title];return ['items'=>$items];
     }
     public static function handle(array $in): array {

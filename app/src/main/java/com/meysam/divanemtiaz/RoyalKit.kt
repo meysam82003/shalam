@@ -374,6 +374,8 @@ class RoyalKit(val context: Context, private val settingsProvider: () -> AppSett
         return box
     }
 
+    fun hasOpenDialogs(): Boolean = openDialogs.any { it.isShowing }
+
     fun dialog(title: String, message: String? = null, body: View? = null, actions: List<DialogAction>): Dialog {
         openDialogs.removeAll { !it.isShowing }
         val dialog = Dialog(context)
