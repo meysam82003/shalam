@@ -284,7 +284,12 @@ fun Screen.sideScoreCard(
     }, LinearLayout.LayoutParams(kit.dp(60), kit.dp(60)))
     addView(kit.text(side.name, TextStyle.BODY_BOLD, Royal.ivory, Gravity.CENTER, 1))
     addView(kit.text(total, TextStyle.NUMBER_XL, accent, Gravity.CENTER, 1))
-    if (caption != null) addView(kit.text(caption, TextStyle.CAPTION, Royal.muted, Gravity.CENTER, 2))
+    if (caption != null) {
+        val alignment = if (progress == null) Gravity.CENTER else Gravity.LEFT or Gravity.CENTER_VERTICAL
+        addView(kit.text(caption, TextStyle.CAPTION, Royal.muted, alignment, 2), kit.fill().apply {
+            if (progress != null) setMargins(kit.dp(7), 0, kit.dp(7), 0)
+        })
+    }
     if (progress != null) {
         addView(View(host).apply {
             background = ScoreTrackDrawable(kit.density, progress, if (leader) Royal.turquoise else Royal.gold)

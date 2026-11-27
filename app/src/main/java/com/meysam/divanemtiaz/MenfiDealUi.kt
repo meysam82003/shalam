@@ -10,7 +10,7 @@ fun menfiSeatName(sides: List<Side>, seat: Int): String {
     return side.members.getOrNull(seat % 2) ?: "نفر ${PersianText.digits(seat % 2 + 1)} از ${side.name}"
 }
 
-fun Screen.chooseMenfiDeal(sides: List<Side>, previous: MenfiDeal?, onDone: (MenfiDeal) -> Unit) {
+fun Screen.chooseMenfiDeal(sides: List<Side>, previous: MenfiDeal?, onDone: (MenfiDeal) -> Unit): android.app.Dialog {
     val seats = (previous?.seats ?: MenfiDeal.defaultSeats).toMutableList()
     var direction = previous?.direction ?: MenfiDeal.default.direction
     var first = previous?.order?.firstOrNull() ?: seats.first()
@@ -97,8 +97,8 @@ fun Screen.chooseMenfiDeal(sides: List<Side>, previous: MenfiDeal?, onDone: (Men
         }, kit.spaced(8))
     }
     rebuild()
-    kit.dialog("چیدمان میز منفی", null, body, listOf(
+    return kit.dialog("چیدمان میز منفی", null, body, listOf(
         DialogAction("تأیید چیدمان", ButtonKind.PRIMARY) { onDone(MenfiDeal.fromSeats(seats, first, direction)) },
         DialogAction("لغو")
-    )).show()
+    )).also { it.show() }
 }

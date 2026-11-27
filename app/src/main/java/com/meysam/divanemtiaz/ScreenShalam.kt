@@ -149,7 +149,7 @@ class ShalamBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(
                         addView(kit.icon(RoyalIcon.STAR, Royal.alpha(Royal.gold, 0.7f), 14))
                     }, LinearLayout.LayoutParams(kit.dp(56), ViewGroup.LayoutParams.WRAP_CONTENT))
                     val fraction = if (rules.endPoint > 0) totals[i].toFloat() / rules.endPoint else null
-                    addView(kit.weight(sideScoreCard(side, kit.signed(totals[i]), "پایان: ${kit.n(rules.endPoint)}", leader == i, fraction)))
+                    addView(kit.weight(sideScoreCard(side, kit.signed(totals[i]), "هدف: ${kit.n(rules.endPoint)}", leader == i, fraction)))
                 }
             })
             addView(statusRow("${kit.n(GameEngine.playedHands(session))} دست"))
