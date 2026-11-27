@@ -1,5 +1,6 @@
 <?php
 require_once dirname(__DIR__) . '/public/app/app_updates.php';
+require __DIR__ . '/transfer_links.php';
 
 scenario('Android update policies are opt-in and isolated by store', function () {
     check(apiGet('v1/app-update', ['store' => 'bazaar'])['version_code'] === 0, 'new installation has no update policy');

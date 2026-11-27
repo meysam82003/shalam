@@ -11,6 +11,8 @@ import java.util.List;
 public final class TransferPlatform {
     private TransferPlatform() {}
     public static boolean available() { return false; }
+    public static void seal(String text, kotlin.jvm.functions.Function2<String, String, kotlin.Unit> done) { done.invoke(null, null); }
+    public static void unseal(String key, String text, kotlin.jvm.functions.Function1<String, kotlin.Unit> done) { done.invoke(null); }
     public static List<String> frames(String text) { return Collections.emptyList(); }
     public static Bitmap bitmap(String text) { return null; }
     public static void startScan(Activity activity) {}

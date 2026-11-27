@@ -281,6 +281,7 @@ abstract class PantoScreen(host: MainActivity, protected val matchId: Long) : Sc
 
 /** «صفحهٔ دورها»: round, standings, whose turn it is; starts each turn. */
 class PantoBoardScreen(host: MainActivity, matchId: Long) : PantoScreen(host, matchId) {
+    override val idleAdEligible: Boolean get() = true
     override fun build(): View {
         if (!load()) return missing()
         if (m.finished) {

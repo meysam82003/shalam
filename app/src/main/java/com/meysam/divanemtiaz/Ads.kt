@@ -28,8 +28,7 @@ import java.security.MessageDigest
 import java.util.concurrent.Executors
 
 /*
- * Ads for free users only, in safe places only (home, history, finished results, rankings, settings, game hubs;
- * never on boards, timers, mafia night/vote, role reveal or score entry), always labelled «تبلیغات».
+ * Ads for free users, always labelled «تبلیغات». Live scoring uses a separate inactivity placement.
  * Pro users get nothing: no ad is chosen, no image is downloaded and the ad network is never started.
  */
 
@@ -90,7 +89,7 @@ interface NetworkAds {
 }
 
 object AdEngine {
-    private val MEDIA_FORMATS = setOf("image", "video", "corner", "interstitial", "rewarded")
+    private val MEDIA_FORMATS = setOf("image", "gif", "video", "corner", "interstitial", "rewarded")
     private val io = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
     private val downloading = HashSet<String>()
@@ -208,21 +207,34 @@ object AdEngine {
         BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply { inSampleSize = sample })
     }.getOrNull()
 
-    /** Picks a direct ad whose media is ready (or needs none); starts downloads for the others. */
-    private fun pick(c: JSONObject, key: String, formats: List<String>): DirectAd? {
+    /** Direct campaigns with ready media. Fetches missing media for later use. */
+    private fun ready(c: JSONObject, key: String, formats: List<String>, keepVisible: Int? = null): Sequence<DirectAd> {
         val now = ProState.now()
-        val eligible = ads(c).filter { AdRules.eligible(it, key, formats, now, seen(it.id)) && (key != "rewarded_offer" || it.mediaKind == "video") }
+        val eligible = ads(c).filter {
+            AdRules.eligible(it, key, formats, now, if (it.id == keepVisible) null else seen(it.id)) &&
+                (key != "rewarded_offer" || it.mediaKind == "video")
+        }
         val candidates = if (key == "rewarded_offer") eligible.shuffled() else eligible.sortedByDescending { it.priority }
-        for (ad in candidates) {
+        return candidates.asSequence().filter { ad ->
             if (ad.mediaUrl != null && cached(ad) == null) {
                 download(ad)
-                // Text formats can show without their picture; the others wait for the download.
-                if (ad.format in MEDIA_FORMATS) continue
+                ad.format !in MEDIA_FORMATS
+            } else {
+                true
             }
-            return ad
         }
-        return null
     }
+
+    private fun pick(c: JSONObject, key: String, formats: List<String>): DirectAd? = ready(c, key, formats).firstOrNull()
+
+    fun campaigns(key: String, keepVisible: Int? = null): List<DirectAd> {
+        val config = cfg()?.takeUnless { it.optString("priority") == "network_only" } ?: return emptyList()
+        return ready(config, key, slotFormats(config, key, false) ?: return emptyList(), keepVisible).toList()
+    }
+
+    fun campaignCard(screen: Screen, key: String, ad: DirectAd, compact: Boolean = false,
+                     countImpression: Boolean = true, onClose: (() -> Unit)? = null): View =
+        render(screen, key, ad, compact, countImpression, onClose)
 
     // ---------------------------------------------------------------- inline slots
     /** A ready ad for [key], or null (Pro, ads off, nothing to show). Never blocks. */
@@ -316,7 +328,8 @@ object AdEngine {
         runCatching { host.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
     }
 
-    private fun render(screen: Screen, key: String, ad: DirectAd): View {
+    private fun render(screen: Screen, key: String, ad: DirectAd, compact: Boolean = false,
+                       countImpression: Boolean = true, onClose: (() -> Unit)? = null): View {
         val kit = screen.kit
         val ctx = screen.host
         val width = ctx.resources.displayMetrics.widthPixels
@@ -330,12 +343,17 @@ object AdEngine {
         }
         fun mediaView(maxH: Int): View? {
             val f = file ?: return null
-            return if (ad.mediaKind == "video") VideoView(ctx).apply {
+            return if (ad.mediaKind == "video") object : VideoView(ctx) {
+                override fun onDetachedFromWindow() {
+                    stopPlayback()
+                    super.onDetachedFromWindow()
+                }
+            }.apply {
                 setVideoPath(f.path)
                 setOnPreparedListener { mp -> mp.isLooping = true; mp.setVolume(0f, 0f); start() }
                 if (ad.target != null) setOnClickListener { open(screen, ad, key) }
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(maxH))
-            } else if (ad.mediaMime == "image/gif") AdImageView(ctx, f).apply {
+            } else if (ad.mediaKind == "gif" || ad.mediaMime == "image/gif") AdImageView(ctx, f).apply {
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, kit.dp(maxH))
                 if (ad.target != null) setOnClickListener { open(screen, ad, key) }
             } else bitmap(f, width)?.let { bm ->
@@ -358,7 +376,12 @@ object AdEngine {
                 if (ad.body.isNotBlank() && ad.format == "text") card.addView(kit.text(ad.body, TextStyle.LABEL, ad.fg, maxLines = 3))
                 ctaView()?.let { card.addView(kit.gap(6)); card.addView(it, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)) }
             }
-            "native" -> card.addView(kit.horizontal().apply {
+            "native" -> if (ad.mediaKind in setOf("gif", "video")) {
+                mediaView(if (compact) 68 else 132)?.let { card.addView(it) }
+                if (ad.title.isNotBlank()) card.addView(kit.text(ad.title, TextStyle.BODY_BOLD, ad.fg, maxLines = 2))
+                if (ad.body.isNotBlank()) card.addView(kit.text(ad.body, TextStyle.LABEL, ad.fg, maxLines = 2))
+                ctaView()?.let { card.addView(it, LinearLayout.LayoutParams(-2, -2)) }
+            } else card.addView(kit.horizontal().apply {
                 file?.let { f -> bitmap(f, kit.dp(56))?.let { bm -> addView(ImageView(ctx).apply { setImageBitmap(bm); scaleType = ImageView.ScaleType.CENTER_CROP }, LinearLayout.LayoutParams(kit.dp(52), kit.dp(52))); addView(kit.hgap(10)) } }
                 addView(kit.vertical().apply {
                     addView(kit.text(ad.title, TextStyle.BODY_BOLD, ad.fg, maxLines = 1))
@@ -373,15 +396,18 @@ object AdEngine {
                 mediaView(60)?.let { card.addView(it) }
             }
             else -> {
-                mediaView(if (ad.format == "corner") 110 else 200)?.let { card.addView(it); card.addView(kit.gap(8)) }
+                mediaView(if (compact) 72 else if (ad.format == "corner") 110 else 165)?.let { card.addView(it); card.addView(kit.gap(8)) }
                 if (ad.title.isNotBlank()) card.addView(kit.text(ad.title, TextStyle.BODY_BOLD, ad.fg, maxLines = 2))
                 if (ad.body.isNotBlank()) card.addView(kit.text(ad.body, TextStyle.LABEL, ad.fg, maxLines = 3))
                 ctaView()?.let { card.addView(kit.gap(6)); card.addView(it, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)) }
             }
         }
-        val frame = labelled(screen, card, ad.closable) { event("close", key, ad.id) }
+        val frame = labelled(screen, card, ad.closable || onClose != null) {
+            event("close", key, ad.id)
+            onClose?.invoke()
+        }
         if (ad.format == "corner") frame.layoutParams = LinearLayout.LayoutParams(kit.dp(150), ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.START; bottomMargin = kit.dp(12) }
-        frame.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+        if (countImpression) frame.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
             var counted = false
             override fun onViewAttachedToWindow(v: View) { if (!counted) { counted = true; markShown(ad.id); event("impression", key, ad.id) } }
             override fun onViewDetachedFromWindow(v: View) {}
@@ -422,7 +448,14 @@ object AdEngine {
         if (stickyShown[key] == tag && bar.childCount > 0) { bar.visibility = View.VISIBLE; return }
         bar.removeAllViews()
         val kit = screen.kit
-        val strip = if (ad != null) stickyStrip(screen, key, ad, bar) else {
+        val strip = if (ad?.mediaKind in setOf("gif", "video")) {
+            render(screen, key, ad!!, compact = true, countImpression = false) {
+                dismissed += key
+                stickyShown.remove(key)
+                bar.removeAllViews()
+                bar.visibility = View.GONE
+            }
+        } else if (ad != null) stickyStrip(screen, key, ad, bar) else {
             val zoneId = c.optJSONObject("network")?.takeIf { it.optBoolean("enabled") }?.optJSONObject("zones")?.optString("banner").orEmpty()
             if (zoneId.isBlank() || network == null || c.optString("priority") == "direct_only") null
             else FrameLayout(screen.host).also { box -> startNetwork(screen.host)?.banner(screen.host, zoneId, box) { ok -> event(if (ok) "impression" else "error", key, network = true); if (!ok) bar.visibility = View.GONE } }

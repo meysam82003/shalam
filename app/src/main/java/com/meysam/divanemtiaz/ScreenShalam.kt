@@ -12,6 +12,7 @@ import kotlin.math.abs
 
 /** Timer bookkeeping shared by the three live boards. */
 abstract class BoardScreen(host: MainActivity, val session: GameSession) : Screen(host) {
+    override val idleAdEligible: Boolean get() = !session.finished
     override val audioScope: String? get() = if (session.game == GameType.SHALAM) "shalam" else null
     override val sessionId: Long get() = session.id
     override val featureKey: String? get() = if (session.leagueId != 0L && !GameTransfer.importedLeague(host.repo.store, session.leagueId)) "leagues" else null
@@ -256,16 +257,19 @@ fun Screen.shalamStatsDialog(session: GameSession) {
 
 /** Two-step hand entry: contractor + bid, then opponent points with a live result preview. */
 class ShalamHandScreen(host: MainActivity, private val session: GameSession, private val editIndex: Int?) : Screen(host) {
+    override val idleAdEligible: Boolean get() = !session.finished
     private val rules get() = session.rules.shalam
     private val mode get() = rules.mode
     private val editing: Round? = editIndex?.let { session.rounds.getOrNull(it) }
     private var step = 1
     private var team = editing?.contractTeam ?: -1
     private var kind = editing?.kind?.takeIf { it.isShalamContract } ?: RoundKind.SHALAM_HAND
-    private var bid: Int? = editing?.bid?.takeIf { it > 0 }
+    private var bid: Int? = editing?.bid?.takeIf { kind == RoundKind.SHALAM_HAND && it > 0 }
     private var suit = editing?.suit ?: Suit.NONE
     private var taken: Int? = editing?.taken
-    private var bidText = editing?.bid?.takeIf { it > 0 }?.toString() ?: ""
+    private var bidText = bid?.toString().orEmpty()
+    private var pendingSpecial: RoundKind? = null
+    private val hasNumericBid: Boolean get() = bidText.isNotBlank() || bid != null
     private var takenText = editing?.taken?.toString() ?: ""
     private var preview: LinearLayout? = null
     private var footer: FrameLayout? = null
@@ -306,6 +310,41 @@ class ShalamHandScreen(host: MainActivity, private val session: GameSession, pri
                 }))
             }
         })
+        val hint = kit.text("", TextStyle.LABEL_BOLD, Royal.turquoiseLight, Gravity.CENTER)
+        val specials = listOf(
+            RoundKind.SHALAM_SHELEM to "شلم",
+            RoundKind.SHALAM_DOUBLE_SHELEM to "شلم دوبل",
+            RoundKind.SHALAM_PASS to "پاس"
+        )
+        val chips = specials.map { (choice, label) ->
+            kit.chip(label, kind == choice, ButtonKind.CHIP_SELECTED) {
+                val replaceBid = hasNumericBid
+                if (replaceBid && pendingSpecial != choice) {
+                    pendingSpecial = choice
+                    hint.text = "برای حذف عدد و انتخاب «$label»، یک بار دیگر بزنید."
+                    hint.visibility = View.VISIBLE
+                    kit.toast(hint.text.toString())
+                } else {
+                    clearNumericBid()
+                    if (choice == RoundKind.SHALAM_PASS) {
+                        if (replaceBid) savePass() else recordPass()
+                    } else {
+                        kind = choice
+                        host.refresh()
+                    }
+                }
+            }
+        }
+        fun updateSpecials() {
+            chips.forEachIndexed { index, chip ->
+                kit.setChip(chip, !hasNumericBid && kind == specials[index].first)
+                chip.alpha = if (hasNumericBid) 0.52f else 1f
+            }
+            hint.visibility = if (pendingSpecial == null) View.GONE else View.VISIBLE
+            specials.firstOrNull { it.first == pendingSpecial }?.second?.let {
+                hint.text = "برای حذف عدد و انتخاب «$it»، یک بار دیگر بزنید."
+            }
+        }
         addView(kit.section("امتیاز خوانده‌شده", RoyalIcon.STAR))
         if (settings.shalam.keyboardInput) {
             val field = kit.field("مثلاً ۱۳۵ (یا فقط ۳۵)", bidText, numeric = true).apply {
@@ -313,32 +352,38 @@ class ShalamHandScreen(host: MainActivity, private val session: GameSession, pri
                     bidText = text
                     kind = RoundKind.SHALAM_HAND
                     bid = PersianText.parseInt(text)?.let { ShalamEngine.normalizeTypedBid(it, mode) }
+                    pendingSpecial = null
+                    updateSpecials()
                 })
             }
             addView(field, kit.spaced(6))
             addView(kit.text("عدد کمتر از ۱۰۰ به‌صورت ۱xx ثبت می‌شود؛ مضرب ۵ از ${kit.n(ShalamEngine.MIN_TYPED_BID)} تا ${kit.n(mode.maxPoints)}.", TextStyle.CAPTION, Royal.muted))
         } else {
-            addView(kit.grid(5, ShalamEngine.bidOptions(mode).map { value ->
-                val label = if (value == mode.maxPoints && mode.maxBidIsShelem) "شلم" else kit.n(value)
-                kit.chip(label, kind == RoundKind.SHALAM_HAND && bid == value, ButtonKind.CHIP_GOLD) {
+            addView(kit.grid(5, ShalamEngine.bidOptions(mode).filterNot { mode.maxBidIsShelem && it == mode.maxPoints }.map { value ->
+                kit.chip(kit.n(value), kind == RoundKind.SHALAM_HAND && bid == value, ButtonKind.CHIP_GOLD) {
                     kind = RoundKind.SHALAM_HAND
                     bid = value
+                    bidText = value.toString()
+                    pendingSpecial = null
                     host.refresh()
                 }
             }, 6), kit.spaced(8))
         }
         addView(kit.gap(6))
-        addView(kit.grid(4, listOf(
-            kit.chip("شلم", kind == RoundKind.SHALAM_SHELEM, ButtonKind.CHIP_SELECTED) { kind = RoundKind.SHALAM_SHELEM; host.refresh() },
-            kit.chip("شلم دوبل", kind == RoundKind.SHALAM_DOUBLE_SHELEM, ButtonKind.CHIP_SELECTED) { kind = RoundKind.SHALAM_DOUBLE_SHELEM; host.refresh() },
-            kit.chip("پاس", false) { recordPass() },
-            kit.chip("ثبت دستی", false) { recordManual() }
-        ), 6))
+        addView(kit.grid(4, chips + kit.chip("ثبت دستی", false) { recordManual() }, 6))
+        addView(hint, kit.spaced(6))
+        updateSpecials()
         addView(kit.section("خال حکم (اختیاری)", RoyalIcon.SPADE))
         addView(kit.grid(5, (listOf(Suit.NONE) + Suit.all).map { s ->
             if (s == Suit.NONE) kit.chip("بدون", suit == s) { suit = s; host.refresh() }
             else suitChip(s)
         }, 6))
+    }
+
+    private fun clearNumericBid() {
+        bid = null
+        bidText = ""
+        pendingSpecial = null
     }
 
     private fun suitChip(s: Int): View = FrameLayout(host).apply {
@@ -361,7 +406,10 @@ class ShalamHandScreen(host: MainActivity, private val session: GameSession, pri
                 kit.toast("تعهد باید مضرب ۵ و در محدودهٔ مجاز بازی باشد")
                 return
             }
-            if (mode.maxBidIsShelem && value == mode.maxPoints) kind = RoundKind.SHALAM_SHELEM
+            if (mode.maxBidIsShelem && value == mode.maxPoints) {
+                clearNumericBid()
+                kind = RoundKind.SHALAM_SHELEM
+            }
         }
         step = 2
         host.refresh()
@@ -379,10 +427,14 @@ class ShalamHandScreen(host: MainActivity, private val session: GameSession, pri
 
     private fun recordPass() {
         kit.confirm("ثبت پاس", "همه پاس دادند؛ این دست با امتیاز صفر ثبت شود؟", "ثبت پاس") {
-            val round = Round(RoundKind.SHALAM_PASS, listOf(0, 0), note = "پاس")
-            if (editIndex != null) session.rounds[editIndex] = round else session.rounds += round
-            finishEntry()
+            savePass()
         }
+    }
+
+    private fun savePass() {
+        val round = Round(RoundKind.SHALAM_PASS, listOf(0, 0), note = "پاس")
+        if (editIndex != null) session.rounds[editIndex] = round else session.rounds += round
+        finishEntry()
     }
 
     private fun buildResult(): View {

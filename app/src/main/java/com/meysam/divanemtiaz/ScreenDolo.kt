@@ -216,6 +216,7 @@ class DoloBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(ho
 
 /** One hand: trump holder, minimum, declarations and results with the «همه … به جز» lists. */
 class DoloHandScreen(host: MainActivity, private val session: GameSession, private val editIndex: Int?) : Screen(host) {
+    override val idleAdEligible: Boolean get() = !session.finished
     private val rules get() = session.rules.dolo
     private val editing = editIndex?.let { session.rounds.getOrNull(it) }
     private val players: List<Int> = if (editing != null && editing.numbers.isNotEmpty()) {

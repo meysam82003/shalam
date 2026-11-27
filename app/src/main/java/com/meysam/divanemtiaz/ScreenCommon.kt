@@ -286,8 +286,12 @@ fun Screen.sideScoreCard(
     addView(kit.text(total, TextStyle.NUMBER_XL, accent, Gravity.CENTER, 1))
     if (caption != null) addView(kit.text(caption, TextStyle.CAPTION, Royal.muted, Gravity.CENTER, 2))
     if (progress != null) {
-        addView(kit.gap(4))
-        addView(kit.progress(progress, if (leader) Royal.turquoise else Royal.gold, 6))
+        addView(View(host).apply {
+            background = ScoreTrackDrawable(kit.density, progress, if (leader) Royal.turquoise else Royal.gold)
+            contentDescription = "پیشرفت تا امتیاز پایان، ${kit.n((progress.coerceIn(0f, 1f) * 100).toInt())} درصد"
+        }, LinearLayout.LayoutParams(-1, kit.dp(22)).apply {
+            setMargins(kit.dp(7), kit.dp(5), kit.dp(7), kit.dp(3))
+        })
     }
 }
 

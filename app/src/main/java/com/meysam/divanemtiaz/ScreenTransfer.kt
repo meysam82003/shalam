@@ -20,45 +20,58 @@ fun Screen.transferGame(kind: TransferKind, id: Long) {
         return
     }
 
-    val actions = mutableListOf(DialogAction("ارسال فایل", ButtonKind.PRIMARY) {
-        host.shareFile("Divan-${kind.key}-$id.divan.json", text, GameTransfer.MIME)
-    })
-    if (TransferPlatform.available()) actions += DialogAction("نمایش کد QR") { showTransferQr(text) }
+    val fileName = "Divan-${kind.key}-$id-${System.currentTimeMillis()}.divan.json"
+    val sendFile = { host.shareFile(fileName, text, GameTransfer.MIME) }
+    val actions = mutableListOf<DialogAction>()
+    if (TransferPlatform.available()) actions += DialogAction("ساخت یک کد QR", ButtonKind.PRIMARY) { showTransferQr(text, sendFile) }
+    actions += DialogAction("ارسال فایل", if (TransferPlatform.available()) ButtonKind.SECONDARY else ButtonKind.PRIMARY, onClick = sendFile)
     actions += DialogAction("دریافت بازی یا لیگ") { host.push(TransferScreen(host, scanOnOpen = true)) }
     actions += DialogAction("بستن")
-    kit.dialog("انتقال ${kind.title}", "گیرنده می‌تواند فایل یا کد را در بخش «انتقال بازی و لیگ» وارد کند. در بازی‌های نقش مخفی، فقط برای گرداننده بفرستید.",
+    kit.dialog("انتقال ${kind.title}", "کد را فقط برای گیرنده بفرستید. در بازی‌های نقش مخفی، گیرنده باید گرداننده باشد.",
         null, actions).show()
 }
 
-private fun Screen.showTransferQr(text: String) {
-    val frames = runCatching { TransferPlatform.frames(text) }.getOrDefault(emptyList())
-    if (frames.isEmpty()) {
-        kit.toast("حجم این انتقال زیاد است. از «ارسال فایل» استفاده کنید.")
-        return
-    }
-    val body = kit.vertical(Gravity.CENTER_HORIZONTAL)
-    var index = 0
-    fun update() {
-        body.removeAllViews()
+private fun Screen.showTransferQr(text: String, sendFile: () -> Unit) {
+    val progress = kit.dialog("آماده‌کردن کد انتقال", "ساخت لینک به اینترنت نیاز دارد.", null,
+        listOf(DialogAction("ارسال فایل", onClick = sendFile), DialogAction("بستن")))
+    progress.show()
+    TransferLink.create(text) { link ->
+        if (!progress.isShowing || host.current !== this) return@create
+        progress.dismiss()
+        val local = if (link == null) runCatching { TransferPlatform.frames(text).singleOrNull() }.getOrNull() else null
+        val code = link ?: local
+        if (code == null) {
+            kit.dialog("ساخت لینک ممکن نشد", "برای انتقال یک‌مرحله‌ای فایل بازی را بفرستید، یا پس از اتصال اینترنت دوباره تلاش کنید.",
+                null, listOf(DialogAction("ارسال فایل", ButtonKind.PRIMARY, onClick = sendFile), DialogAction("بستن"))).show()
+            return@create
+        }
+        val bitmap = runCatching { TransferPlatform.bitmap(code) }.getOrNull()
+        if (bitmap == null) {
+            kit.toast("ساخت کد QR ممکن نشد. فایل را بفرستید.")
+            return@create
+        }
+        val body = kit.vertical(Gravity.CENTER_HORIZONTAL)
         val size = (host.resources.displayMetrics.widthPixels - kit.dp(96)).coerceIn(kit.dp(135), kit.dp(420))
         body.addView(ImageView(host).apply {
-            setImageBitmap(TransferPlatform.bitmap(frames[index]))
-            contentDescription = "کد QR بخش ${kit.n(index + 1)}"
+            setImageBitmap(bitmap)
+            contentDescription = "کد QR انتقال بازی"
         }, android.widget.LinearLayout.LayoutParams(size, size))
-        if (frames.size > 1) {
-            body.addView(kit.text("بخش ${kit.n(index + 1)} از ${kit.n(frames.size)}", TextStyle.BODY_BOLD, Royal.ivory, Gravity.CENTER))
-            body.addView(kit.grid(2, listOf(
-                kit.button("بخش بعد", ButtonKind.SECONDARY, height = 42) { if (index < frames.lastIndex) { index++; update() } }.apply { isEnabled = index < frames.lastIndex },
-                kit.button("بخش قبل", ButtonKind.GHOST, height = 42) { if (index > 0) { index--; update() } }.apply { isEnabled = index > 0 }
-            ), 8), kit.fill())
-        }
+        kit.dialog("یک اسکن برای انتقال",
+            if (link != null) "با دوربین گوشی یا دیوان امتیاز اسکن کنید. کد تا یک ساعت معتبر است."
+            else "کد آفلاین را با اسکنر داخل دیوان امتیاز بخوانید.",
+            body, listOf(DialogAction("ارسال فایل", onClick = sendFile), DialogAction("بستن"))).show()
     }
-    if (runCatching { update() }.isFailure) {
-        kit.toast("ساخت کد QR ممکن نشد. فایل را بفرستید.")
-        return
+}
+
+fun Screen.receiveTransferLink(code: TransferLink.Code) {
+    val progress = kit.dialog("دریافت بازی", "در حال دریافت اطلاعات با اینترنت", null, listOf(DialogAction("انصراف")))
+    progress.show()
+    TransferLink.fetch(code) { text ->
+        if (!progress.isShowing || host.current !== this) return@fetch
+        progress.dismiss()
+        if (text == null) kit.toast("دریافت ممکن نشد. اینترنت یا اعتبار کد را بررسی کنید.")
+        else receiveTransfer(text)
     }
-    kit.dialog("اسکن با گوشی گیرنده", if (frames.size > 1) "همهٔ بخش‌ها باید اسکن شوند." else null, body,
-        listOf(DialogAction("بستن"))).show()
 }
 
 fun Screen.readTransferFile(uri: Uri) {
@@ -123,6 +136,11 @@ class TransferScreen(host: MainActivity, private var scanOnOpen: Boolean = false
     private fun scanNext() {
         host.scanTransfer { result ->
             if (result != null) {
+                val code = TransferLink.read(Uri.parse(result))
+                if (code != null) {
+                    receiveTransferLink(code)
+                    return@scanTransfer
+                }
                 val incoming = runCatching { scan.add(result) }
                 when {
                     incoming.isFailure -> {

@@ -1,0 +1,18 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.meysam.divanemtiaz",
+      "sha256_cert_fingerprints": ["BD:F4:93:32:DE:48:F6:E0:6E:3D:55:C3:80:A1:14:79:24:3A:B4:04:29:11:51:DF:8D:E1:F9:F4:BF:25:D0:AA"]
+    }
+  },
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.meysam.divanemtiaz.site",
+      "sha256_cert_fingerprints": ["BD:F4:93:32:DE:48:F6:E0:6E:3D:55:C3:80:A1:14:79:24:3A:B4:04:29:11:51:DF:8D:E1:F9:F4:BF:25:D0:AA"]
+    }
+  }
+]

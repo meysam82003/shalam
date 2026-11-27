@@ -11,6 +11,7 @@ if (!App::installed()) { http_response_code(503); exit("not installed\n"); }
 if (PHP_SAPI !== 'cli' && !hash_equals((string)App::cfg('cron_key', ''), (string)($_GET['key'] ?? ''))) { http_response_code(403); exit("forbidden\n"); }
 Db::pdo();
 Migrations::run();
+GameTransferLink::prune();
 @set_time_limit(300);
 Settings::set('last_daily_at', Clock::now());
 $out = Backup::daily();

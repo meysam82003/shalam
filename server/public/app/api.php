@@ -82,6 +82,11 @@ final class Api
 
     public static function handle(string $route, string $method): array
     {
+        if ($route === 'v1/game-transfer') {
+            if ($method === 'GET') return GameTransferLink::read($_GET);
+            self::post($method);
+            return GameTransferLink::create(Http::body(GameTransferLink::MAX_PAYLOAD + 64));
+        }
         $in = $method === 'GET' ? $_GET : Http::body();
         $normalized = preg_replace('#^v1/#', '', $route);
         if (strpos($normalized, 'admin/') === 0) return AdminMobile::handle($normalized, $method, $in);

@@ -71,10 +71,27 @@ fun Screen.chooseMenfiDeal(sides: List<Side>, previous: MenfiDeal?, onDone: (Men
         val order = MenfiDeal.fromSeats(seats, first, direction)
         body.addView(kit.panel(PanelStyle.SELECTED, 9).apply {
             addView(kit.text("نوبت دست‌دادن", TextStyle.HEADING, Royal.turquoiseLight, Gravity.CENTER))
-            addView(kit.grid(2, order.order.mapIndexed { i, seat ->
-                kit.text("${kit.n(i + 1)}. ${menfiSeatName(sides, seat)}",
-                    TextStyle.BODY_BOLD, Royal.ivory, Gravity.CENTER, 2)
-            }, 8))
+            fun player(index: Int): View = kit.panel(if (index == 0) PanelStyle.RAISED else PanelStyle.FLAT, 5).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+                val seat = order.order[index]
+                val color = if (seat / 2 == 0) Royal.gold else Royal.turquoise
+                addView(kit.badge(kit.n(index + 1), color, filled = index == 0))
+                addView(kit.text(menfiSeatName(sides, seat), TextStyle.BODY_BOLD, Royal.ivory, Gravity.CENTER, 2))
+            }
+            fun row(left: Int, right: Int, arrow: String) = kit.horizontal(Gravity.CENTER).apply {
+                layoutDirection = View.LAYOUT_DIRECTION_LTR
+                addView(kit.weight(player(left)))
+                addView(kit.text(arrow, TextStyle.HEADING, Royal.turquoiseLight, Gravity.CENTER), kit.dp(27), -2)
+                addView(kit.weight(player(right)))
+            }
+            addView(row(1, 0, "←"), kit.spaced(4))
+            addView(kit.horizontal().apply {
+                layoutDirection = View.LAYOUT_DIRECTION_LTR
+                addView(kit.weight(kit.text("↓", TextStyle.HEADING, Royal.turquoiseLight, Gravity.CENTER)))
+                addView(kit.hgap(27))
+                addView(kit.weight(View(host)))
+            })
+            addView(row(2, 3, "→"))
         }, kit.spaced(8))
     }
     rebuild()

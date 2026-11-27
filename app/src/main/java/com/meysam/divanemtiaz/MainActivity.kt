@@ -4,12 +4,14 @@ import android.app.Activity
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Rect
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
@@ -42,6 +44,7 @@ abstract class Screen(val host: MainActivity) {
 
     /** Where on this page ads may appear (home, history, …); null for every game, timer and input page. */
     open val adZone: String? get() = null
+    open val idleAdEligible: Boolean get() = false
 
     /** Module of this page for the free / Pro rules of the panel (null: always open). */
     open val featureKey: String? get() = null
@@ -165,6 +168,13 @@ class MainActivity : Activity() {
     private var lastUpdate: AppUpdate? = null
     private var promptedUpdateCode = 0
     private var updateDialog: android.app.Dialog? = null
+    private var idleAd: View? = null
+    private var idleScreen: Screen? = null
+    private var lastInteractionAt = 0L
+    private var lastIdleAttemptAt = 0L
+    private var idleShownAt = -120_000L
+    private var idleShownSinceTouch = false
+    private var touching = false
     private val updateLocked: Boolean get() = current is RequiredUpdateScreen
     private val accessTick = object : Runnable {
         override fun run() {
@@ -196,6 +206,7 @@ class MainActivity : Activity() {
             val key = current?.featureKey
             if (key != null && key in Features.newProModules && !ProState.access(key).allowed) refresh()
             if (Gate.itemLocked("themes", ThemeEngine.spec.id)) applyTheme(settings.general.theme)
+            checkIdleAd()
             accessHandler.postDelayed(this, 1000)
         }
     }
@@ -285,6 +296,10 @@ class MainActivity : Activity() {
             return
         }
         val data = intent?.data
+        TransferLink.read(data)?.let { code ->
+            if (current is SplashScreen) openAfterSplash = intent else current?.receiveTransferLink(code)
+            return
+        }
         if (data != null && data.scheme == "divan" && data.host == "pay" && ProState.pendingOrder != null) {
             if (current !is ProScreen) push(ProScreen(this)) else current?.onShow()
             return
@@ -357,6 +372,7 @@ class MainActivity : Activity() {
         // Plans, module access and the account are refreshed in the background; games never wait for it.
         if (Build.FINGERPRINT != "robolectric") ProSync.onStart()
         resumed = true
+        restartIdleClock()
         accessHandler.removeCallbacks(accessTick)
         accessHandler.post(accessTick)
         gameAudio.enter(current?.audioScope)
@@ -371,6 +387,8 @@ class MainActivity : Activity() {
     }
 
     override fun onPause() {
+        hideIdleAd()
+        touching = false
         AdEngine.flush()
         gameAudio.pause()
         current?.onHide()
@@ -381,6 +399,64 @@ class MainActivity : Activity() {
             if (audio.isRecording) audio.stopRecording(discard = true)
         }
         super.onPause()
+    }
+
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                touching = true
+                restartIdleClock()
+                val bounds = Rect()
+                if (idleAd?.getGlobalVisibleRect(bounds) == true &&
+                    !bounds.contains(event.rawX.toInt(), event.rawY.toInt())) hideIdleAd()
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                touching = false
+                restartIdleClock()
+            }
+        }
+        return super.dispatchTouchEvent(event)
+    }
+
+    private fun restartIdleClock() {
+        lastInteractionAt = android.os.SystemClock.uptimeMillis()
+        idleShownSinceTouch = false
+    }
+
+    private fun hideIdleAd() {
+        idleAd?.let(rootView::removeView)
+        idleAd = null
+    }
+
+    private fun checkIdleAd() {
+        val screen = current ?: return
+        if (Build.DEVICE == "web" || !screen.idleAdEligible) return
+        val now = android.os.SystemClock.uptimeMillis()
+        if (!AdEngine.enabled() || !rootView.hasWindowFocus() || kit.hasOpenDialogs() ||
+            rootView.findFocus() is android.widget.EditText) {
+            hideIdleAd()
+            restartIdleClock()
+            return
+        }
+        if (idleAd != null) {
+            if (!touching && now - idleShownAt >= 15_000L) hideIdleAd()
+            return
+        }
+        if (touching || idleShownSinceTouch || now - lastInteractionAt < 45_000L ||
+            now - idleShownAt < 120_000L || now - lastIdleAttemptAt < 5_000L) return
+        lastIdleAttemptAt = now
+        val key = "referee_idle"
+        val ad = AdEngine.campaigns(key).firstOrNull() ?: return
+        val slot = kit.panel(PanelStyle.RAISED, 8).apply {
+            addView(AdEngine.campaignCard(screen, key, ad, compact = true, onClose = { hideIdleAd() }), kit.fill())
+        }
+        val width = (resources.displayMetrics.widthPixels - kit.dp(30)).coerceIn(kit.dp(160), kit.dp(400))
+        idleAd = slot
+        idleShownSinceTouch = true
+        idleShownAt = now
+        rootView.addView(slot, FrameLayout.LayoutParams(width, -2, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
+            topMargin = frame.paddingTop + kit.dp(58)
+        })
     }
 
     override fun onDestroy() {
@@ -775,6 +851,11 @@ class MainActivity : Activity() {
 
     private fun render(animate: Boolean = true, forward: Boolean = true, notify: Boolean = true) {
         val screen = current ?: return
+        if (idleScreen !== screen) {
+            hideIdleAd()
+            restartIdleClock()
+            idleScreen = screen
+        }
         val restricted = screen.featureKey?.takeIf { it in Features.newProModules && !ProState.access(it).allowed }
         if (restricted != null) {
             kit.dismissDialogs()

@@ -53,6 +53,7 @@ public class Activity extends android.view.ContextThemeWrapper {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {}
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {}
     public void onWindowFocusChanged(boolean hasFocus) {}
+    public boolean dispatchTouchEvent(android.view.MotionEvent event) { return false; }
     public void onConfigurationChanged(android.content.res.Configuration newConfig) {}
     public void onLowMemory() {}
     public void onTrimMemory(int level) {}

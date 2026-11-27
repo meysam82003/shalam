@@ -4,6 +4,8 @@ import android.app.Activity
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.util.Base64
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
@@ -12,10 +14,49 @@ import com.google.zxing.integration.android.IntentIntegrator
 import com.journeyapps.barcodescanner.BarcodeEncoder
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.security.SecureRandom
+import java.util.concurrent.Executors
 import java.util.zip.GZIPInputStream
 import java.util.zip.GZIPOutputStream
+import javax.crypto.Cipher
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.SecretKeySpec
 
 object TransferPlatform {
+    private val cryptoWorker = Executors.newSingleThreadExecutor()
+    private val main = Handler(Looper.getMainLooper())
+    private val random = SecureRandom()
+
+    @JvmStatic fun seal(text: String, done: (String?, String?) -> Unit) {
+        cryptoWorker.execute {
+            val result = runCatching {
+                val bytes = text.toByteArray(Charsets.UTF_8)
+                require(bytes.size <= GameTransfer.MAX_BYTES)
+                val zipped = ByteArrayOutputStream().apply { GZIPOutputStream(this).use { it.write(bytes) } }.toByteArray()
+                val key = ByteArray(32).also(random::nextBytes)
+                val nonce = ByteArray(12).also(random::nextBytes)
+                val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+                cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, nonce))
+                B64.encode(key, url = true) to B64.encode(nonce + cipher.doFinal(zipped), url = true)
+            }.getOrNull()
+            main.post { done(result?.first, result?.second) }
+        }
+    }
+
+    @JvmStatic fun unseal(key: String, payload: String, done: (String?) -> Unit) {
+        cryptoWorker.execute {
+            val result = runCatching {
+                require(payload.length in 40..5_600_000)
+                val box = B64.decode(payload)
+                val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+                cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(B64.decode(key), "AES"), GCMParameterSpec(128, box.copyOfRange(0, 12)))
+                val zip = cipher.doFinal(box, 12, box.size - 12)
+                GZIPInputStream(ByteArrayInputStream(zip)).use(GameTransfer::read).toString(Charsets.UTF_8)
+            }.getOrNull()
+            main.post { done(result) }
+        }
+    }
+
     @JvmStatic fun available() = true
 
     @JvmStatic fun frames(text: String): List<String> {
