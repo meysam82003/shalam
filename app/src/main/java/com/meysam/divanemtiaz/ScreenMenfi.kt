@@ -40,6 +40,7 @@ class MenfiBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(h
                 SessionOps.commit(host, session)
                 host.refresh()
             }
+            Unit
         }) + commonMenu())
         return scaffold(
             title = "داوری منفی",
