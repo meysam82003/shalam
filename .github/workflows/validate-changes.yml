@@ -51,7 +51,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Divan-5.6.7-compiler-diagnostics
+          name: Divan-5.6.8-compiler-diagnostics
           path: |
             android-tests.log
             app/build/test-results/
@@ -106,22 +106,22 @@ jobs:
           "$APKSIGNER" verify --print-certs admin-app/build/outputs/apk/release/admin-app-release.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: Divan-5.6.7-Bazaar
+          name: Divan-5.6.8-Bazaar
           path: app/build/outputs/apk/bazaar/release/app-bazaar-release.apk
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
-          name: Divan-5.6.7-Myket
+          name: Divan-5.6.8-Myket
           path: app/build/outputs/apk/myket/release/app-myket-release.apk
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
-          name: Divan-5.6.7-Site
+          name: Divan-5.6.8-Site
           path: app/build/outputs/apk/direct/release/app-direct-release.apk
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
-          name: Divan-5.6.7-Admin
+          name: Divan-5.6.8-Admin
           path: admin-app/build/outputs/apk/release/admin-app-release.apk
           if-no-files-found: error
   web-runtime:
@@ -152,11 +152,11 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Divan-5.6.7-Web-runtime
+          name: Divan-5.6.8-Web-runtime
           path: web-runtime-results/
       - uses: actions/upload-artifact@v4
         with:
-          name: Divan-5.6.7-Web-Server
+          name: Divan-5.6.8-Web-Server
           include-hidden-files: true
           path: |
             webapp/build/play/

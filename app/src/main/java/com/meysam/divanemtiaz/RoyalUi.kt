@@ -641,30 +641,31 @@ class ScoreTrackDrawable(private val density: Float, private val ratio: Float, p
     private val trough = RectF()
 
     override fun draw(canvas: Canvas) {
-        val x1 = bounds.left + 5 * density
-        val x2 = bounds.right - 5 * density
+        // Physical coordinates: the goal emblem and the start of the bar stay on the left in RTL.
+        val starRadius = 4.5f * density
+        val starX = bounds.left + starRadius + density
+        val x1 = starX + starRadius + 4 * density
+        val x2 = bounds.right - 2 * density
         if (x2 <= x1) return
         val y = bounds.exactCenterY()
-        val radius = 3.5f * density
+        val radius = 4f * density
         trough.set(x1, y - radius, x2, y + radius)
-        paint.color = Royal.alpha(Royal.ivory, 0.12f)
+        paint.color = Royal.mix(ThemeEngine.spec.surface, Royal.ivory, 0.14f)
         canvas.drawRoundRect(trough, radius, radius, paint)
         val progress = ratio.coerceIn(0f, 1f)
         if (progress > 0f) {
             canvas.save()
-            canvas.clipRect(x2 - (x2 - x1) * progress, trough.top, x2, trough.bottom)
-            paint.shader = LinearGradient(0f, trough.top, 0f, trough.bottom, Royal.mix(fill, Royal.metalLight, 0.45f), fill, Shader.TileMode.CLAMP)
+            canvas.clipRect(x1, trough.top, x1 + trough.width() * progress, trough.bottom)
+            paint.color = fill
             canvas.drawRoundRect(trough, radius, radius, paint)
-            paint.shader = null
             canvas.restore()
         }
+        paint.color = Royal.metal
+        canvas.drawPath(RoyalShapes.starPath(starX, y, starRadius, 4, 0.5f), paint)
         for (mark in 1..3) {
-            val x = x2 - (x2 - x1) * mark / 4f
-            paint.color = Royal.alpha(Royal.metal, 0.72f)
-            canvas.drawCircle(x, y + 6.5f * density, 1.15f * density, paint)
+            val x = x1 + trough.width() * mark / 4f
+            canvas.drawCircle(x, y + 7f * density, density, paint)
         }
-        paint.color = if (progress == 1f) fill else Royal.metal
-        canvas.drawPath(RoyalShapes.starPath(x1, y, 4f * density, 4, 0.5f), paint)
     }
 }
 

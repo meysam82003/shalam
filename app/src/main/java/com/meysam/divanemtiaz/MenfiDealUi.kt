@@ -50,13 +50,13 @@ fun Screen.chooseMenfiDeal(sides: List<Side>, previous: MenfiDeal?, onDone: (Men
             rebuild()
         }
         body.addView(kit.grid(2, listOf(
-            kit.button("↔  چپ و راست", ButtonKind.SECONDARY, height = 42) { swap(0, 2) },
-            kit.button("↕  بالا و پایین", ButtonKind.SECONDARY, height = 42) { swap(1, 3) },
-            kit.button("چرخش جای تیم‌ها", ButtonKind.GHOST, RoyalIcon.UNDO, 42) {
-                seats.add(seats.removeAt(0))
-                rebuild()
-            }
+            kit.button("↔  چپ و راست", ButtonKind.SECONDARY, height = 44) { swap(0, 2) },
+            kit.button("↕  بالا و پایین", ButtonKind.SECONDARY, height = 44) { swap(1, 3) }
         ), 5), kit.spaced(5))
+        body.addView(kit.button("چرخش جای تیم‌ها", ButtonKind.SECONDARY, RoyalIcon.UNDO, 44) {
+            seats.add(seats.removeAt(0))
+            rebuild()
+        }, kit.spaced(9))
 
         body.addView(kit.text("جهت گردش دست‌دهنده", TextStyle.LABEL_BOLD, Royal.muted, Gravity.CENTER))
         body.addView(kit.grid(2, listOf(
@@ -69,29 +69,31 @@ fun Screen.chooseMenfiDeal(sides: List<Side>, previous: MenfiDeal?, onDone: (Men
             }
         }, 6), kit.spaced(6))
         val order = MenfiDeal.fromSeats(seats, first, direction)
-        body.addView(kit.panel(PanelStyle.SELECTED, 9).apply {
-            addView(kit.text("نوبت دست‌دادن", TextStyle.HEADING, Royal.turquoiseLight, Gravity.CENTER))
-            fun player(index: Int): View = kit.panel(if (index == 0) PanelStyle.RAISED else PanelStyle.FLAT, 5).apply {
-                gravity = Gravity.CENTER_HORIZONTAL
-                val seat = order.order[index]
-                val color = if (seat / 2 == 0) Royal.gold else Royal.turquoise
-                addView(kit.badge(kit.n(index + 1), color, filled = index == 0))
-                addView(kit.text(menfiSeatName(sides, seat), TextStyle.BODY_BOLD, Royal.ivory, Gravity.CENTER, 2))
+        body.addView(kit.panel(PanelStyle.FLAT, 14).apply {
+            addView(kit.text("نوبت دست‌دادن", TextStyle.HEADING, Royal.title), kit.spaced(6))
+            order.order.forEachIndexed { index, player ->
+                val name = menfiSeatName(sides, player)
+                val number = kit.n(index + 1)
+                addView(kit.horizontal().apply {
+                    contentDescription = "نوبت $number، $name"
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+                    addView(kit.text(number, TextStyle.BODY_BOLD, Royal.gold, Gravity.CENTER), kit.dp(28), -2)
+                    addView(kit.hgap(8))
+                    addView(kit.weight(kit.text(name, TextStyle.BODY_BOLD, Royal.ivory)))
+                }, kit.fill())
+                if (index < order.order.lastIndex) {
+                    addView(kit.horizontal().apply {
+                        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+                        addView(kit.text("↓", TextStyle.CAPTION, Royal.gold, Gravity.CENTER).apply {
+                            includeFontPadding = false
+                        }, kit.dp(28), -2)
+                        addView(kit.hgap(8))
+                        addView(kit.weight(View(host).apply {
+                            setBackgroundColor(Royal.alpha(Royal.muted, 0.20f))
+                        }, height = kit.dp(1)))
+                    }, kit.fill())
+                }
             }
-            fun row(left: Int, right: Int, arrow: String) = kit.horizontal(Gravity.CENTER).apply {
-                layoutDirection = View.LAYOUT_DIRECTION_LTR
-                addView(kit.weight(player(left)))
-                addView(kit.text(arrow, TextStyle.HEADING, Royal.turquoiseLight, Gravity.CENTER), kit.dp(27), -2)
-                addView(kit.weight(player(right)))
-            }
-            addView(row(1, 0, "←"), kit.spaced(4))
-            addView(kit.horizontal().apply {
-                layoutDirection = View.LAYOUT_DIRECTION_LTR
-                addView(kit.weight(kit.text("↓", TextStyle.HEADING, Royal.turquoiseLight, Gravity.CENTER)))
-                addView(kit.hgap(27))
-                addView(kit.weight(View(host)))
-            })
-            addView(row(2, 3, "→"))
         }, kit.spaced(8))
     }
     rebuild()

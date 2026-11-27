@@ -269,7 +269,11 @@ class MainActivity : Activity() {
         } else if (savedInstanceState != null) {
             stack += HomeScreen(this)
         } else {
-            stack += SplashScreen(this)
+            stack += when {
+                Build.DEVICE == "web" -> SplashScreen(this)
+                Themes.isChosen(settings.general.theme) -> HomeScreen(this)
+                else -> ThemeWelcomeScreen(this)
+            }
         }
         if (!reconcileAppUpdate()) render(animate = false)
         Notices.channels(this)
