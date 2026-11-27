@@ -13,6 +13,16 @@
         <item name="android:windowBackground">@drawable/launch_background</item>
         <item name="android:textColorHighlight">#552ED3C6</item>
     </style>
+    <style name="Theme.Divan.Entrance" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowDisablePreview">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:colorBackgroundCacheHint">@null</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
     <style name="DivanDialogAnimation">
         <item name="android:windowEnterAnimation">@anim/divan_dialog_in</item>
         <item name="android:windowExitAnimation">@anim/divan_dialog_out</item>

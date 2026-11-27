@@ -489,6 +489,10 @@ final class Migrations
                 "UPDATE {features} SET mode='pro', limit_value=NULL WHERE k IN ('leagues','rankings') AND mode IN ('free','limited')",
                 "UPDATE {features} SET pro_items=TRIM(BOTH ',' FROM CONCAT(COALESCE(pro_items,''),',amethyst,rose,pistachio,saffron,coral,lavender,mint,sky,lotus')) WHERE k='themes' AND (mode IN ('free','limited') OR COALESCE(pro_items,'') <> '')",
             ],
+            16 => [
+                "CREATE TABLE IF NOT EXISTS {game_transfers} (token CHAR(32) PRIMARY KEY, payload MEDIUMBLOB NOT NULL, byte_count INT UNSIGNED NOT NULL, expires_at BIGINT UNSIGNED NOT NULL, KEY k_expiry (expires_at)) $e",
+                "UPDATE {placements} SET formats=CONCAT_WS(',', NULLIF(formats,''), IF(FIND_IN_SET('image',formats),NULL,'image'), IF(FIND_IN_SET('gif',formats),NULL,'gif'), IF(FIND_IN_SET('text',formats),NULL,'text'), IF(FIND_IN_SET('video',formats),NULL,'video')) WHERE k IN ('home_inline','home_bottom','home_corner','history_inline','hub_inline','result_bottom','ranking_inline','settings_bottom','sticky_top','sticky_bottom')",
+            ],
         ];
     }
 

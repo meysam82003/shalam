@@ -87,52 +87,66 @@ object LeagueEngine {
      * a game added later may have the teams the other way round, so the side is matched by name.
      */
     fun sideOfTeam(league: League, s: GameSession, teamA: Int?, teamB: Int?): Int {
+        s.leagueSideA?.let { return it }
         val a = teamA?.let { league.teams.getOrNull(it)?.name } ?: return 0
         val b = teamB?.let { league.teams.getOrNull(it)?.name } ?: return 0
         return if (s.sides.getOrNull(0)?.name == b && s.sides.getOrNull(1)?.name == a) 1 else 0
     }
 
-    /** Matches a finished or running game can be added to: both teams known and not yet decided. */
+    /** A game can join an undecided match with no other game in progress. */
     fun openMatches(league: League, lookup: (Long) -> GameSession?): List<MatchState> =
-        league.matches.filter { !it.isBye }.map { state(league, it, lookup) }.filter { it.ready && !it.decided }
+        league.matches.filter { !it.isBye }.map { state(league, it, lookup) }
+            .filter { it.ready && !it.decided && it.openGame == null }
 
-    /**
-     * Adds an existing game to a match: its sides take the league team names and avatars
-     * ([teamAFirst] tells which game side is team A), and its result counts from now on.
-     */
     fun attach(league: League, matchId: Int, session: GameSession, teamAFirst: Boolean, lookup: (Long) -> GameSession?): Boolean {
         val index = league.matches.indexOfFirst { it.id == matchId }
         if (index < 0 || session.leagueId != 0L || session.game != league.game || session.sides.size != 2) return false
+        if (league.matches.any { session.id in it.games } || session.id in league.pastGames) return false
         val st = state(league, league.matches[index], lookup)
+        if (!st.ready || st.decided || st.openGame != null) return false
         val a = st.teamA ?: return false
         val b = st.teamB ?: return false
-        val teamA = league.teams[a]
-        val teamB = league.teams[b]
-        val sides = if (teamAFirst) listOf(teamA, teamB) else listOf(teamB, teamA)
-        session.menfiDeal?.let { deal ->
-            val oldOrder = session.sides.map { it.members.map(TeamIdentity::person) }
-            val newOrder = sides.map { it.members.map(TeamIdentity::person) }
-            if (oldOrder.indices.any { oldOrder[it].size > 2 || newOrder[it].size > 2 || oldOrder[it].toSet() != newOrder[it].toSet() }) {
-                // Attaching the result to different people requires seating them again for the next hand.
-                session.menfiDeal = null
-            } else {
-                fun remap(seat: Int): Int {
-                    val team = seat / 2
-                    val person = oldOrder[team].getOrNull(seat % 2) ?: return seat
-                    val index = newOrder[team].indexOf(person)
-                    return if (index in 0..1) team * 2 + index else seat
-                }
-                session.menfiDeal = MenfiDeal.restore(deal.order.map(::remap), deal.seats.map(::remap))
-            }
+        val first = if (teamAFirst) 0 else 1
+        val assignments = listOf(a to session.sides[first], b to session.sides[1 - first])
+        // An unused, unnamed roster slot can adopt the players from the attached game.
+        for ((team, side) in assignments) {
+            if (league.teams[team].members.isNotEmpty() || side.members.size != 2) continue
+            if (league.matches.any { entry ->
+                    entry.games.isNotEmpty() && state(league, entry, lookup).let { it.teamA == team || it.teamB == team }
+                }) continue
+            val key = TeamIdentity.key(side)
+            if (league.teams.indices.any { it != team && TeamIdentity.key(league.teams[it]) == key }) continue
+            league.teams[team] = side
         }
-        session.sides[0] = sides[0]
-        session.sides[1] = sides[1]
+        session.leagueSideA = first
         session.leagueId = league.id
         session.label = "${league.name} • ${stageTitle(league, league.matches[index].stage)}"
         league.matches[index] = league.matches[index].let { it.copy(games = it.games + session.id) }
         league.updatedAt = System.currentTimeMillis()
         return true
     }
+
+    fun menfiArrangement(league: League, match: LeagueMatch, sides: List<Side>, lookup: (Long) -> GameSession?): MenfiDeal? =
+        match.games.asReversed().firstNotNullOfOrNull { id ->
+            val game = lookup(id) ?: return@firstNotNullOfOrNull null
+            val deal = game.menfiDeal ?: return@firstNotNullOfOrNull null
+            val fixture = state(league, match, lookup)
+            val first = sideOfTeam(league, game, fixture.teamA, fixture.teamB)
+            val previous = listOfNotNull(game.sides.getOrNull(first), game.sides.getOrNull(1 - first))
+            if (previous.size != 2 || sides.size != 2 || previous.indices.any {
+                    TeamIdentity.key(previous[it]) != TeamIdentity.key(sides[it])
+                }) return@firstNotNullOfOrNull null
+
+            fun remap(seat: Int): Int {
+                val team = if (seat / 2 == first) 0 else 1
+                val oldName = previous[team].members.getOrNull(seat % 2)
+                val member = oldName?.let { name ->
+                    sides[team].members.indexOfFirst { TeamIdentity.person(it) == TeamIdentity.person(name) }
+                }?.takeIf { it in 0..1 } ?: (seat % 2)
+                return team * 2 + member
+            }
+            MenfiDeal.restore(deal.order.map(::remap), deal.seats.map(::remap))
+        }
 
     fun winnerOf(league: League, matchId: Int, lookup: (Long) -> GameSession?): Int? =
         league.matches.firstOrNull { it.id == matchId }?.let { state(league, it, lookup).winner }

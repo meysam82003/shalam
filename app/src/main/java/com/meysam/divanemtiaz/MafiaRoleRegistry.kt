@@ -114,13 +114,15 @@ data class MafiaRoleDef(
  */
 object MafiaRoleRegistry {
     @Volatile var user: Map<MafiaRole, MafiaRoleDef> = emptyMap()
+    @Volatile private var transferredEdits: Map<MafiaRole, MafiaRoleDef>? = null
+    private val edits get() = transferredEdits ?: user
     @Volatile var scenarioNames: Map<MafiaRole, String> = emptyMap()
     @Volatile var scenarioWake: Map<MafiaRole, Int> = emptyMap()
 
     /** Effective rules of a role (built-in data merged with the narrator's edits). */
     fun def(r: MafiaRole): MafiaRoleDef? {
         val base = MafiaGenericRoles.builtin[r]
-        val u = user[r]
+        val u = edits[r]
         return when {
             base == null -> u
             else -> base.merge(u)
@@ -128,14 +130,14 @@ object MafiaRoleRegistry {
     }
 
     /** An original (hand-coded) role whose night work the narrator replaced with his own rule. */
-    fun overrides(r: MafiaRole): Boolean = !r.isDataRole && user[r]?.ability != null
+    fun overrides(r: MafiaRole): Boolean = !r.isDataRole && edits[r]?.ability != null
 
     /** Night-record key of a data-defined job (kept apart from the hand-coded records of an overridden role). */
     fun jobKey(r: MafiaRole): String = if (r.isDataRole) r.name else "G_" + r.name
 
     fun roleOfKey(key: String): MafiaRole? = MafiaRole.values().firstOrNull { it.name == key.removePrefix("G_") }
 
-    fun name(r: MafiaRole): String? = scenarioNames[r] ?: user[r]?.name ?: MafiaGenericRoles.builtin[r]?.name
+    fun name(r: MafiaRole): String? = scenarioNames[r] ?: edits[r]?.name ?: MafiaGenericRoles.builtin[r]?.name
 
     /** Roles that can be chosen: the original roles, the built-in data roles and defined custom slots. */
     fun available(): List<MafiaRole> = MafiaRole.values().filter { !it.isCustomSlot || user.containsKey(it) }
@@ -175,7 +177,8 @@ object MafiaRoleRegistry {
     }
 
     /** Applies a scenario's role names and night order (or clears them with null). */
-    fun activate(s: MafiaScenario?) {
+    fun activate(s: MafiaScenario?, gameEdits: Map<MafiaRole, MafiaRoleDef>? = null) {
+        transferredEdits = gameEdits
         scenarioNames = s?.names ?: emptyMap()
         scenarioWake = s?.wake ?: emptyMap()
     }

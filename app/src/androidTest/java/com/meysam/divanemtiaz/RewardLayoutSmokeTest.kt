@@ -42,6 +42,16 @@ class RewardLayoutSmokeTest {
         }
     }
     private fun find(text:String):AccessibilityNodeInfo?=instrumentation.uiAutomation.rootInActiveWindow?.findAccessibilityNodeInfosByText(text)?.firstOrNull()
+    private fun videoCta(): Pair<AccessibilityNodeInfo, AccessibilityNodeInfo>? {
+        val until = SystemClock.uptimeMillis() + 4000
+        do {
+            val root = instrumentation.uiAutomation.rootInActiveWindow
+            val button = root?.findAccessibilityNodeInfosByText("باز کردن سایت")?.firstOrNull()
+            if (root != null && button != null) return root to button
+            SystemClock.sleep(80)
+        } while (SystemClock.uptimeMillis() < until)
+        return null
+    }
     private fun showVideo(callback:(Boolean)->Unit){
         val bytes=instrumentation.context.assets.open("reward-fixture.mp4").use{it.readBytes()}
         val sha=MessageDigest.getInstance("SHA-256").digest(bytes).joinToString(""){"%02x".format(it)}
@@ -51,25 +61,26 @@ class RewardLayoutSmokeTest {
             val method=AdEngine.javaClass.getDeclaredMethod("fullScreen",Screen::class.java,String::class.java,DirectAd::class.java,Boolean::class.javaPrimitiveType,kotlin.jvm.functions.Function1::class.java).apply{isAccessible=true}
             method.invoke(AdEngine,host.current!!,"rewarded_offer",ad,true,callback)
         }
-        instrumentation.waitForIdleSync()
     }
     @Test fun portraitVideoKeepsCtaInsideWindowAndReportsActualCompletion(){
         val done=CountDownLatch(1);val completed=AtomicBoolean(false)
         showVideo{completed.set(it);done.countDown()}
-        SystemClock.sleep(500)
-        screenshot("reward-video-before-check")
-        var button=find("باز کردن سایت")
-        val until=SystemClock.uptimeMillis()+2500
-        while(button==null&&SystemClock.uptimeMillis()<until){SystemClock.sleep(100);button=find("باز کردن سایت")}
+        // Measure the live window before slow emulator screenshot capture or video completion.
+        val cta = videoCta()
         fun tree(node:AccessibilityNodeInfo?,depth:Int=0):String {
             if(node==null||depth>12)return ""
             val rect=Rect();node.getBoundsInScreen(rect)
             return "${node.className} text=${node.text} desc=${node.contentDescription} bounds=$rect\n"+(0 until node.childCount).joinToString(""){tree(node.getChild(it),depth+1)}
         }
-        assertNotNull("CTA remains accessible; callback=${done.count} completed=${completed.get()} tree="+tree(instrumentation.uiAutomation.rootInActiveWindow),button)
-        while(button?.isClickable==false&&button?.parent!=null)button=button?.parent
-        val bounds=Rect();button!!.getBoundsInScreen(bounds)
-        val window=Rect();instrumentation.uiAutomation.rootInActiveWindow.getBoundsInScreen(window)
+        if (cta == null) {
+            fail("CTA remains accessible; callback=${done.count} completed=${completed.get()} tree="+tree(instrumentation.uiAutomation.rootInActiveWindow))
+            return
+        }
+        val (windowRoot, label) = cta
+        var button = label
+        while (!button.isClickable) button = button.parent ?: break
+        val bounds=Rect();button.getBoundsInScreen(bounds)
+        val window=Rect();windowRoot.getBoundsInScreen(window)
         assertTrue("CTA is entirely inside the dialog viewport",window.contains(bounds))
         assertTrue("CTA keeps a usable touch height",bounds.height()>=40*instrumentation.targetContext.resources.displayMetrics.density)
         screenshot("reward-video-cta")
@@ -79,6 +90,7 @@ class RewardLayoutSmokeTest {
     @Test fun exitingBeforeEndCannotCompleteReward(){
         val done=CountDownLatch(1);val completed=AtomicBoolean(true)
         showVideo{completed.set(it);done.countDown()}
+        assertNotNull("Reward dialog opened before pressing Back", videoCta())
         instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
         assertTrue(done.await(5,TimeUnit.SECONDS));assertFalse(completed.get())
     }

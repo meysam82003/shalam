@@ -7,8 +7,8 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 
-const val APP_VERSION_NAME = "5.6.3"
-const val APP_VERSION_LABEL = "نسخهٔ ۵.۶.۱"
+const val APP_VERSION_NAME = "5.6.8"
+const val APP_VERSION_LABEL = "نسخهٔ ۵.۶.۸"
 
 class SplashScreen(host: MainActivity) : Screen(host) {
     /**
@@ -24,13 +24,13 @@ class SplashScreen(host: MainActivity) : Screen(host) {
         addView(kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
             addView(fan, LinearLayout.LayoutParams(kit.dp(280), kit.dp(215)))
             addView(kit.gap(6))
-            addView(stage(kit.text("دیوان امتیاز", TextStyle.DISPLAY, Royal.goldLight, Gravity.CENTER).apply { textSize = kit.textSize(34f) }, 880))
-            addView(stage(kit.text("داور و دفتر امتیاز شاهانه", TextStyle.BODY, Royal.muted, Gravity.CENTER), 1000))
+            addView(stage(kit.text("دیوان امتیاز", TextStyle.DISPLAY, Royal.goldLight, Gravity.CENTER).apply { textSize = kit.textSize(34f) }, 1160))
+            addView(stage(kit.text("داور و دفتر امتیاز شاهانه", TextStyle.BODY, Royal.muted, Gravity.CENTER), 1320))
             addView(kit.gap(10))
-            addView(stage(kit.divider(), 1090), LinearLayout.LayoutParams(kit.dp(220), kit.dp(18)))
-            addView(stage(kit.text(gameNames(), TextStyle.LABEL_BOLD, Royal.gold, Gravity.CENTER).apply { setLineSpacing(kit.dpf(4f), 1f) }, 1180))
+            addView(stage(kit.divider(), 1430), LinearLayout.LayoutParams(kit.dp(220), kit.dp(18)))
+            addView(stage(kit.text(gameNames(), TextStyle.LABEL_BOLD, Royal.gold, Gravity.CENTER).apply { setLineSpacing(kit.dpf(4f), 1f) }, 1530))
         }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
-        addView(stage(kit.text("$APP_VERSION_LABEL  •  آفلاین", TextStyle.CAPTION, Royal.dim, Gravity.CENTER), 1280),
+        addView(stage(kit.text("$APP_VERSION_LABEL  •  آفلاین", TextStyle.CAPTION, Royal.dim, Gravity.CENTER), 1660),
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply { bottomMargin = kit.dp(28) })
         isClickable = true
         setOnClickListener { goHome() }
@@ -39,9 +39,6 @@ class SplashScreen(host: MainActivity) : Screen(host) {
             staged.forEach { (v, delay) -> rise(v, delay) }
         } else {
             fan.still()
-            // The window already shows the same emerald, so the logo only needs a short fade.
-            alpha = 0f
-            animate().alpha(1f).setDuration(180).start()
         }
     }
 
@@ -53,12 +50,7 @@ class SplashScreen(host: MainActivity) : Screen(host) {
 
     /** One line of text coming up into place on the spring while it fades in. */
     private fun rise(v: View, delay: Long) {
-        v.animate().translationY(0f).setStartDelay(delay).setDuration(Motion.SPRING_ITEM).setInterpolator(Motion.SPRING).start()
-        android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
-            startDelay = delay; duration = 300; interpolator = Motion.EASE_OUT
-            addUpdateListener { v.alpha = it.animatedValue as Float }
-            start()
-        }
+        v.animate().alpha(1f).translationY(0f).setStartDelay(delay).setDuration(340).setInterpolator(Motion.EASE_OUT).start()
     }
 
     private var done = false
@@ -85,7 +77,7 @@ class SplashScreen(host: MainActivity) : Screen(host) {
     companion object {
         const val LOGO_MS = 650L
         /** The whole entrance plus a short look at the finished logo (a touch skips it). */
-        const val ENTRANCE_MS = 1900L
+        const val ENTRANCE_MS = 2250L
         @Volatile var askedThisRun = false
     }
 
@@ -95,12 +87,14 @@ class SplashScreen(host: MainActivity) : Screen(host) {
 }
 
 class HomeScreen(host: MainActivity) : Screen(host) {
+    private var campaignId: Int? = null
+    private var displayedCampaign: Int? = null
     /** First run: one clear question about offers in the notification bar (Pro players are not asked). */
     private fun askAboutOffers() {
         if (Notices.asked(host) || ProState.isPro || SplashScreen.askedThisRun) return
         SplashScreen.askedThisRun = true
         host.post(900) {
-            if (host.current !== this) return@post
+            if (host.current !== this || kit.hasOpenDialogs()) return@post
             kit.dialog("اعلان پیشنهادها",
                 "دیوان می‌تواند پیشنهادها و تخفیف‌های خودش را (حداکثر یکی در روز) در نوار اعلان گوشی نشان دهد. هر وقت خواستید از «تنظیمات ← اعلان‌ها» خاموشش کنید.",
                 null, listOf(
@@ -124,8 +118,11 @@ class HomeScreen(host: MainActivity) : Screen(host) {
             layoutDirection = View.LAYOUT_DIRECTION_RTL
         }
         column.addView(topBar())
-        column.addView(banner())
-        resume()?.let { column.addView(it) }
+        if (AppUpdates.available(host) != null) {
+            column.addView(kit.button("به‌روزرسانی برنامه", ButtonKind.PRIMARY, height = 44) { host.showUpdate(manual = true) }, kit.spaced(8))
+        }
+        column.addView(homeCarousel())
+        latestGameCard()?.let { column.addView(it) }
         AdEngine.slot(this, "home_inline")?.let { column.addView(it) }
         column.addView(kit.section("انتخاب بازی", RoyalIcon.PLAY))
         val tiles = GameType.values().map { game ->
@@ -138,12 +135,15 @@ class HomeScreen(host: MainActivity) : Screen(host) {
         )
         column.addView(kit.grid(2, tiles, 10), kit.spaced(10))
         column.addView(spyTile(), kit.spaced(6))
+        column.addView(kit.button("انتقال بازی و لیگ", ButtonKind.SECONDARY, RoyalIcon.SHARE, 48) {
+            host.push(TransferScreen(host))
+        }, kit.spaced(8))
         column.addView(kit.section("دیوان", RoyalIcon.CROWN))
         column.addView(kit.vertical().apply {
             background = PanelDrawable(kit.density, PanelStyle.NORMAL, 22f)
             setPadding(kit.dp(6), kit.dp(10), kit.dp(6), kit.dp(12))
             addView(kit.grid(5, listOf(
-                kit.toolTile(RoyalIcon.TROPHY, "لیگ‌ها") { Gate.open(this@HomeScreen, "leagues") { host.push(LeagueListScreen(host)) } },
+                kit.toolTile(RoyalIcon.TROPHY, "لیگ‌ها") { host.push(LeagueListScreen(host)) },
                 kit.toolTile(RoyalIcon.HISTORY, "تاریخچه") { Gate.open(this@HomeScreen, "history") { host.push(HistoryScreen(host)) } },
                 kit.toolTile(RoyalIcon.PLAYERS, "افراد و تیم‌ها") { host.push(PlayersScreen(host)) },
                 kit.toolTile(RoyalIcon.CROWN, "رنک‌بندی") { Gate.open(this@HomeScreen, "rankings") { host.push(RankingScreen(host)) } },
@@ -196,11 +196,39 @@ class HomeScreen(host: MainActivity) : Screen(host) {
         return when (h) { in 5..11 -> "صبح بخیر"; in 12..16 -> "روز بخیر"; in 17..20 -> "عصر بخیر"; else -> "شب بخیر" }
     }
 
+    private fun homeCarousel(): View {
+        val key = "home_carousel"
+        val ads = AdEngine.campaigns(key, campaignId)
+        val current = if (campaignId == null) ads.firstOrNull() else ads.firstOrNull { it.id == campaignId }
+        if (current != null || campaignId != null) campaignId = current?.id ?: 0
+        val shouldCount = current?.id != displayedCampaign
+        displayedCampaign = current?.id
+        val content = if (current == null) banner() else AdEngine.campaignCard(this, key, current,
+            countImpression = shouldCount, onClose = {
+                campaignId = 0
+                host.refresh()
+            })
+        if (ads.isEmpty()) return content
+        return kit.vertical().apply {
+            addView(kit.horizontal(Gravity.CENTER_VERTICAL).apply {
+                addView(kit.weight(kit.text(if (current == null) "آمار دیوان" else "حامیان دیوان", TextStyle.LABEL_BOLD, Royal.muted)))
+                addView(kit.iconButton(RoyalIcon.NEXT, "کادر بعدی", ButtonKind.SECONDARY, 40) {
+                    val index = ads.indexOfFirst { it.id == current?.id }
+                    campaignId = ads.getOrNull(index + 1)?.id ?: 0
+                    host.refresh()
+                })
+            }, kit.spaced(4))
+            addView(content, kit.fill())
+        }
+    }
+
     /** Headline card: the card-fan crest, the promise of the app and three counters. */
     private fun banner(): View = kit.vertical().apply {
         background = PanelDrawable(kit.density, PanelStyle.RAISED, 26f)
         setPadding(kit.dp(14), kit.dp(12), kit.dp(14), kit.dp(16))
         layoutParams = kit.spaced(12)
+        contentDescription = "آمار دیوان، باز کردن تاریخچه"
+        setOnClickListener { kit.tap(it); host.push(HistoryScreen(host)) }
         addView(kit.horizontal().apply {
             addView(kit.vertical().apply {
                 addView(kit.text("دفتر امتیاز دورهمی‌ها", TextStyle.LABEL_BOLD, Royal.gold, maxLines = 1))
@@ -216,23 +244,48 @@ class HomeScreen(host: MainActivity) : Screen(host) {
         addView(kit.grid(3, listOf(kit.stat(kit.n(games), "بازی ثبت‌شده"), kit.stat(kit.n(people), "نفر"), kit.stat(kit.n(leagues), "لیگ")), 8))
     }
 
-    /** The most recent game in progress of any kind. */
-    private fun resume(): View? {
-        val options = ArrayList<Triple<Long, () -> View, Unit>>()
-        host.repo.latestUnfinished()?.let { s ->
-            val totals = GameEngine.totals(s)
-            val score = if (s.game == GameType.MENFI && s.rules.menfi.hidden) "جمع‌ها پنهان است"
-            else GameEngine.ranking(s).take(3).joinToString("  •  ") { i -> "${s.sides[i].name} ${kit.signed(totals[i])}" }
-            options += Triple(s.updatedAt, { resumeStrip(GameSealView(host, s.game), "ادامهٔ بازی ${s.game.title}", score) { host.openSession(s) } }, Unit)
+    /** Most recent saved play across all game engines, including completed games. */
+    private fun latestGameCard(): View? {
+        val options = ArrayList<Pair<Long, () -> View>>()
+        fun label(title: String, finished: Boolean) = if (finished) "آخرین بازی · $title" else "ادامهٔ بازی $title"
+        host.repo.sessions().firstOrNull()?.let { s ->
+            options += s.updatedAt to {
+                val totals = GameEngine.totals(s)
+                val score = if (!s.finished && s.game == GameType.MENFI && s.rules.menfi.hidden) "جمع‌ها پنهان است"
+                else GameEngine.ranking(s).take(3).joinToString("  •  ") { i -> "${s.sides[i].name} ${kit.signed(totals[i])}" }
+                resumeStrip(GameSealView(host, s.game), label(s.game.title, s.finished), score) { host.openSession(s) }
+            }
         }
-        host.mafia.latestUnfinished()?.let { g ->
-            options += Triple(g.updatedAt, { resumeStrip(RoleSealView(host, MafiaGlyph.MASK, MafiaColors.MAFIA), "ادامهٔ راوی مافیا", "${g.phaseTitle} • ${kit.n(g.alive.size)} نفر در بازی") { host.push(MafiaGameScreen(host, g.id)) } }, Unit)
+        host.mafia.games().firstOrNull { it.started }?.let { g ->
+            options += g.updatedAt to {
+                val detail = if (g.finished) g.winner.ifBlank { "پایان‌یافته" } else "${g.phaseTitle} • ${kit.n(g.alive.size)} نفر در بازی"
+                resumeStrip(RoleSealView(host, MafiaGlyph.MASK, MafiaColors.MAFIA), label("مافیا", g.finished), detail) {
+                    host.push(MafiaGameScreen(host, g.id))
+                }
+            }
         }
-        host.panto.latestUnfinished()?.let { m ->
-            options += Triple(m.updatedAt, { resumeStrip(RoleSealView(host, PantoLook.glyph, PantoLook.TINT), "ادامهٔ پانتومیم • ${m.mode.title}", m.standings.take(3).joinToString("  •  ") { "${m.teams[it].name} ${kit.n(m.teams[it].points)}" }) { host.push(PantoBoardScreen(host, m.id)) } }, Unit)
+        host.panto.matches().firstOrNull()?.let { m ->
+            options += m.updatedAt to {
+                val standings = m.standings.take(3).joinToString("  •  ") { "${m.teams[it].name} ${kit.n(m.teams[it].points)}" }
+                resumeStrip(RoleSealView(host, PantoLook.glyph, PantoLook.TINT), label("پانتومیم", m.finished), standings) {
+                    host.push(when {
+                        m.finished -> PantoResultScreen(host, m.id)
+                        m.turn?.words?.isNotEmpty() == true -> PantoPlayScreen(host, m.id)
+                        else -> PantoBoardScreen(host, m.id)
+                    })
+                }
+            }
         }
-        host.spy.latestUnfinished()?.let { g ->
-            options += Triple(g.updatedAt, { resumeStrip(RoleSealView(host, SpyLook.glyph, SpyLook.TINT), "ادامهٔ جاسوس", "${kit.n(g.players.size)} بازیکن") { host.push(if (g.allViewed) SpyTimerScreen(host, g.id) else SpyRevealScreen(host, g.id)) } }, Unit)
+        host.spy.games().firstOrNull()?.let { g ->
+            options += g.updatedAt to {
+                resumeStrip(RoleSealView(host, SpyLook.glyph, SpyLook.TINT), label("جاسوس", g.finished), "${kit.n(g.players.size)} بازیکن") {
+                    host.push(when {
+                        g.finished -> SpyResultScreen(host, g.id)
+                        g.allViewed -> SpyTimerScreen(host, g.id)
+                        else -> SpyRevealScreen(host, g.id)
+                    })
+                }
+            }
         }
         return options.maxByOrNull { it.first }?.second?.invoke()
     }

@@ -635,6 +635,40 @@ class ProgressDrawable(private val density: Float, var fraction: Float, var fill
     }
 }
 
+/** A beveled score track with three engraved milestones and a marker for the target. */
+class ScoreTrackDrawable(private val density: Float, private val ratio: Float, private val fill: Int) : SimpleDrawable() {
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val trough = RectF()
+
+    override fun draw(canvas: Canvas) {
+        // Physical coordinates: the goal emblem and the start of the bar stay on the left in RTL.
+        val starRadius = 4.5f * density
+        val starX = bounds.left + starRadius + density
+        val x1 = starX + starRadius + 4 * density
+        val x2 = bounds.right - 2 * density
+        if (x2 <= x1) return
+        val y = bounds.exactCenterY()
+        val radius = 4f * density
+        trough.set(x1, y - radius, x2, y + radius)
+        paint.color = Royal.mix(ThemeEngine.spec.surface, Royal.ivory, 0.14f)
+        canvas.drawRoundRect(trough, radius, radius, paint)
+        val progress = ratio.coerceIn(0f, 1f)
+        if (progress > 0f) {
+            canvas.save()
+            canvas.clipRect(x1, trough.top, x1 + trough.width() * progress, trough.bottom)
+            paint.color = fill
+            canvas.drawRoundRect(trough, radius, radius, paint)
+            canvas.restore()
+        }
+        paint.color = Royal.metal
+        canvas.drawPath(RoyalShapes.starPath(starX, y, starRadius, 4, 0.5f), paint)
+        for (mark in 1..3) {
+            val x = x1 + trough.width() * mark / 4f
+            canvas.drawCircle(x, y + 7f * density, density, paint)
+        }
+    }
+}
+
 object RoyalShapes {
     /** Eight-pointed khatam star made of two squares. */
     fun star8(canvas: Canvas, cx: Float, cy: Float, radius: Float, paint: Paint) {

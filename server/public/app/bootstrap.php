@@ -11,6 +11,8 @@ require_once __DIR__ . '/catalog.php';
 require_once __DIR__ . '/domain.php';
 require_once __DIR__ . '/engagement.php';
 require_once __DIR__ . '/monetization.php';
+require_once __DIR__ . '/app_updates.php';
+require_once __DIR__ . '/game_transfer.php';
 require_once __DIR__ . '/admin_mobile.php';
 require_once __DIR__ . '/native_panel.php';
 require_once __DIR__ . '/admin_inbox.php';

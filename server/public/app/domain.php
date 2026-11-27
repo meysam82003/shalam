@@ -760,7 +760,7 @@ final class Ads
 {
     public const FORMATS = [
         'banner_small' => 'بنر کوچک', 'banner_wide' => 'بنر افقی', 'corner' => 'کادر گوشه', 'card' => 'کارت وسط صفحه',
-        'image' => 'بنر تصویری', 'text' => 'تبلیغ متنی', 'video' => 'ویدئو', 'native' => 'همسان با طراحی اپ',
+        'image' => 'بنر تصویری', 'gif' => 'تصویر متحرک GIF', 'text' => 'تبلیغ متنی', 'video' => 'ویدئو', 'native' => 'همسان با طراحی اپ',
         'interstitial' => 'بین دو فعالیت', 'rewarded' => 'ویدئوی جایزه‌ای', 'sponsor' => 'اسپانسری',
     ];
     public const EVENTS = ['request', 'fill', 'impression', 'click', 'close', 'reward', 'error'];
@@ -786,18 +786,20 @@ final class Ads
     public static function defaultPlacements(): array
     {
         return [
-            ['home_inline', 'خانه — میان بخش‌ها', 'home', 'inline', 'card,image,text,native,video,sponsor,banner_wide', 'banner,native'],
-            ['home_bottom', 'خانه — پایین صفحه', 'home', 'bottom', 'banner_small,banner_wide,text', 'banner'],
-            ['home_corner', 'خانه — کادر گوشه', 'home', 'corner', 'corner', ''],
-            ['history_inline', 'تاریخچه — میان فهرست', 'history', 'inline', 'card,image,text,native,banner_wide', 'banner,native'],
-            ['hub_inline', 'صفحهٔ بازی‌ها (مافیا، پانتومیم، جاسوس)', 'hub', 'inline', 'card,image,text,native,sponsor', 'banner,native'],
-            ['result_bottom', 'صفحهٔ نتیجهٔ پایان‌یافته — پایین', 'result', 'bottom', 'card,image,text,native,video,sponsor', 'banner,native'],
-            ['ranking_inline', 'رنک‌بندی — پایین فهرست', 'ranking', 'inline', 'card,image,text,native', 'banner,native'],
-            ['settings_bottom', 'تنظیمات — پایین صفحه', 'settings', 'bottom', 'banner_small,banner_wide,text', 'banner'],
+            ['home_carousel', 'خانه — کادر گردشی کنار آمار', 'home', 'inline', 'card,image,gif,text,video,native,sponsor,banner_wide', ''],
+            ['home_inline', 'خانه — میان بخش‌ها', 'home', 'inline', 'card,image,gif,text,native,video,sponsor,banner_wide', 'banner,native'],
+            ['home_bottom', 'خانه — پایین صفحه', 'home', 'bottom', 'banner_small,banner_wide,image,gif,text,video', 'banner'],
+            ['home_corner', 'خانه — کادر گوشه', 'home', 'corner', 'corner,image,gif,text,video', ''],
+            ['history_inline', 'تاریخچه — میان فهرست', 'history', 'inline', 'card,image,gif,text,video,native,banner_wide', 'banner,native'],
+            ['hub_inline', 'صفحهٔ بازی‌ها (مافیا، پانتومیم، جاسوس)', 'hub', 'inline', 'card,image,gif,text,video,native,sponsor', 'banner,native'],
+            ['result_bottom', 'صفحهٔ نتیجهٔ پایان‌یافته — پایین', 'result', 'bottom', 'card,image,gif,text,native,video,sponsor', 'banner,native'],
+            ['ranking_inline', 'رنک‌بندی — پایین فهرست', 'ranking', 'inline', 'card,image,gif,text,video,native', 'banner,native'],
+            ['settings_bottom', 'تنظیمات — پایین صفحه', 'settings', 'bottom', 'banner_small,banner_wide,image,gif,text,video', 'banner'],
+            ['referee_idle', 'داوری و ثبت امتیاز — بعد از ۴۵ ثانیه بی‌عملی', 'referee', 'inline', 'card,image,gif,text,video,native,sponsor,banner_wide', ''],
             ['between_games', 'بین دو فعالیت (پس از بستن نتیجه)', 'transition', 'interstitial', 'interstitial,video', 'interstitial'],
             ['rewarded_offer', 'ویدئوی جایزه‌ای (اختیاری)', 'offer', 'rewarded', 'rewarded', 'rewarded'],
-            ['sticky_bottom', 'نوار ثابت پایین صفحه', 'any', 'sticky', 'banner_small,banner_wide,text,image,native', 'banner'],
-            ['sticky_top', 'نوار ثابت بالای صفحه', 'any', 'sticky', 'banner_small,banner_wide,text,image,native', 'banner'],
+            ['sticky_bottom', 'نوار ثابت پایین صفحه', 'any', 'sticky', 'banner_small,banner_wide,text,image,gif,video,native', 'banner'],
+            ['sticky_top', 'نوار ثابت بالای صفحه', 'any', 'sticky', 'banner_small,banner_wide,text,image,gif,video,native', 'banner'],
             // Divan's own pages around a web payment (site version, web, Windows, iPhone).
             ['pay_before', 'صفحهٔ پیش از پرداخت (نسخهٔ سایت)', 'pay', 'inline', 'card,image,text,sponsor', ''],
             ['pay_after', 'صفحهٔ پس از پرداخت (نسخهٔ سایت)', 'pay', 'inline', 'card,image,text,sponsor', ''],

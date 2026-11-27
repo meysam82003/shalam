@@ -35,6 +35,9 @@ object Notices {
     const val CH_ACCOUNT = "divan_account"
     const val CH_SUBSCRIPTION = "divan_subscription"
     const val CH_OFFERS = "divan_offers"
+    private const val CH_UPDATES = "divan_updates"
+    private const val UPDATE_ID = 3
+    private const val UPDATE_TARGET = "divan://app_update"
     const val EXTRA_TARGET = "divan_notice_target"
     const val EXTRA_ID = "divan_notice_id"
     private const val JOB_ID = 4242
@@ -78,6 +81,7 @@ object Notices {
         nm.createNotificationChannel(NotificationChannel(CH_ACCOUNT, "حساب و پرداخت", NotificationManager.IMPORTANCE_DEFAULT).apply { description = "تأیید خرید و موارد ضروری حساب" })
         nm.createNotificationChannel(NotificationChannel(CH_SUBSCRIPTION, "اشتراک و تمدید", NotificationManager.IMPORTANCE_DEFAULT).apply { description = "یادآوری پیش از پایان اشتراک Pro" })
         nm.createNotificationChannel(NotificationChannel(CH_OFFERS, "پیشنهادها و تخفیف‌ها", NotificationManager.IMPORTANCE_DEFAULT).apply { description = "فقط اگر خودتان پذیرفته باشید؛ از تنظیمات برنامه خاموش می‌شود" })
+        nm.createNotificationChannel(NotificationChannel(CH_UPDATES, "به‌روزرسانی برنامه", NotificationManager.IMPORTANCE_DEFAULT))
     }
 
     /** The few-times-a-day check; kept across restarts, runs only with internet. */
@@ -104,6 +108,7 @@ object Notices {
         val ctx = c.applicationContext
         ProState.init(ctx)
         channels(ctx)
+        AppUpdates.sync(ctx)
         if (!canPost(ctx)) return
         remindIfNeeded(ctx)
         if (!offersWanted(ctx)) return
@@ -122,6 +127,19 @@ object Notices {
             prefs(ctx).edit().putStringSet("seen", seen.toList().takeLast(200).toSet()).apply()
             Api.blocking("POST", "v1/notices/event", JSONObject().put("id", id).put("device", ProState.deviceId).put("event", "shown"), null)
         }
+    }
+
+    fun postUpdate(c: Context, update: AppUpdate): Boolean {
+        if (!canPost(c)) return false
+        val title = if (update.required) "به‌روزرسانی دیوان امتیاز الزامی است" else "به‌روزرسانی تازهٔ دیوان امتیاز"
+        val version = PersianText.digits(update.versionName)
+        return runCatching {
+            post(c, CH_UPDATES, UPDATE_ID, title, "نسخهٔ $version آمادهٔ دریافت است.", UPDATE_TARGET, 0, null)
+        }.isSuccess
+    }
+
+    fun clearUpdate(c: Context) {
+        (c.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager)?.cancel(UPDATE_ID)
     }
 
     /** Timed Pro ending within three days: one reminder per end date (never for lifetime). */
@@ -187,6 +205,10 @@ object Notices {
         val target = intent?.getStringExtra(EXTRA_TARGET) ?: return
         val id = intent.getIntExtra(EXTRA_ID, 0)
         intent.removeExtra(EXTRA_TARGET)
+        if (target == UPDATE_TARGET) {
+            host.showUpdateFromNotice()
+            return
+        }
         if (id > 0) Api.call("POST", "v1/notices/event", JSONObject().put("id", id).put("device", ProState.deviceId).put("event", "opened"), null) { _, _ -> }
         if (!targetAllowed(target) || target.isBlank()) return
         if (target.startsWith("divan://")) AdEngine.openInApp(host, target)

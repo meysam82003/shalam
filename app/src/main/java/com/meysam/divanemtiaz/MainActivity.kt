@@ -4,12 +4,14 @@ import android.app.Activity
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Rect
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
@@ -42,6 +44,7 @@ abstract class Screen(val host: MainActivity) {
 
     /** Where on this page ads may appear (home, history, …); null for every game, timer and input page. */
     open val adZone: String? get() = null
+    open val idleAdEligible: Boolean get() = false
 
     /** Module of this page for the free / Pro rules of the panel (null: always open). */
     open val featureKey: String? get() = null
@@ -162,10 +165,30 @@ class MainActivity : Activity() {
     private var resumed = false
     private val accessHandler = Handler(Looper.getMainLooper())
     private var lastNoticeCheck = 0L
+    private var lastUpdate: AppUpdate? = null
+    private var promptedUpdateCode = 0
+    private var updateDialog: android.app.Dialog? = null
+    private var idleAd: View? = null
+    private var idleScreen: Screen? = null
+    private var lastInteractionAt = 0L
+    private var lastIdleAttemptAt = 0L
+    private var idleShownAt = -120_000L
+    private var idleShownSinceTouch = false
+    private var touching = false
+    private val updateLocked: Boolean get() = current is RequiredUpdateScreen
     private val accessTick = object : Runnable {
         override fun run() {
             if (!resumed) return
-            if (android.os.SystemClock.uptimeMillis() - lastNoticeCheck >= 60_000) { lastNoticeCheck = android.os.SystemClock.uptimeMillis(); Notices.check(this@MainActivity); AdsManager.refresh(this@MainActivity) }
+            if (android.os.SystemClock.uptimeMillis() - lastNoticeCheck >= 60_000) {
+                lastNoticeCheck = android.os.SystemClock.uptimeMillis()
+                Notices.check(this@MainActivity)
+                if (!updateLocked) AdsManager.refresh(this@MainActivity)
+            }
+            reconcileAppUpdate()
+            if (updateLocked) {
+                accessHandler.postDelayed(this, 1000)
+                return
+            }
             if(ProState.consumeExpiredReward()) {
                 gameAudio.pause()
                 if(audioUsed){audio.stopCue();audio.stopMusic()}
@@ -183,6 +206,7 @@ class MainActivity : Activity() {
             val key = current?.featureKey
             if (key != null && key in Features.newProModules && !ProState.access(key).allowed) refresh()
             if (Gate.itemLocked("themes", ThemeEngine.spec.id)) applyTheme(settings.general.theme)
+            checkIdleAd()
             accessHandler.postDelayed(this, 1000)
         }
     }
@@ -242,19 +266,21 @@ class MainActivity : Activity() {
         if (restored != null) {
             stack += HomeScreen(this)
             stack += if (restored.finished) ResultScreen(this, restored) else boardFor(restored)
-            render(animate = false)
         } else if (savedInstanceState != null) {
             stack += HomeScreen(this)
-            render(animate = false)
         } else {
-            stack += SplashScreen(this)
-            render(animate = false)
+            stack += when {
+                Build.DEVICE == "web" -> SplashScreen(this)
+                Themes.isChosen(settings.general.theme) -> HomeScreen(this)
+                else -> ThemeWelcomeScreen(this)
+            }
         }
+        if (!reconcileAppUpdate()) render(animate = false)
         Notices.channels(this)
-        if (Notices.offersWanted(this) || Notices.reminders(this)) Notices.schedule(this)
+        Notices.schedule(this)
         // Opened from a notification or a payment page: act once the first page is on screen.
         // (Behind the logo screen it waits for the logo to hand over to home; that hand-over clears pending posts.)
-        if (intent?.data != null || intent?.hasExtra(Notices.EXTRA_TARGET) == true) {
+        if (intent?.data != null || intent?.hasExtra(Notices.EXTRA_TARGET) == true || TransferPlatform.receivedFile(intent) != null) {
             if (stack.lastOrNull() is SplashScreen) openAfterSplash = intent else post(500) { openFromIntent(intent) }
         }
     }
@@ -267,13 +293,77 @@ class MainActivity : Activity() {
     }
 
     fun openFromIntent(intent: android.content.Intent?) {
+        if (updateLocked) return
+        TransferPlatform.receivedFile(intent)?.let { file ->
+            if (stack.lastOrNull() is SplashScreen) openAfterSplash = intent
+            else current?.readTransferFile(file)
+            return
+        }
         val data = intent?.data
+        TransferLink.read(data)?.let { code ->
+            if (current is SplashScreen) openAfterSplash = intent else current?.receiveTransferLink(code)
+            return
+        }
         if (data != null && data.scheme == "divan" && data.host == "pay" && ProState.pendingOrder != null) {
             if (current !is ProScreen) push(ProScreen(this)) else current?.onShow()
             return
         }
         // A tapped notification: opens an allowed in-app page only.
         Notices.opened(this, intent)
+    }
+
+    fun showUpdateFromNotice() = showUpdate(manual = true)
+
+    fun showUpdate(manual: Boolean = false) {
+        if (!resumed || current is SplashScreen || updateLocked || kit.hasOpenDialogs()) return
+        val update = AppUpdates.available(this)?.takeUnless { it.required } ?: return
+        if (!manual && promptedUpdateCode == update.versionCode) return
+        promptedUpdateCode = update.versionCode
+        updateDialog = AppUpdates.showOptional(this, update)
+    }
+
+    /** Keeps the navigation stack intact while showing the mandatory update instead of the current page. */
+    private fun reconcileAppUpdate(): Boolean {
+        val update = AppUpdates.available(this)
+        val changed = update != lastUpdate
+        if (changed) {
+            updateDialog?.dismiss()
+            lastUpdate = update
+        }
+        val lock = current as? RequiredUpdateScreen
+        if (update?.required == true) {
+            if (lock == null) {
+                saveScroll()
+                current?.onHide()
+                cancelPosts()
+                kit.dismissDialogs()
+                gameAudio.pause()
+                if (audioUsed) {
+                    audio.stopCue()
+                    audio.stopMusic()
+                    if (audio.isRecording) audio.stopRecording(discard = true)
+                }
+                pendingTransferScan = null
+                pendingResult = null
+                pendingPermission = null
+                stack += RequiredUpdateScreen(this, update)
+                render(animate = false)
+                return true
+            }
+            if (changed) {
+                lock.update = update
+                refresh()
+            }
+            return false
+        }
+        if (lock != null) {
+            stack.removeAt(stack.lastIndex)
+            render(animate = false)
+            return true
+        }
+        if (changed && resumed && current is HomeScreen) refresh()
+        showUpdate()
+        return false
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -286,6 +376,7 @@ class MainActivity : Activity() {
         // Plans, module access and the account are refreshed in the background; games never wait for it.
         if (Build.FINGERPRINT != "robolectric") ProSync.onStart()
         resumed = true
+        restartIdleClock()
         accessHandler.removeCallbacks(accessTick)
         accessHandler.post(accessTick)
         gameAudio.enter(current?.audioScope)
@@ -293,11 +384,15 @@ class MainActivity : Activity() {
         Notices.check(this)
         // Native-only bridge: the web build has no Firebase dependency.
         runCatching { Class.forName("com.meysam.divanpush.PushRuntime").getField("INSTANCE").get(null).let { runtime -> runtime.javaClass.getMethod("connect", android.content.Context::class.java, String::class.java, String::class.java).invoke(runtime, this, StoreInfo.apiBase, StoreInfo.storeId) } }
-        AdsManager.refresh(this)
-        AdsManager.recover(this)
+        if (!updateLocked) {
+            AdsManager.refresh(this)
+            AdsManager.recover(this)
+        }
     }
 
     override fun onPause() {
+        hideIdleAd()
+        touching = false
         AdEngine.flush()
         gameAudio.pause()
         current?.onHide()
@@ -308,6 +403,64 @@ class MainActivity : Activity() {
             if (audio.isRecording) audio.stopRecording(discard = true)
         }
         super.onPause()
+    }
+
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                touching = true
+                restartIdleClock()
+                val bounds = Rect()
+                if (idleAd?.getGlobalVisibleRect(bounds) == true &&
+                    !bounds.contains(event.rawX.toInt(), event.rawY.toInt())) hideIdleAd()
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                touching = false
+                restartIdleClock()
+            }
+        }
+        return super.dispatchTouchEvent(event)
+    }
+
+    private fun restartIdleClock() {
+        lastInteractionAt = android.os.SystemClock.uptimeMillis()
+        idleShownSinceTouch = false
+    }
+
+    private fun hideIdleAd() {
+        idleAd?.let(rootView::removeView)
+        idleAd = null
+    }
+
+    private fun checkIdleAd() {
+        val screen = current ?: return
+        if (Build.DEVICE == "web" || !screen.idleAdEligible) return
+        val now = android.os.SystemClock.uptimeMillis()
+        if (!AdEngine.enabled() || !rootView.hasWindowFocus() || kit.hasOpenDialogs() ||
+            rootView.findFocus() is android.widget.EditText) {
+            hideIdleAd()
+            restartIdleClock()
+            return
+        }
+        if (idleAd != null) {
+            if (!touching && now - idleShownAt >= 15_000L) hideIdleAd()
+            return
+        }
+        if (touching || idleShownSinceTouch || now - lastInteractionAt < 45_000L ||
+            now - idleShownAt < 120_000L || now - lastIdleAttemptAt < 5_000L) return
+        lastIdleAttemptAt = now
+        val key = "referee_idle"
+        val ad = AdEngine.campaigns(key).firstOrNull() ?: return
+        val slot = kit.panel(PanelStyle.RAISED, 8).apply {
+            addView(AdEngine.campaignCard(screen, key, ad, compact = true, onClose = { hideIdleAd() }), kit.fill())
+        }
+        val width = (resources.displayMetrics.widthPixels - kit.dp(30)).coerceIn(kit.dp(160), kit.dp(400))
+        idleAd = slot
+        idleShownSinceTouch = true
+        idleShownAt = now
+        rootView.addView(slot, FrameLayout.LayoutParams(width, -2, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
+            topMargin = frame.paddingTop + kit.dp(58)
+        })
     }
 
     override fun onDestroy() {
@@ -395,6 +548,7 @@ class MainActivity : Activity() {
     }
 
     fun push(screen: Screen) {
+        if (updateLocked) return
         if (!Gate.allows(this, screen)) return
         saveScroll()
         current?.onHide()
@@ -404,6 +558,7 @@ class MainActivity : Activity() {
 
     /** Replaces the top screen (for example board → result) without growing the back stack. */
     fun replace(screen: Screen) {
+        if (updateLocked) return
         if (!Gate.allows(this, screen)) return
         current?.onHide()
         if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex)
@@ -412,6 +567,7 @@ class MainActivity : Activity() {
     }
 
     fun resetTo(vararg screens: Screen) {
+        if (updateLocked) return
         screens.lastOrNull()?.let { if (!Gate.allows(this, it)) return }
         current?.onHide()
         stack.clear()
@@ -420,6 +576,7 @@ class MainActivity : Activity() {
     }
 
     fun pop() {
+        if (updateLocked) return
         if (stack.size <= 1) {
             finish()
             return
@@ -592,9 +749,26 @@ class MainActivity : Activity() {
     }
 
     @Deprecated("Deprecated in Java")
+    private var pendingTransferScan: ((String?) -> Unit)? = null
+
+    fun scanTransfer(onResult: (String?) -> Unit) {
+        if (!TransferPlatform.available() || pendingTransferScan != null) return
+        pendingTransferScan = onResult
+        if (runCatching { TransferPlatform.startScan(this) }.isFailure) {
+            pendingTransferScan = null
+            kit.toast("دوربین برای اسکن باز نشد")
+        }
+    }
+
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         @Suppress("DEPRECATION")
         super.onActivityResult(requestCode, resultCode, data)
+        if (TransferPlatform.isScan(requestCode)) {
+            val callback = pendingTransferScan
+            pendingTransferScan = null
+            callback?.invoke(TransferPlatform.result(requestCode, resultCode, data))
+            return
+        }
         if (requestCode != REQUEST_DOCUMENT) return
         val callback = pendingResult ?: return
         pendingResult = null
@@ -614,9 +788,7 @@ class MainActivity : Activity() {
             val canvas = Canvas(bitmap)
             BackdropDrawable(resources.displayMetrics.density).apply { setBounds(0, 0, bitmap.width, bitmap.height) }.draw(canvas)
             view.draw(canvas)
-            val dir = java.io.File(cacheDir, ShareProvider.DIR).apply { mkdirs() }
-            dir.listFiles()?.forEach { it.delete() }
-            val file = java.io.File(dir, "divan-${System.currentTimeMillis()}.png")
+            val file = java.io.File(shareDirectory(), "divan-${System.currentTimeMillis()}.png")
             file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
             bitmap.recycle()
             val uri = Uri.parse("content://${ShareProvider.authority(packageName)}/${file.name}")
@@ -636,9 +808,7 @@ class MainActivity : Activity() {
     /** Sends a text file (a backup) to any app the user picks, e.g. a messenger or cloud drive. */
     fun shareFile(name: String, text: String, mime: String) {
         try {
-            val dir = java.io.File(cacheDir, ShareProvider.DIR).apply { mkdirs() }
-            dir.listFiles()?.forEach { it.delete() }
-            val file = java.io.File(dir, name)
+            val file = java.io.File(shareDirectory(), name)
             file.writeText(text, Charsets.UTF_8)
             val uri = Uri.parse("content://${ShareProvider.authority(packageName)}/${file.name}")
             val send = Intent(Intent.ACTION_SEND).apply {
@@ -647,10 +817,16 @@ class MainActivity : Activity() {
                 clipData = android.content.ClipData.newRawUri(name, uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            startActivity(Intent.createChooser(send, "ارسال فایل پشتیبان").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+            startActivity(Intent.createChooser(send, if (mime == GameTransfer.MIME) "ارسال بازی یا لیگ" else "ارسال فایل پشتیبان").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
         } catch (e: Exception) {
             kit.toast("ارسال فایل ممکن نشد")
         }
+    }
+
+    private fun shareDirectory() = java.io.File(cacheDir, ShareProvider.DIR).apply {
+        mkdirs()
+        val cutoff = System.currentTimeMillis() - 24 * 60 * 60 * 1000L
+        listFiles()?.filter { it.lastModified() < cutoff }?.forEach { it.delete() }
     }
 
     /** Reads settings again after a backup replaced them. */
@@ -679,6 +855,11 @@ class MainActivity : Activity() {
 
     private fun render(animate: Boolean = true, forward: Boolean = true, notify: Boolean = true) {
         val screen = current ?: return
+        if (idleScreen !== screen) {
+            hideIdleAd()
+            restartIdleClock()
+            idleScreen = screen
+        }
         val restricted = screen.featureKey?.takeIf { it in Features.newProModules && !ProState.access(it).allowed }
         if (restricted != null) {
             kit.dismissDialogs()

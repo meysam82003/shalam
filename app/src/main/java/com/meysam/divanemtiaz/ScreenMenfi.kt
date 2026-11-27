@@ -40,6 +40,7 @@ class MenfiBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(h
                 SessionOps.commit(host, session)
                 host.refresh()
             }
+            Unit
         }) + commonMenu())
         return scaffold(
             title = "داوری منفی",
@@ -72,6 +73,10 @@ class MenfiBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(h
                     addView(kit.weight(sideScoreCard(side, total, if (hiddenNow) "جمع پنهان است" else null, leader == i, null)))
                 }
             })
+            if (!hiddenNow) {
+                addView(kit.text(menfiScoreGap(totals[0], totals[1], leader?.let { session.sides[it].name }),
+                    TextStyle.BODY_BOLD, Royal.turquoiseLight, Gravity.CENTER))
+            }
             addView(statusRow("دست ${kit.n(played)} از ${menfiHandsText(rules)}"))
             if (played < rules.totalHands) session.menfiDeal?.let { deal ->
                 val first = session.sides[deal.biddingOrder(played).first()].name
@@ -101,15 +106,13 @@ class MenfiBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(h
             addView(kit.text(if (rules.highWins) "برنده: بیشترین جمع امتیاز" else "برنده: کمترین جمع امتیاز", TextStyle.CAPTION, Royal.muted, Gravity.CENTER))
             addView(kit.section("دست‌های ثبت‌شده", RoyalIcon.HISTORY))
             if (session.rounds.isEmpty()) {
-                addView(emptyState(RoyalIcon.EYE_OFF, "هنوز دستی ثبت نشده", "هر تیم عدد خود را از ۳ تا ۱۳ پنهانی ثبت می‌کند؛ سپس حالت رخ‌داده انتخاب می‌شود."))
+                addView(emptyState(RoyalIcon.EYE_OFF, "هنوز دستی ثبت نشده", "هر تیم عدد خود را از ۳ تا ۱۳ ثبت می‌کند. سپس نتیجهٔ دست را انتخاب کنید."))
             }
             session.rounds.indices.reversed().forEach { index ->
                 val round = session.rounds[index]
-                val scores = if (hiddenNow) session.sides.map { "•••" } else session.sides.indices.map { kit.signed(round.score(it)) }
-                val colors = if (hiddenNow) session.sides.map { Royal.dim } else session.sides.indices.map { scoreColor(round.score(it)) }
                 val isHand = round.kind != RoundKind.PENALTY && round.kind != RoundKind.ADJUST
                 val number = if (isHand) session.rounds.take(index).count { it.kind != RoundKind.PENALTY && it.kind != RoundKind.ADJUST } else index
-                addView(roundRow(number, scores, colors, describe(round), round.dealerLabel()) {
+                addView(handRow(number, round) {
                     roundActions("دست ${kit.n(index + 1)}", editAction(index), share = { shareRound(session, index) }) {
                         session.rounds.removeAt(index)
                         afterChange()
@@ -139,14 +142,39 @@ class MenfiBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(h
         }
     }
 
-    private fun describe(round: Round): String {
-        if (hiddenNow) return if (round.kind == RoundKind.MENFI_HAND || round.numbers.isNotEmpty()) "ثبت شد  ✓" else round.note
-        val parts = mutableListOf<String>()
-        if (round.numbers.size == 2) parts += "اعداد: ${session.sides[0].name} ${kit.n(round.numbers[0])} • ${session.sides[1].name} ${kit.n(round.numbers[1])}"
-        menfiOutcomeTitle(session, round.outcome).takeIf { it.isNotBlank() }?.let { parts += it }
-        if (parts.isEmpty()) return round.note
-        return parts.joinToString(" • ")
-    }
+    private fun handRow(number: Int, round: Round, actions: () -> Unit): View =
+        kit.panel(PanelStyle.NORMAL, 12).apply {
+            layoutParams = kit.spaced(6)
+            addView(kit.horizontal().apply {
+                val label = round.dealerLabel()
+                addView(kit.weight(kit.text(listOf("دست ${kit.n(number + 1)}", label).filter(String::isNotBlank).joinToString(" • "),
+                    TextStyle.BODY_BOLD, Royal.ivory)))
+                addView(kit.iconButton(RoyalIcon.MENU, "گزینه‌های دست", ButtonKind.GHOST, 36, actions))
+            })
+            if (hiddenNow) {
+                addView(kit.text("امتیاز این دست پنهان است", TextStyle.CAPTION, Royal.muted))
+            } else {
+                addView(kit.grid(2, session.sides.mapIndexed { index, side ->
+                    kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
+                        addView(kit.text(side.name, TextStyle.LABEL, Royal.muted, Gravity.CENTER, 2))
+                        addView(kit.text(kit.signed(round.score(index)), TextStyle.HEADING, scoreColor(round.score(index)), Gravity.CENTER))
+                        round.numbers.getOrNull(index)?.let {
+                            addView(kit.text("عدد ${kit.n(it)}", TextStyle.CAPTION, Royal.muted, Gravity.CENTER))
+                        }
+                    }
+                }, 8), kit.spaced(4))
+                addView(kit.text(menfiScoreGap(round.score(0), round.score(1)), TextStyle.LABEL, Royal.turquoiseLight, Gravity.CENTER))
+                val outcome = menfiOutcomeTitle(session, round.outcome).ifBlank { round.note }
+                if (outcome.isNotBlank()) addView(kit.text(outcome, TextStyle.CAPTION, Royal.muted, Gravity.CENTER))
+            }
+        }
+
+}
+
+fun Screen.menfiScoreGap(a: Int, b: Int, leader: String? = null): String {
+    val difference = kotlin.math.abs(a.toLong() - b.toLong())
+    val label = "اختلاف امتیاز · ${kit.n(difference)}"
+    return if (difference > 0 && leader != null) "$label • $leader جلوتر است" else label
 }
 
 fun Round.dealerLabel(): String = dealerName.takeIf { it.isNotBlank() }?.let { "$it دست داد" }.orEmpty()
@@ -171,6 +199,7 @@ fun menfiOutcomeTitle(session: GameSession, outcome: Int): String {
 }
 
 class MenfiHandScreen(host: MainActivity, private val session: GameSession, private val editIndex: Int?) : Screen(host) {
+    override val idleAdEligible: Boolean get() = !session.finished
     private val rules get() = session.rules.menfi
     private val editing = editIndex?.let { session.rounds.getOrNull(it) }
     private val numbers = arrayOf(editing?.numbers?.getOrNull(0), editing?.numbers?.getOrNull(1))
@@ -188,13 +217,13 @@ class MenfiHandScreen(host: MainActivity, private val session: GameSession, priv
     private var manual: List<Int>? = if (editing?.outcome == MenfiEngine.MANUAL) editing.raw else null
 
     override val sessionId: Long get() = session.id
-    override val featureKey: String? get() = if (session.leagueId != 0L) "leagues" else null
+    override val featureKey: String? get() = if (session.leagueId != 0L && !GameTransfer.importedLeague(host.repo.store, session.leagueId)) "leagues" else null
 
     override fun build(): View {
         val ready = numbers.all { it != null }
         return scaffold(
             title = if (editing != null) "ویرایش دست ${kit.n(editIndex!! + 1)}" else "دست ${kit.n(GameEngine.playedHands(session) + 1)} از ${menfiHandsText(rules)}",
-            subtitle = if (rules.hidden) "عددها پنهانی ثبت می‌شوند" else "ثبت عدد هر دو تیم",
+            subtitle = if (rules.hidden) "جمع امتیازها پنهان است" else "ثبت عدد هر دو تیم",
             bottom = kit.button(if (editing != null) "ذخیرهٔ تغییرات" else "ثبت این دست", ButtonKind.PRIMARY, RoyalIcon.CHECK) { save() }
         ) {
             if (dealerName.isNotBlank()) {
@@ -283,18 +312,17 @@ class MenfiHandScreen(host: MainActivity, private val session: GameSession, priv
         if (picking == index) {
             addView(kit.gap(6))
             addView(kit.grid(6, MenfiEngine.readyNumbers.map { value ->
-                kit.chip(kit.n(value), !rules.hidden && numbers[index] == value, ButtonKind.CHIP_GOLD) {
+                kit.chip(kit.n(value), numbers[index] == value, ButtonKind.CHIP_GOLD) {
                     numbers[index] = value
                     outcome = null
                     picking = bidOrder.firstOrNull { numbers[it] == null } ?: -1
                     host.refresh()
                 }
             }, 5))
-            if (rules.hidden) addView(kit.text("عدد پس از انتخاب پنهان می‌شود.", TextStyle.CAPTION, Royal.muted, Gravity.CENTER))
         } else if (numbers[index] == null) {
             addView(kit.text("پس از اعلام تیم دیگر", TextStyle.CAPTION, Royal.muted, Gravity.CENTER))
         } else {
-            val shown = if (rules.hidden) "ثبت شد  ✓" else "عدد: ${kit.n(numbers[index]!!)}"
+            val shown = "عدد ثبت‌شده: ${kit.n(numbers[index]!!)}"
             addView(kit.text(shown, TextStyle.BODY_BOLD, Royal.turquoiseLight, Gravity.CENTER))
         }
     }
@@ -312,6 +340,7 @@ class MenfiHandScreen(host: MainActivity, private val session: GameSession, priv
         return kit.vertical(Gravity.CENTER_HORIZONTAL).apply {
             addView(kit.text("جمع نهایی اگر این حالت رخ دهد", TextStyle.CAPTION, Royal.muted, Gravity.CENTER))
             addView(kit.text(totals, TextStyle.LABEL_BOLD, Royal.ivory, Gravity.CENTER))
+            addView(kit.text(menfiScoreGap(result.totals[0], result.totals[1]), TextStyle.LABEL, Royal.muted, Gravity.CENTER))
             addView(kit.text(verdict, TextStyle.LABEL_BOLD, Royal.turquoiseLight, Gravity.CENTER))
         }
     }
@@ -479,6 +508,7 @@ class HezarBoardScreen(host: MainActivity, session: GameSession) : BoardScreen(h
 }
 
 class HezarRoundScreen(host: MainActivity, private val session: GameSession, private val editIndex: Int?) : Screen(host) {
+    override val idleAdEligible: Boolean get() = !session.finished
     private val rules get() = session.rules.hezar
     private val editing = editIndex?.let { session.rounds.getOrNull(it) }
     private val values = MutableList(session.sides.size) { editing?.raw?.getOrNull(it)?.let { v -> kotlin.math.abs(v).toString() } ?: "" }

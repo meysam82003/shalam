@@ -17,6 +17,9 @@ class ResultScreen(host: MainActivity, private val session: GameSession) : Scree
         return scaffold(
             title = "نتیجهٔ بازی ${session.game.title}",
             subtitle = sessionSubtitle(session),
+            actions = listOf(kit.iconButton(RoyalIcon.SHARE, "انتقال بازی به گوشی دیگر", ButtonKind.SECONDARY, 44) {
+                transferGame(TransferKind.GAME, session.id)
+            }),
             bottom = kit.vertical().apply {
                 val league = session.leagueId.takeIf { it != 0L }?.let { host.repo.league(it) }
                 if (league != null) {
@@ -57,6 +60,10 @@ class ResultScreen(host: MainActivity, private val session: GameSession) : Scree
                 addView(kit.text(winnerText, TextStyle.TITLE, Royal.goldLight, Gravity.CENTER))
                 addView(kit.text(reason(totals), TextStyle.LABEL, Royal.muted, Gravity.CENTER))
             })
+            if (session.game == GameType.MENFI) {
+                addView(kit.text(menfiScoreGap(totals[0], totals[1]),
+                    TextStyle.BODY_BOLD, Royal.turquoiseLight, Gravity.CENTER), kit.spaced(6))
+            }
             if (session.game.isTeamGame) {
                 addView(kit.horizontal(Gravity.TOP).apply {
                     layoutParams = kit.spaced(10)
@@ -171,7 +178,8 @@ class ResultScreen(host: MainActivity, private val session: GameSession) : Scree
     private fun rematch() {
         val id = host.repo.newSessionId()
         val rules = session.rules.copy(menfi = session.rules.menfi.copy(extraHands = 0))
-        val fresh = GameSession(id, session.game, session.sides.toList(), rules = rules, updatedAt = id, label = session.label)
+        val fresh = GameSession(id, session.game, session.sides.toList(), rules = rules, updatedAt = id,
+            label = session.label, menfiDeal = session.menfiDeal)
         host.resetTo(HomeScreen(host), host.boardFor(fresh))
     }
 }
@@ -188,7 +196,8 @@ fun Screen.describeRound(session: GameSession, round: Round): String {
         RoundKind.SHALAM_PASS -> "پاس"
         RoundKind.MENFI_HAND -> listOfNotNull(
             if (round.numbers.size == 2) "اعداد ${kit.n(round.numbers[0])} و ${kit.n(round.numbers[1])}" else null,
-            menfiOutcomeTitle(session, round.outcome).ifBlank { null }
+            menfiOutcomeTitle(session, round.outcome).ifBlank { null },
+            menfiScoreGap(round.score(0), round.score(1))
         ).joinToString(" • ")
         RoundKind.HEZAR_ROUND -> round.raw.mapIndexed { i, v -> "${session.sides.getOrNull(i)?.name ?: ""} ${kit.n(v)}" }.joinToString(" • ")
         RoundKind.DOLO_HAND -> {

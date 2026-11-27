@@ -9,11 +9,12 @@ import android.widget.LinearLayout
 
 class LeagueListScreen(host: MainActivity) : Screen(host) {
     override val adZone: String? get() = "leagues"
-    override val featureKey: String get() = "leagues"
+    override val featureKey: String? get() = if (host.repo.leagueIndex().any { GameTransfer.importedLeague(host.repo.store, it) }) null else "leagues"
     override val navTab: Int get() = NavBar.LEAGUES
 
     override fun build(): View {
-        val leagues = host.repo.leagues()
+        val fullAccess = ProState.access("leagues").allowed
+        val leagues = host.repo.leagues().filter { fullAccess || GameTransfer.importedLeague(host.repo.store, it.id) }
         return scaffold(
             title = "لیگ‌ها",
             subtitle = "مسابقهٔ چند تیم در شلم یا منفی",
@@ -56,22 +57,25 @@ class LeagueListScreen(host: MainActivity) : Screen(host) {
 
 fun formatTitle(format: Int): String = if (format == LeagueFormat.ROUND_ROBIN) "دوره‌ای (جدول)" else "حذفی دو برده"
 
-class LeagueSetupScreen(host: MainActivity, private val editing: Long? = null) : Screen(host) {
+class LeagueSetupScreen(
+    host: MainActivity, private val editing: Long? = null, private val sourceGame: GameSession? = null
+) : Screen(host) {
     private val existing = editing?.let { host.repo.league(it) }
     override val featureKey: String get() = "leagues"
     override val featureUsed: Int get() = if (existing == null) host.repo.leagues().size else -1
-    private var presetRules: GameRules? = null
-    private var game = existing?.game ?: GameType.MENFI
+    private val sourceRules = sourceGame?.rules?.let { it.copy(menfi = it.menfi.copy(extraHands = 0)) }
+    private var presetRules: GameRules? = sourceRules
+    private var game = existing?.game ?: sourceGame?.game ?: GameType.MENFI
     private var name = existing?.name ?: "لیگ ${PersianText.digits(host.repo.leagueIndex().size + 1, host.settings.general.persianDigits)}"
-    private val teams = existing?.teams?.toMutableList() ?: mutableListOf()
+    private val teams = (existing?.teams ?: sourceGame?.sides.orEmpty()).toMutableList()
     private var format = existing?.format ?: settings.league.format
     private var winsNeeded = existing?.config?.winsNeeded ?: settings.league.winsNeeded
     private var doubleRoundRobin = existing?.config?.doubleRoundRobin ?: settings.league.doubleRoundRobin
     private var finalAfterTable = existing?.config?.finalAfterTable ?: settings.league.finalAfterTable
-    private var joker = existing?.rules?.shalam?.joker ?: settings.shalam.defaultJoker
-    private var endPoint = existing?.rules?.shalam?.endPoint ?: settings.shalam.mode(joker).defaultEndPoint
-    private var menfiHands = existing?.rules?.menfi?.hands ?: settings.menfi.hands
-    private var menfiHidden = existing?.rules?.menfi?.hidden ?: settings.menfi.hidden
+    private var joker = (existing?.rules ?: sourceRules)?.shalam?.joker ?: settings.shalam.defaultJoker
+    private var endPoint = (existing?.rules ?: sourceRules)?.shalam?.endPoint ?: settings.shalam.mode(joker).defaultEndPoint
+    private var menfiHands = (existing?.rules ?: sourceRules)?.menfi?.hands ?: settings.menfi.hands
+    private var menfiHidden = (existing?.rules ?: sourceRules)?.menfi?.hidden ?: settings.menfi.hidden
 
     override fun build(): View = scaffold(
         title = if (existing == null) "لیگ تازه" else "ویرایش و افزودن تیم",
@@ -89,7 +93,7 @@ class LeagueSetupScreen(host: MainActivity, private val editing: Long? = null) :
                 .put("_game", game.key).put("_rules", GameCodec.encodeRules(rules))
         }, apply = { data ->
             val selectedGame = data.optString("_game", game.key)
-            if (existing != null && selectedGame != game.key) kit.toast("این ترکیب برای نوع دیگری از بازی است")
+            if ((existing != null || sourceGame != null) && selectedGame != game.key) kit.toast("این ترکیب برای نوع دیگری از بازی است")
             else {
                 if (existing == null && selectedGame in listOf("shalam", "menfi")) game = GameType.fromKey(selectedGame)
                 applyRulePreset("league", data)
@@ -102,7 +106,7 @@ class LeagueSetupScreen(host: MainActivity, private val editing: Long? = null) :
             }
         }), kit.spaced(10))
         addView(kit.field("نام لیگ", name).apply { addTextChangedListener(watcher { name = it }) }, kit.spaced(8))
-        if (existing == null) addView(kit.grid(2, listOf(GameType.MENFI, GameType.SHALAM).map { g ->
+        if (existing == null && sourceGame == null) addView(kit.grid(2, listOf(GameType.MENFI, GameType.SHALAM).map { g ->
             kit.chip(g.title, game == g, ButtonKind.CHIP_GOLD) { game = g; presetRules = null; host.refresh() }
         }, 6), kit.spaced(6))
         addView(kit.choiceRow("قالب مسابقه", null, listOf(
@@ -239,10 +243,37 @@ class LeagueSetupScreen(host: MainActivity, private val editing: Long? = null) :
             else apply()
             return
         }
-        val id = System.currentTimeMillis()
+        var id = System.currentTimeMillis()
+        val usedIds = host.repo.leagueIndex().toSet()
+        while (id in usedIds) id++
         val league = League(id, name.trim().ifBlank { "لیگ" }, game, clean, rules, format, config)
         LeagueEngine.start(league, clean.indices.toList())
-        host.repo.saveLeague(league)
+        if (sourceGame != null) {
+            val lookup = host.repo::session
+            val keys = sourceGame.sides.map(TeamIdentity::key)
+            val pair = LeagueEngine.openMatches(league, lookup).firstOrNull {
+                val teams = listOfNotNull(it.teamA, it.teamB).map { index -> TeamIdentity.key(league.teams[index]) }
+                teams == keys || teams == keys.reversed()
+            }
+            if (pair == null) {
+                kit.toast("برای انتقال بازی، همان دو تیم را در یک رویارویی روبه‌روی هم بگذارید")
+                return
+            }
+            val first = TeamIdentity.key(league.teams[pair.teamA!!]) == keys.first()
+            val previousLeagueId = sourceGame.leagueId
+            if (previousLeagueId != 0L && host.repo.league(previousLeagueId) != null) {
+                kit.toast("این بازی از قبل در لیگ است")
+                return
+            }
+            sourceGame.leagueId = 0L
+            if (!LeagueEngine.attach(league, pair.match.id, sourceGame, first, lookup)) {
+                sourceGame.leagueId = previousLeagueId
+                kit.toast("افزودن بازی ممکن نشد. وضعیت بازی را بررسی کنید.")
+                return
+            }
+            LeagueEngine.advance(league, lookup = { gameId -> if (gameId == sourceGame.id) sourceGame else lookup(gameId) })
+        }
+        host.repo.saveLeague(league, sourceGame)
         SessionOps.rosterAdd(host, clean, true)
         host.replace(LeagueScreen(host, id))
     }
@@ -255,7 +286,7 @@ class LeagueSetupScreen(host: MainActivity, private val editing: Long? = null) :
 }
 
 class LeagueScreen(host: MainActivity, private val leagueId: Long) : Screen(host) {
-    override val featureKey: String get() = "leagues"
+    override val featureKey: String? get() = if (GameTransfer.importedLeague(host.repo.store, leagueId)) null else "leagues"
     private val lookup: (Long) -> GameSession? = { host.repo.session(it) }
 
     override fun build(): View {
@@ -447,6 +478,10 @@ class LeagueScreen(host: MainActivity, private val leagueId: Long) : Screen(host
                 dialog.dismiss()
                 host.push(RulesScreen(host, GameSession(0L, league.game, league.teams.take(2), rules = league.rules)))
             }, kit.spaced(8))
+            addView(kit.button("انتقال لیگ به گوشی دیگر", ButtonKind.SECONDARY, height = 44) {
+                dialog.dismiss()
+                transferGame(TransferKind.LEAGUE, league.id)
+            }, kit.spaced(8))
             addView(kit.button("اشتراک تصویر لیگ", ButtonKind.SECONDARY, height = 44) {
                 dialog.dismiss()
                 shareLeague(league)
@@ -470,7 +505,7 @@ class LeagueScreen(host: MainActivity, private val leagueId: Long) : Screen(host
 
 /** Starts the next game of a league match between its two teams (team A first). */
 fun Screen.startLeagueGame(league: League, match: LeagueMatch) {
-    if (!ProState.access("leagues").allowed) {
+    if (!ProState.access("leagues").allowed && !GameTransfer.importedLeague(host.repo.store, league.id)) {
         Gate.open(this, "leagues") {}
         return
     }
@@ -494,15 +529,15 @@ fun Screen.startLeagueGame(league: League, match: LeagueMatch) {
         val id = host.repo.newSessionId()
         val session = GameSession(id, fresh.game, sides, rules = fresh.rules,
             label = "${fresh.name} • ${LeagueEngine.stageTitle(fresh, entry.stage)}",
-            leagueId = fresh.id, menfiDeal = deal)
-        host.repo.save(session)
+            leagueId = fresh.id, menfiDeal = deal, leagueSideA = 0)
         fresh.matches[index] = entry.copy(games = entry.games + id)
         fresh.updatedAt = System.currentTimeMillis()
-        host.repo.saveLeague(fresh)
+        host.repo.saveLeague(fresh, session)
         host.push(host.boardFor(session))
     }
-    if (league.game == GameType.MENFI) chooseMenfiDeal(sides, null) { start(it) }
-    else start(null)
+    if (league.game != GameType.MENFI) return start(null)
+    val previous = LeagueEngine.menfiArrangement(league, match, sides, lookup)
+    if (previous != null) start(previous) else chooseMenfiDeal(sides, null) { start(it) }
 }
 
 /** The league match a saved game belongs to, if any. */
@@ -528,12 +563,15 @@ fun Screen.addToLeague(session: GameSession, onDone: () -> Unit) {
     }
     val lookup: (Long) -> GameSession? = { host.repo.session(it) }
     val leagues = host.repo.leagues().filter { it.game == session.game && LeagueEngine.openMatches(it, lookup).isNotEmpty() }
+    val create = DialogAction("ساخت لیگ با همین تیم‌ها", ButtonKind.PRIMARY) {
+        host.push(LeagueSetupScreen(host, sourceGame = session))
+    }
     if (leagues.isEmpty()) {
         kit.dialog(
             "لیگی برای این بازی نیست",
-            "لیگ ${session.game.title} با رویارویی آماده وجود ندارد. ابتدا از بخش «لیگ‌ها» یک لیگ ${session.game.title} بسازید.",
+            "می‌توانید یک لیگ ${session.game.title} با نام و بازیکنان همین دو تیم بسازید.",
             null,
-            listOf(DialogAction("لیگ‌ها", ButtonKind.PRIMARY) { host.push(LeagueListScreen(host)) }, DialogAction("بستن"))
+            listOf(create, DialogAction("بستن"))
         ).show()
         return
     }
@@ -541,15 +579,21 @@ fun Screen.addToLeague(session: GameSession, onDone: () -> Unit) {
         val a = league.teams[st.teamA ?: return]
         val b = league.teams[st.teamB ?: return]
         fun apply(teamAFirst: Boolean) {
-            if (session.leagueId != 0L) session.leagueId = 0L
-            if (!LeagueEngine.attach(league, st.match.id, session, teamAFirst, lookup)) {
+            val current = host.repo.league(league.id) ?: return
+            val oldLeagueId = session.leagueId
+            if (oldLeagueId != 0L && host.repo.league(oldLeagueId) != null) {
+                kit.toast("این بازی از قبل در لیگ است")
+                return
+            }
+            session.leagueId = 0L
+            if (!LeagueEngine.attach(current, st.match.id, session, teamAFirst, lookup)) {
+                session.leagueId = oldLeagueId
                 kit.toast("افزودن به لیگ ممکن نشد")
                 return
             }
             if (!session.finished && session.rounds.isEmpty()) session.updatedAt = System.currentTimeMillis()
-            host.repo.save(session)
-            LeagueEngine.advance(league, lookup)
-            host.repo.saveLeague(league)
+            LeagueEngine.advance(current, lookup = { id -> if (id == session.id) session else lookup(id) })
+            host.repo.saveLeague(current, session)
             kit.toast(if (session.finished) "بازی به ${league.name} اضافه شد و نتیجه‌اش حساب شد" else "بازی به ${league.name} اضافه شد؛ از لیگ هم ادامه می‌یابد")
             onDone()
         }
@@ -560,7 +604,7 @@ fun Screen.addToLeague(session: GameSession, onDone: () -> Unit) {
             TeamIdentity.key(session.sides[0]) == TeamIdentity.key(b) && TeamIdentity.key(session.sides[1]) == TeamIdentity.key(a) -> apply(false)
             else -> kit.dialog(
                 "کدام تیم، کدام است؟",
-                "نام تیم‌های این بازی با تیم‌های لیگ فرق دارد؛ نام و نشان تیم‌های لیگ روی بازی قرار می‌گیرد.",
+                "مشخص کنید نتیجهٔ هر تیم برای کدام تیم لیگ حساب شود. نام و بازیکنان این بازی حفظ می‌شوند.",
                 null,
                 listOf(
                     DialogAction("«$s0» = ${a.name}  •  «$s1» = ${b.name}", ButtonKind.PRIMARY) { apply(true) },
@@ -585,6 +629,8 @@ fun Screen.addToLeague(session: GameSession, onDone: () -> Unit) {
             } + DialogAction("انصراف")
         ).show()
     }
-    if (leagues.size == 1) chooseMatch(leagues[0])
-    else kit.dialog("افزودن به کدام لیگ؟", null, null, leagues.map { l -> DialogAction(l.name, ButtonKind.PRIMARY) { chooseMatch(l) } } + DialogAction("انصراف")).show()
+    kit.dialog("افزودن بازی به لیگ", null, null,
+        leagues.map { league -> DialogAction(league.name, ButtonKind.SECONDARY) { chooseMatch(league) } } +
+            listOf(create, DialogAction("انصراف"))
+    ).show()
 }

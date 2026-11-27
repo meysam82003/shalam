@@ -457,11 +457,11 @@ final class Http
     /** Request body set by the automated tests instead of php://input. */
     public static ?array $testBody = null;
 
-    public static function body(): array
+    public static function body(int $max = 2 * 1024 * 1024 + 200000): array
     {
         if (self::$testBody !== null) return self::$testBody;
-        $raw = file_get_contents('php://input') ?: '';
-        if (strlen($raw) > 2 * 1024 * 1024 + 200000) throw new ApiError('too_large', 'درخواست بیش از اندازه بزرگ است.', 413);
+        $raw = file_get_contents('php://input', false, null, 0, $max + 1) ?: '';
+        if (strlen($raw) > $max) throw new ApiError('too_large', 'درخواست بیش از اندازه بزرگ است.', 413);
         $j = json_decode($raw, true);
         return is_array($j) ? $j : $_POST;
     }

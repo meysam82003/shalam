@@ -9,8 +9,8 @@ class RefereeFlowTest {
 
     @Test fun seatsOppositeRotateAndOtherTeamBidsFirstEvenAfterReload() {
         val seats = listOf(0, 2, 1, 3)
-        val deal = MenfiDeal.fromSeats(seats, first = 3)
-        assertEquals(listOf(3, 0, 2, 1, 3, 0, 2, 1), (0..7).map(deal::dealer))
+        val deal = MenfiDeal.fromSeats(seats, first = 3, direction = MenfiDirection.COUNTERCLOCKWISE)
+        assertEquals(listOf(3, 1, 2, 0, 3, 1, 2, 0), (0..7).map(deal::dealer))
         assertEquals(listOf(0, 1), deal.biddingOrder(0))
         assertEquals(listOf(1, 0), deal.biddingOrder(1))
         val game = GameSession(35L, GameType.MENFI, listOf(a, b), rules = GameRules(), leagueId = 13L, menfiDeal = deal)
@@ -23,13 +23,14 @@ class RefereeFlowTest {
         assertNull(MenfiDeal.restore(listOf(0, 1, 2, 3), seats))
     }
 
-    @Test fun mustafaDealsThenBehzadAndEachRecordedDealerSurvivesChangingDirection() {
+    @Test fun clockwiseIsDefaultAndRecordedDealerSurvivesChangingDirection() {
         val seats = MenfiDeal.defaultSeats
         val default = MenfiDeal.fromSeats(seats, first = 1)
-        val reverse = MenfiDeal.fromSeats(seats, first = 1, direction = MenfiDirection.CLOCKWISE)
-        assertEquals(MenfiDirection.COUNTERCLOCKWISE, default.direction)
+        val reverse = MenfiDeal.fromSeats(seats, first = 1, direction = MenfiDirection.COUNTERCLOCKWISE)
+        assertEquals(MenfiDirection.CLOCKWISE, default.direction)
         assertEquals(listOf(1, 3, 0, 2, 1), (0..4).map(default::dealer))
         assertEquals(listOf(1, 2, 0, 3, 1), (0..4).map(reverse::dealer))
+        assertEquals(reverse, MenfiDeal.restore(listOf(1, 2, 0, 3), seats))
         val hand = Round(RoundKind.MENFI_HAND, emptyList(), numbers = listOf(7, 6), outcome = MenfiEngine.A_ONLY,
             dealerName = "مصطفی", dealerTeam = 0)
         val session = GameSession(36L, GameType.MENFI, listOf(a, b), listOf(hand), GameRules(), menfiDeal = reverse)

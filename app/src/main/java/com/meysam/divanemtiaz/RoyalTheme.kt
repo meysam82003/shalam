@@ -398,9 +398,9 @@ object LaunchLook {
             .toString()
         val prefs = activity.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
         if (prefs.getString("look", null) != look) prefs.edit().putString("look", look).apply()
+        // Drop the opaque launch-theme override remembered by older installations.
         if (android.os.Build.VERSION.SDK_INT >= 33) runCatching {
-            val style = activity.resources.getIdentifier("Theme.Divan.Launch." + spec.id.replaceFirstChar { it.uppercase() }, "style", activity.packageName)
-            if (style != 0) activity.splashScreen.setSplashScreenTheme(style)
+            activity.splashScreen.setSplashScreenTheme(0)
         }
     }
 }

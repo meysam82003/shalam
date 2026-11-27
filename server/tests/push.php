@@ -1,4 +1,18 @@
 <?php
+require_once dirname(__DIR__) . '/public/app/app_updates.php';
+require __DIR__ . '/transfer_links.php';
+
+scenario('Android update policies are opt-in and isolated by store', function () {
+    check(apiGet('v1/app-update', ['store' => 'bazaar'])['version_code'] === 0, 'new installation has no update policy');
+    throws(fn() => AppUpdates::fromForm(['version_code' => '0', 'required' => '1']), 'update_required', 'mandatory requires a published version');
+    throws(fn() => AppUpdates::fromForm(['version_code' => '33', 'version_name' => 'https://elsewhere.invalid']), 'update_version', 'version label must be valid');
+    $policy = AppUpdates::fromForm(['version_code' => '34', 'version_name' => '5.6.7', 'notes' => 'توضیحات', 'required' => '1']);
+    Settings::set('android_update_myket', $policy);
+    check(apiGet('v1/app-update', ['store' => 'myket']) === $policy, 'Myket sees the configured version and mandatory flag');
+    check(apiGet('v1/app-update', ['store' => 'direct'])['version_code'] === 0, 'the website channel remains independent');
+    Settings::set('android_update_myket', AppUpdates::fromForm(['version_code' => '0']));
+});
+
 scenario('Push: encrypted credentials, real HTTP v1 payload, retries and consent',function(){
     $old=Settings::get('push_fcm');$oldSecret=Settings::secret('push_service_account');$oldAccess=Settings::secret('push_access_token');$enabled=Settings::get('notices_enabled');
     $key=openssl_pkey_new(['private_key_bits'=>2048,'private_key_type'=>OPENSSL_KEYTYPE_RSA]);openssl_pkey_export($key,$private);
@@ -24,7 +38,12 @@ scenario('Push: encrypted credentials, real HTTP v1 payload, retries and consent
     PushDelivery::$testTransport=function($url,$headers,$body)use(&$calls,&$fail,$public){
         $calls[]=$url;
         if(strpos($url,'oauth2.googleapis.com')!==false){parse_str($body,$form);$parts=explode('.',$form['assertion']);$sig=base64_decode(strtr($parts[2],'-_','+/'));check(openssl_verify($parts[0].'.'.$parts[1],$sig,$public,OPENSSL_ALGO_SHA256)===1,'OAuth assertion signed with registered service key');return ['status'=>200,'body'=>json_encode(['access_token'=>'only-a-test-token','expires_in'=>3600])];}
-        $p=json_decode($body,true);check($p['message']['android']['priority']==='high'&&$p['message']['data']['kind']==='notices','real FCM high priority data payload');
+        $p=json_decode($body,true);
+        if (isset($p['message']['topic'])) {
+            check($p['message']['topic']==='divan_android_updates_direct' && $p['message']['data']===['kind'=>'app_update'], 'update wake-up targets only the configured store');
+        } else {
+            check($p['message']['android']['priority']==='high'&&$p['message']['data']['kind']==='notices','real FCM high priority data payload');
+        }
         check(!isset($p['message']['notification'])&&strpos($body,'این متن')===false,'payload contains no personal or offer text; client rechecks consent and live server state');
         return ['status'=>$fail?503:200,'body'=>$fail?'{}':'{"name":"projects/divan-test-project/messages/test"}'];
     };
@@ -45,5 +64,9 @@ scenario('Push: encrypted credentials, real HTTP v1 payload, retries and consent
     check((int)Db::value('SELECT COUNT(*) FROM {push_deliveries} WHERE device_hash=?',[Crypto::hash($proToken)])===1,'re-enabling Pro consent can enqueue an eligible unseen campaign again');
     $input['offers']=false;PushDelivery::register($input,null,null);check((int)Db::value('SELECT offers FROM {push_devices} WHERE token_hash=?',[Crypto::hash($token)])===0,'revoked consent persisted');
     $bad=$input;$bad['device']=hash('sha256','other-phone');throws(fn()=>PushDelivery::register($bad,['id'=>1],['device_id'=>$device,'store'=>'bazaar']),'push_device','signed-in token binding must match authenticated device');
+    Settings::set('android_update_direct', AppUpdates::fromForm(['version_code'=>'34','version_name'=>'5.6.7']));
+    check(PushDelivery::sendAppUpdates()===1 && PushDelivery::sendAppUpdates()===0, 'one update wake-up per policy');
+    Settings::set('android_update_direct', AppUpdates::fromForm(['version_code'=>'34','version_name'=>'5.6.7','required'=>'1']));
+    check(PushDelivery::sendAppUpdates()===1, 'changing enforcement wakes the same update channel');
     PushDelivery::$testTransport=null;Settings::set('push_fcm',$old);Settings::setSecret('push_service_account',$oldSecret);Settings::setSecret('push_access_token',$oldAccess);Settings::set('notices_enabled',$enabled);
 });

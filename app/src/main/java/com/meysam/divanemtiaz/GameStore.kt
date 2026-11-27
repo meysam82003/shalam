@@ -112,12 +112,14 @@ class GameRepository(private val kv: KeyValueStore, private val legacy: () -> Le
 
     fun save(session: GameSession) {
         migrateIfNeeded()
+        kv.write(sessionChanges(session))
+    }
+
+    private fun sessionChanges(session: GameSession): Map<String, String?> {
         val ids = index().filterNot { it == session.id }
-        kv.write(
-            mapOf(
-                gameKey(session.id) to GameCodec.encodeSession(session).toString(),
-                KEY_INDEX to JSONArray(listOf(session.id) + ids).toString()
-            )
+        return mapOf(
+            gameKey(session.id) to GameCodec.encodeSession(session).toString(),
+            KEY_INDEX to JSONArray(listOf(session.id) + ids).toString()
         )
     }
 
@@ -156,13 +158,14 @@ class GameRepository(private val kv: KeyValueStore, private val legacy: () -> Le
 
     fun leagues(): List<League> = leagueIndex().mapNotNull { league(it) }.sortedByDescending { it.updatedAt }
 
-    fun saveLeague(league: League) {
+    fun saveLeague(league: League, session: GameSession? = null) {
+        if (session != null) migrateIfNeeded()
         val ids = leagueIndex().filterNot { it == league.id }
         kv.write(
             mapOf(
                 leagueKey(league.id) to GameCodec.encodeLeague(league).toString(),
                 KEY_LEAGUES to JSONArray(listOf(league.id) + ids).toString()
-            )
+            ) + (session?.let(::sessionChanges) ?: emptyMap())
         )
     }
 
@@ -349,6 +352,7 @@ object GameCodec {
         session.endedAt?.let { put("endedAt", it) }
         put("label", session.label)
         if (session.leagueId != 0L) put("league", session.leagueId)
+        session.leagueSideA?.let { put("leagueSideA", it) }
         session.menfiDeal?.let {
             put("menfiDeal", JSONArray(it.order))
             put("menfiSeats", JSONArray(it.seats))
@@ -394,6 +398,7 @@ object GameCodec {
             endedAt = if (o.has("endedAt")) o.optLong("endedAt") else null,
             label = o.optString("label", ""),
             leagueId = o.optLong("league", 0L),
+            leagueSideA = o.optInt("leagueSideA", -1).takeIf { it in 0..1 },
             menfiDeal = o.optJSONArray("menfiDeal")?.let { a ->
                 val seats = o.optJSONArray("menfiSeats")
                 MenfiDeal.restore(List(a.length().coerceAtMost(5)) { a.optInt(it, -1) },

@@ -918,15 +918,17 @@ object HeroCrestArt {
  */
 class SplashFanView(context: Context) : View(context) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val frame = RectF()
     private val cards = FloatArray(4)
     private var crown = 0f
     private var glow = 0f
+    private var reveal = 0f
     private var animator: android.animation.ValueAnimator? = null
 
     /** Shows the finished picture at once (no motion). */
     fun still() {
         animator?.cancel()
-        cards.fill(1f); crown = 1f; glow = 1f
+        cards.fill(1f); crown = 1f; glow = 1f; reveal = 1f
         invalidate()
     }
 
@@ -944,12 +946,42 @@ class SplashFanView(context: Context) : View(context) {
         if (t <= start) 0f else if (t >= start + length) 1f else curve.getInterpolation((t - start) / length)
 
     private fun at(t: Float) {
-        for (i in 0 until 4) cards[i] = phase(t, 60f + i * 110f, 760f, Motion.JELLY)
-        crown = phase(t, 640f, 700f, Motion.JELLY)
-        glow = phase(t, 0f, 900f, Motion.EASE_OUT)
+        reveal = phase(t, 0f, 560f, Motion.EASE_OUT)
+        for (i in 0 until 4) cards[i] = phase(t, 155f + i * 83f, 355f, Motion.SPRING)
+        crown = phase(t, 775f, 375f, Motion.SPRING)
+        glow = phase(t, 805f, 620f, Motion.EASE_OUT)
     }
 
-    override fun onDraw(canvas: Canvas) = HeroCrestArt.draw(canvas, width, height, paint, cards, crown, glow)
+    override fun onDraw(canvas: Canvas) {
+        if (width == 0 || height == 0) return
+        val scale = min(width / 280f, height / 215f)
+        val x = width / 2f
+        val y = height * 0.55f
+        val radius = 92f * scale
+        canvas.save()
+        val lift = 1f - reveal
+        canvas.translate(0f, lift * 20f * scale)
+        canvas.scale(0.84f + 0.16f * reveal, 0.84f + 0.16f * reveal, x, y)
+        paint.style = Paint.Style.FILL
+        paint.shader = RadialGradient(x, y, radius * 1.32f,
+            intArrayOf(Royal.alpha(Royal.metal, reveal * 0.19f), Royal.alpha(Royal.metal, 0f)), null, Shader.TileMode.CLAMP)
+        canvas.drawCircle(x, y, radius * 1.32f, paint)
+        paint.shader = null
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = scale
+        paint.color = Royal.alpha(Royal.metal, 0.58f * reveal)
+        frame.set(x - radius, y - radius, x + radius, y + radius)
+        canvas.drawArc(frame, -90f, 360f * reveal, false, paint)
+        frame.inset(6f * scale, 6f * scale)
+        paint.color = Royal.alpha(Royal.metal, 0.27f * reveal)
+        canvas.drawArc(frame, 90f, -360f * reveal, false, paint)
+        paint.style = Paint.Style.FILL
+        paint.color = Royal.alpha(Royal.metalLight, glow)
+        RoyalShapes.star8(canvas, x - radius, y, 6f * scale * glow, paint)
+        RoyalShapes.star8(canvas, x + radius, y, 6f * scale * glow, paint)
+        canvas.restore()
+        HeroCrestArt.draw(canvas, width, height, paint, cards, crown, glow)
+    }
 
     override fun onDetachedFromWindow() {
         animator?.cancel()
@@ -957,7 +989,7 @@ class SplashFanView(context: Context) : View(context) {
     }
 
     companion object {
-        const val DURATION = 1400L
+        const val DURATION = 1450L
     }
 }
 

@@ -419,13 +419,17 @@ final class ConfigPages
             $mediaId = self::intOrNull('media_id');
             if (!empty($_FILES['upload']['name'])) $mediaId = Media::store($_FILES['upload']);
             if ($mediaId !== null && Db::value('SELECT id FROM {media} WHERE id = ?', [$mediaId]) === null) $mediaId = null;
-            if (in_array($format, ['image', 'video', 'corner', 'rewarded'], true) && $mediaId === null) throw new ApiError('media', 'این قالب به تصویر یا ویدئو نیاز دارد.');
+            if (in_array($format, ['image', 'gif', 'video', 'corner', 'rewarded'], true) && $mediaId === null) throw new ApiError('media', 'این قالب به فایل رسانه نیاز دارد.');
+            $kind = $mediaId === null ? null : Db::value('SELECT kind FROM {media} WHERE id = ?', [$mediaId]);
+            if (($format === 'gif' && $kind !== 'gif') || (in_array($format, ['video','rewarded'], true) && $kind !== 'video')) {
+                throw new ApiError('media', 'برای این قالب، فایل GIF یا MP4 سازگار را انتخاب کنید.');
+            }
             $url = self::post('target_app') !== '' ? self::post('target_app') : self::post('target_url');
             if (!safe_target_url($url)) throw new ApiError('url', 'نشانی مقصد باید http یا https و عمومی باشد، یا یکی از صفحه‌های داخل اپ.');
             $valid = array_column(Ads::placements(), 'formats', 'k');
             $places = array_values(array_filter((array)($_POST['placements'] ?? []), fn($p) => isset($valid[$p]) && in_array($format, explode(',', $valid[$p]), true)));
             if (!$places) throw new ApiError('placements', 'دست‌کم یک جایگاه سازگار با این قالب انتخاب کنید.');
-            $stores = array_values(array_intersect((array)($_POST['stores'] ?? []), Plans::STORES));
+            $stores = array_values(array_intersect((array)($_POST['stores'] ?? []), array_keys(Notices::STORES)));
             if (!$stores) throw new ApiError('stores', 'دست‌کم یک فروشگاه را انتخاب کنید.');
             $style = [];
             foreach (['bg', 'fg', 'accent'] as $k) { $v = self::post('style_' . $k); if (preg_match('/^#[0-9a-fA-F]{6}$/', $v)) $style[$k] = $v; }
@@ -497,6 +501,7 @@ final class ConfigPages
                 <div class="row">
                   <label class="check"><input type="checkbox" name="stores[]" value="bazaar" <?= strpos($a['stores'], 'bazaar') !== false ? 'checked' : '' ?>> نسخهٔ بازار</label>
                   <label class="check"><input type="checkbox" name="stores[]" value="myket" <?= strpos($a['stores'], 'myket') !== false ? 'checked' : '' ?>> نسخهٔ مایکت</label>
+                  <label class="check"><input type="checkbox" name="stores[]" value="direct" <?= strpos($a['stores'], 'direct') !== false ? 'checked' : '' ?>> نسخهٔ سایت</label>
                   <label>نمایش ضربدر پس از چند ثانیه (تبلیغ تمام‌صفحه)</label><input type="number" name="close_delay_seconds" min="0" max="60" value="<?= (int)($a['close_delay_seconds'] ?? 5) ?>">
                   <label>حداقل مدت تماشای ویدئوی جایزه‌ای (ثانیه؛ برابر طول ویدئو تنظیم کنید)</label><input type="number" name="reward_seconds" min="1" max="3600" value="<?= (int)($a['reward_seconds'] ?? 30) ?>">
                   <label class="check"><input type="checkbox" name="closable" <?= $a['closable'] ? 'checked' : '' ?>> قابل بستن</label>
@@ -551,7 +556,7 @@ final class ConfigPages
             <div class="card"><h3>نقشهٔ جایگاه‌ها</h3>
               <p class="hint">کادرهای طلایی پررنگ جایگاه‌های روشن هستند. صفحه‌های داوری، تایمر و مافیا هیچ جایگاهی ندارند و قابل افزودن هم نیستند. نوار ثابت بالا یا پایین در صفحه‌هایی که تیک بزنید همیشه سر جایش می‌ماند و فضای خودش را دارد، پس روی دکمه‌ها نمی‌افتد.</p>
               <div class="phones">
-                <div class="phone"><div class="screen"><div class="blk">دیوان امتیاز — خانه</div><div class="blk">ادامهٔ داوری</div><?= $slot('home_inline', 'میان بخش‌ها') ?><div class="blk">بازی‌ها</div><?= $slot('home_bottom', 'پایین صفحه') ?><?= $slot('home_corner', 'گوشه', 'corner') ?><div class="nav"></div></div></div>
+                <div class="phone"><div class="screen"><div class="blk">دیوان امتیاز — خانه</div><?= $slot('home_carousel', 'کادر گردشی کنار آمار') ?><div class="blk">آخرین بازی</div><?= $slot('home_inline', 'میان بخش‌ها') ?><div class="blk">بازی‌ها</div><?= $slot('home_bottom', 'پایین صفحه') ?><?= $slot('home_corner', 'گوشه', 'corner') ?><div class="nav"></div></div></div>
                 <div class="phone light"><div class="screen"><div class="blk">تاریخچه</div><div class="blk">امروز — ۳ بازی</div><?= $slot('history_inline', 'میان فهرست') ?><div class="blk">دیروز</div><div class="blk">رنک‌بندی</div><?= $slot('ranking_inline', 'پایین رنک‌بندی') ?><div class="nav"></div></div></div>
                 <div class="phone"><div class="screen"><div class="blk">نتیجهٔ بازی (پایان‌یافته)</div><div class="blk">برنده: تیم الف</div><?= $slot('result_bottom', 'پایین نتیجه') ?><div class="blk">مافیا / پانتومیم / جاسوس</div><?= $slot('hub_inline', 'صفحهٔ بازی‌ها') ?><?= $slot('settings_bottom', 'پایین تنظیمات') ?><div class="nav"></div></div></div>
                 <div class="phone"><div class="screen"><?= $slot('sticky_top', 'نوار ثابت بالا') ?><div class="blk">هر صفحهٔ مجاز</div><div class="blk">محتوای صفحه بالا و پایین می‌رود؛ نوار ثابت می‌ماند و چیزی را نمی‌پوشاند</div><div class="blk">…</div><div style="margin-top:auto"></div><?= $slot('sticky_bottom', 'نوار ثابت پایین') ?><div class="nav" style="margin-top:6px"></div></div></div>

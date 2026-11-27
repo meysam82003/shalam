@@ -74,6 +74,39 @@ final class PushDelivery
         $data=json_decode($r['body'],true);if($r['status']!==200||empty($data['access_token']))throw new RuntimeException('push_oauth');
         Settings::setSecret('push_access_token',json_encode(['token'=>$data['access_token'],'expires_at'=>Clock::now()+min(3600,(int)($data['expires_in']??3600))]));return $data['access_token'];
     }
+
+    /** A public wake-up signal. Each phone fetches the policy over HTTPS and compares its installed version. */
+    public static function sendAppUpdates(): int
+    {
+        if (!self::settings()['enabled']) return 0;
+        $sent = 0;
+        foreach (array_keys(AppUpdates::CHANNELS) as $store) {
+            if (!self::publicConfig($store)['enabled']) continue;
+            $policy = AppUpdates::forStore($store);
+            $key = 'android_update_push_' . $store;
+            $last = Settings::get($key);
+            if ($last === null && $policy['version_code'] === 0) continue;
+            $current = $policy['version_code'] . ':' . (int)$policy['required'];
+            if ($last === $current) continue;
+            try {
+                $data = ['message' => [
+                    'topic' => 'divan_android_updates_' . $store,
+                    'data' => ['kind' => 'app_update'],
+                    'android' => ['priority' => 'high', 'ttl' => '3600s'],
+                ]];
+                $url = 'https://fcm.googleapis.com/v1/projects/' . rawurlencode(self::settings()['project_id']) . '/messages:send';
+                $result = self::http($url, ['Authorization: Bearer ' . self::accessToken(), 'Content-Type: application/json'], json_encode($data));
+                if ($result['status'] === 401) Settings::setSecret('push_access_token', '');
+                if ($result['status'] !== 200) continue;
+                Settings::set($key, $current);
+                $sent++;
+            } catch (Throwable $e) {
+                error_log('[divan] app update push failed for ' . $store);
+            }
+        }
+        return $sent;
+    }
+
     public static function flush(int $limit=40):array {
         if(!self::settings()['enabled'])return ['sent'=>0,'errors'=>0];$sent=0;$errors=0;
         foreach(Db::all('SELECT id FROM {push_deliveries} WHERE sent_at IS NULL AND expires_at>? AND next_at<=? ORDER BY id LIMIT '.max(1,min(200,$limit)),[Clock::now(),Clock::now()]) as $row){
